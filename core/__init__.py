@@ -6,6 +6,7 @@ from .scraper import ZhihuDownloader
 from .converter import ZhihuConverter
 from .config import get_config, get_logger, get_humanizer
 from .errors import ZhihuScraperError
+from .utils import extract_urls, sanitize_filename, detect_url_type
 
 __all__ = [
     "ZhihuDownloader",
@@ -14,4 +15,7 @@ __all__ = [
     "get_logger",
     "get_humanizer",
     "ZhihuScraperError",
+    "extract_urls",
+    "sanitize_filename",
+    "detect_url_type",
 ]
