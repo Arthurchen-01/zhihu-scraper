@@ -2,6 +2,22 @@
 cli/app.py — CLI 增强模块
 
 使用 Typer 提供现代化命令行接口，支持参数自动补全。
+
+核心功能：
+- fetch: 抓取单个知乎链接 (文章/回答/问题)
+- batch: 批量抓取多个链接
+- monitor: 增量监控收藏夹
+- query: 在 SQLite 数据库中检索已抓取的内容
+- interactive: 交互式抓取模式
+- config: 查看/管理配置
+- check: 检查环境依赖
+
+使用示例：
+    zhihu fetch "https://www.zhihu.com/p/123456"
+    zhihu fetch "https://www.zhihu.com/question/123456" -n 10
+    zhihu batch ./urls.txt -c 8
+    zhihu monitor 78170682 -o ./data
+    zhihu query "深度学习" -l 20
 """
 
 from pathlib import Path
@@ -47,10 +63,17 @@ def sanitize_filename(name: str) -> str:
 
 
 def extract_urls(text: str) -> List[str]:
-    """从文本中提取知乎链接"""
+    """从文本中提取知乎链接
+
+    支持的 URL 格式：
+    - 专栏文章: https://zhuanlan.zhihu.com/p/123456
+    - 单个回答: https://www.zhihu.com/question/123/answer/456
+    - 问题页: https://www.zhihu.com/question/123
+    """
     import re
     pattern = r"(?:https?://)?(?:www\.|zhuanlan\.)?zhihu\.com/(?:p/\d+|question/\d+(?:/answer/\d+)?)"
     matches = re.findall(pattern, text)
+    # 去重并补全协议头
     return list(dict.fromkeys([(m if m.startswith("http") else "https://" + m) for m in matches]))
 
 
@@ -85,8 +108,13 @@ def fetch(
     """
     抓取单个知乎链接。
 
-    示例:
-        zhihu fetch "https://www.zhihu.com/question/123456"
+    支持的链接类型：
+    - 专栏文章: https://zhuanlan.zhihu.com/p/123456
+    - 单个回答: https://www.zhihu.com/question/123/answer/456
+    - 问题页 (批量): https://www.zhihu.com/question/123
+
+    使用示例:
+        zhihu fetch "https://www.zhihu.com/p/123456"
         zhihu fetch "https://www.zhihu.com/question/123456" -n 10
         zhihu fetch "https://www.zhihu.com/p/abcdef" -o ./output
     """
@@ -124,14 +152,16 @@ def fetch(
 def batch(
     input_file: Path = typer.Argument(..., help="URL列表文件 (每行一个链接)"),
     output: Path = typer.Option(Path("./data"), "-o", "--output", help="输出目录"),
-    concurrency: int = typer.Option(4, "-c", "--concurrency", help="并发数"),
+    concurrency: int = typer.Option(4, "-c", "--concurrency", help="并发数 (建议 4-8)"),
     no_images: bool = typer.Option(False, "-i", "--no-images", help="不下载图片"),
-    headless: bool = typer.Option(True, "-b", "--headless", help="无头模式"),
+    headless: bool = typer.Option(True, "-b", "--headless", help="无头模式运行浏览器"),
 ) -> None:
     """
     批量抓取多个知乎链接。
 
-    示例:
+    从文件中读取 URL 列表，并发执行抓取任务。
+
+    使用示例:
         zhihu batch ./urls.txt
         zhihu batch ./urls.txt -c 8 -o ./output
     """
@@ -144,7 +174,7 @@ def batch(
         rprint("[red]❌ 未找到有效链接[/red]")
         raise SystemExit(1)
 
-    # 限制并发数
+    # 限制并发数，避免触发反爬
     max_concurrency = min(concurrency, len(urls), 8)
     log.info("batch_started", file=str(input_file), count=len(urls), concurrency=max_concurrency)
     rprint(f"[bold]📋 批量任务: {len(urls)} 个链接 (并发: {max_concurrency})[/bold]")
@@ -177,8 +207,16 @@ def monitor(
     """
     增量监控并抓取知乎收藏夹的新增内容。
 
-    示例:
-        zhihu monitor 78170682
+    功能说明：
+    - 检查收藏夹中新增的内容（自上次监控以来）
+    - 自动去重，跳过已抓取的内容
+    - 下载新增内容并保存到本地
+    - 更新状态文件，记录最新进度
+
+    使用示例:
+        zhihu monitor 78170682                    # 监控默认配置
+        zhihu monitor 78170682 -o ./data         # 指定输出目录
+        zhihu monitor 78170682 -c 8             # 提高并发数
     """
     log.info("monitor_started", collection_id=collection_id)
     rprint(f"[bold]📡 启动增量监控: 收藏夹 {collection_id}[/bold]")
@@ -195,12 +233,12 @@ def monitor(
     if not new_items:
         rprint("[green]✨ 收藏夹没有新增内容，监控结束。[/green]")
         return
-        
+
     rprint(f"\n[bold]🛒 准备下载 {len(new_items)} 个新内容...[/bold]")
-    
+
     urls = [item["url"] for item in new_items]
     max_concurrency = min(concurrency, len(urls), 8)
-    
+
     results = asyncio.run(_batch_concurrent(
         urls=urls,
         output_dir=output,
@@ -214,7 +252,7 @@ def monitor(
     failed = len(results) - success
 
     rprint(f"\n[bold]📊 监控下载完成: {success} 成功, {failed} 失败[/bold]")
-    
+
     if success > 0:
         m.mark_updated(collection_id, new_last_id)
         rprint(f"[cyan]✅ 已保存最新进度指针: {new_last_id}[/cyan]")
@@ -223,59 +261,52 @@ def monitor(
 @app.command("query")
 def query_db(
     keyword: str = typer.Argument(..., help="要搜索的关键词"),
+    limit: int = typer.Option(10, "-l", "--limit", help="最大显示结果数量"),
     data_dir: str = typer.Option("./data", "-d", "--data-dir", help="数据目录（默认 ./data）"),
 ) -> None:
     """
-    在本地 Markdown 文件中检索已抓取的知乎内容。
+    在本地 SQLite 数据库中检索已抓取的知乎内容。
 
-    示例:
-        zhihu query "深度学习"
+    数据库结构：
+    - 表: articles
+    - 字段: answer_id, type, title, author, url, content_md, collection_id, created_at, updated_at
+
+    使用示例:
+        zhihu query "深度学习"              # 搜索标题和内容
+        zhihu query "Transformer" -l 20     # 限制结果数量
+        zhihu query "LLM" -d ./custom_data  # 指定数据目录
     """
+    from core.db import ZhihuDatabase
     from rich.table import Table
 
-    base_dir = Path(data_dir)
-    if not base_dir.exists():
-        rprint("[red]❌ 数据目录不存在[/red]")
+    db_path = Path(data_dir) / "zhihu.db"
+    if not db_path.exists():
+        rprint("[red]❌ 未找到知乎数据库，请先执行抓取任务 (fetch 或 monitor)。[/red]")
         raise SystemExit(1)
 
-    results = []
-    for md_file in base_dir.rglob("index.md"):
-        try:
-            content = md_file.read_text(encoding="utf-8")
-            if keyword in content:
-                # 从路径提取标题
-                folder_name = md_file.parent.name
-                # 标题格式: [2026-03-03] 标题
-                title = folder_name.split("] ", 1)[1] if "] " in folder_name else folder_name
-
-                # 搜索上下文
-                lines = content.split("\n")
-                context = ""
-                for i, line in enumerate(lines):
-                    if keyword in line:
-                        context = line.strip()[:100]
-                        break
-
-                results.append({
-                    "title": title,
-                    "path": str(md_file),
-                    "context": context
-                })
-        except Exception:
-            continue
+    db = ZhihuDatabase(str(db_path))
+    results = db.search_articles(keyword, limit)
+    db.close()
 
     if not results:
-        rprint(f"[yellow]⚠️ 未找到包含关键词 '{keyword}' 的文章。[/yellow]")
+        rprint(f"[yellow]⚠️ 未找到包含关键词 '[bold]{keyword}[/bold]' 的文章。[/yellow]")
         return
 
-    rprint(f"🔍 找到 {len(results)} 条结果：\n")
+    table = Table(title=f"🔍 检索结果: '{keyword}' (前 {len(results)} 条)")
+    table.add_column("Type", justify="center", style="cyan")
+    table.add_column("Author", style="green")
+    table.add_column("Title", style="magenta", overflow="fold")
+    table.add_column("Captured At", style="dim")
+    table.add_column("Zhihu ID", justify="right", style="blue")
 
-    table = Table(title=f"🔍 搜索结果: '{keyword}'")
-    table.add_column("标题", style="magenta", overflow="fold")
-    table.add_column("路径", style="dim")
-
-    for r in results:
-        table.add_row(r["title"], r["path"])
+    for row in results:
+        table.add_row(
+            row["type"],
+            row["author"],
+            row["title"],
+            row["created_at"].split("T")[0],
+            row["answer_id"]
+        )
 
     rprint(table)
 
@@ -285,7 +316,13 @@ def interactive() -> None:
     """
     启动带霓虹控制台面板的交互式抓取模式。
 
-    示例:
+    功能：
+    - 彩色终端界面
+    - 引导式输入 URL
+    - 实时显示抓取进度
+    - 查看抓取历史记录
+
+    使用示例:
         zhihu interactive
     """
     from cli.interactive import run_interactive
@@ -303,9 +340,9 @@ def config_cmd(
     """
     查看或管理配置。
 
-    示例:
-        zhihu config --show
-        zhihu config --path
+    使用示例:
+        zhihu config --show    # 显示当前配置
+        zhihu config --path    # 显示配置文件路径
     """
     if path:
         from pathlib import Path as P
@@ -323,6 +360,7 @@ def config_cmd(
 [b]浏览器:[/] {"无头" if cfg.zhihu.browser.headless else "有头"}
 [b]重试次数:[/] {cfg.crawler.retry.max_attempts}
 [b]图片并发:[/] {cfg.crawler.images.concurrency}
+[b]Cookie轮换:[/] {"启用" if hasattr(cfg, 'zhihu') and cfg.zhihu.cookies_required else "禁用"}
             """.strip(), justify="left"),
             title="🛠️ 当前配置",
             border_style="cyan"
@@ -333,6 +371,11 @@ def config_cmd(
 def check() -> None:
     """
     检查环境依赖和配置是否正常。
+
+    检查项目：
+    1. config.yaml 配置文件是否存在
+    2. cookies.json 是否有效
+    3. Playwright 浏览器是否可用
     """
     from playwright.async_api import async_playwright
 
@@ -359,7 +402,7 @@ def check() -> None:
 
 
 async def _check_playwright() -> None:
-    """检查 playwright"""
+    """检查 playwright 是否可用"""
     async with async_playwright() as pw:
         await pw.chromium.launch(headless=True)
 
@@ -378,7 +421,11 @@ async def _batch_concurrent(
     collection_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    并发批量抓取
+    并发批量抓取核心实现。
+
+    防风控策略：
+    - 使用信号量限制最大并发数
+    - 任务间随机延迟 (0.5~6秒)
 
     Args:
         urls: URL 列表
@@ -386,9 +433,10 @@ async def _batch_concurrent(
         concurrency: 并发数
         download_images: 是否下载图片
         headless: 无头模式
+        collection_id: 收藏夹 ID (用于关联数据库记录)
 
     Returns:
-        结果列表
+        结果列表，每个元素包含 success, url 等字段
     """
     semaphore = asyncio.Semaphore(concurrency)
     humanizer = get_humanizer()
@@ -396,6 +444,7 @@ async def _batch_concurrent(
     async def fetch_one(url: str, index: int) -> Dict[str, Any]:
         async with semaphore:
             # 任务间随机延迟，避免触发反爬
+            # 延迟时间随任务序号递增，降低同时发起的概率
             if index > 0:
                 delay = uniform(0.5, 2.0) * (index % 3 + 1)
                 await asyncio.sleep(delay)
@@ -437,7 +486,23 @@ async def _fetch_and_save(
     headless: bool = True,
     collection_id: Optional[str] = None,
 ) -> None:
-    """执行抓取并保存"""
+    """执行抓取并保存到本地文件和数据库。
+
+    完整执行流程：
+    1. 使用 ZhihuDownloader 抓取页面数据
+    2. 提取图片 URL 并下载到 images/ 目录
+    3. 使用 ZhihuConverter 将 HTML 转换为 Markdown
+    4. 保存为 index.md 文件
+    5. 保存到 SQLite 数据库
+
+    Args:
+        url: 知乎链接
+        output_dir: 输出目录
+        scrape_config: 抓取配置 (如 limit, start)
+        download_images: 是否下载图片
+        headless: 无头模式 (API 模式下不生效)
+        collection_id: 收藏夹 ID (关联数据库记录)
+    """
     from datetime import datetime
 
     downloader = ZhihuDownloader(url)
@@ -449,7 +514,7 @@ async def _fetch_and_save(
 
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # 处理单个或多个结果
+    # 处理单个或多个结果 (问题页返回多个回答列表)
     items = data if isinstance(data, list) else [data]
 
     for item in items:
@@ -471,7 +536,7 @@ async def _fetch_and_save(
                     folder / "images"
                 )
 
-        # 转换并保存
+        # 转换并保存 Markdown
         converter = ZhihuConverter(img_map=img_map)
         md = converter.convert(item["html"])
 
@@ -487,8 +552,17 @@ async def _fetch_and_save(
         full_md = header + md
         out_path.write_text(full_md, encoding="utf-8")
 
+        # ★★★★★ 保存到 SQLite 数据库 ★★★★★
+        from core.db import ZhihuDatabase
+        db_folder = output_dir if output_dir.name == "data" else output_dir.parent
+        if db_folder.name != "data":
+             db_folder = Path("./data") # fallback
+        db = ZhihuDatabase(str(db_folder / "zhihu.db"))
+        db.save_article(item, full_md, collection_id=collection_id)
+        db.close()
+
         rprint(f"✅ 保存: [cyan]{author}[/] - {title[:25]}...")
-        rprint(f"   📁 {out_path}")
+        rprint(f"   📁 {out_path} & 入库 DB")
 
 
 # ============================================================

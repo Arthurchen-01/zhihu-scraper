@@ -17,7 +17,7 @@
   </strong>
 </p>
 
-[**🚀 快速开始**](#-快速开始) | [**🧠 项目哲学**](#-项目哲学为什么选择它) | [**🏗️ 架构设计**](#%EF%B8%8F-基础设施与架构设计) | [**📊 产出预览**](#-精选数据产出)
+[**🚀 快速开始**](#-快速开始) | [**🧠 项目哲学**](#-项目哲学-为什么选择它) | [**🏗️ 架构设计**](#-基础设施与架构设计) | [**📊 产出预览**](#-精选数据产出) | [**📖 完整文档**](#-完整技术细节供复盘参考)
 
 </div>
 
@@ -261,3 +261,206 @@ pip install -e ".[dev]"
 ---
 
 *📝 **免责声明：** 本框架仅供学术研究和个人存档使用。严禁将底层 HTTP 认证指纹解析用于商业化或非法 DDoS 活动。针对因配置过高并发导致账户受限的情况，维护者不承担任何责任。*
+---
+
+## 🕹️ 五大 CLI 工作流
+
+CLI 提供了以下命令（使用 `python3 -m cli.app` 或 `./zhihu` 调用）：
+
+| 命令 | 说明 | 示例 |
+|------|------|------|
+| `interactive` | ✨ 推荐：启动交互式终端 UI | `./zhihu interactive` |
+| `fetch` | 抓取单个知乎链接，支持图片下载 | `./zhihu fetch "url"` |
+| `batch` | 批量抓取 URL 列表，自动并发限频 | `./zhihu batch urls.txt -c 8` |
+| `monitor` | 增量监控收藏夹，记录进度指针 | `./zhihu monitor 78170682` |
+| `query` | 在 SQLite 数据库中检索内容 | `./zhihu query "关键词"` |
+| `config` | 查看当前配置 | `./zhihu config --show` |
+| `check` | 检查环境依赖 | `./zhihu check` |
+
+### 详细命令参数
+
+#### fetch 命令
+```bash
+zhihu fetch "URL" [OPTIONS]
+# -o, --output PATH    输出目录 (默认 ./data)
+# -n, --limit INT      限制回答数量 (仅问题页)
+# -i, --no-images      不下载图片
+# -b, --headless       无头模式运行浏览器
+```
+
+#### batch 命令
+```bash
+zhihu batch FILE [OPTIONS]
+# -o, --output PATH    输出目录 (默认 ./data)
+# -c, --concurrency INT 并发数 (建议 4-8)
+# -i, --no-images      不下载图片
+# -b, --headless       无头模式
+```
+
+#### monitor 命令
+```bash
+zhihu monitor COLLECTION_ID [OPTIONS]
+# -o, --output PATH    输出目录 (默认 ./data)
+# -c, --concurrency INT 并发数
+# -i, --no-images      不下载图片
+# -b, --headless       无头模式
+```
+
+#### query 命令
+```bash
+zhihu query "KEYWORD" [OPTIONS]
+# -l, --limit INT      最大显示结果数量 (默认 10)
+# -d, --data-dir PATH  数据目录 (默认 ./data)
+```
+
+---
+
+## 📊 精选数据产出
+
+`zhihu-scraper` 的输出被设计为一件精致的数字展品。它将混乱的网络源码标准化为机器可读的代码艺术。
+
+### 本地文件系统
+
+使用 CLI 时，数据会井然有序地存储：
+```
+data/
+├── [2026-02-22] 深入理解大模型的底层逻辑/
+│   ├── index.md           # 纯净的 Markdown 文件
+│   └── images/            # 本地存储的图片，已绕过防盗链
+│       ├── v2-abc123.jpg
+│       └── v2-def456.jpg
+├── [2026-02-21] 另一个问题标题/
+└── zhihu.db               # 本地 SQLite 全文知识库
+```
+
+### SQLite 数据库结构
+
+```sql
+-- 文章/回答表
+CREATE TABLE articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    answer_id TEXT UNIQUE NOT NULL,  -- 知乎回答/文章 ID
+    type TEXT NOT NULL,              -- 类型: 'answer' 或 'article'
+    title TEXT,                      -- 标题
+    author TEXT,                     -- 作者
+    url TEXT,                        -- 原始链接
+    content_md TEXT,                 -- 完整 Markdown 内容
+    collection_id TEXT,              -- 来自哪个收藏夹
+    created_at TIMESTAMP,            -- 入库时间
+    updated_at TIMESTAMP             -- 更新时间
+);
+
+-- 索引
+CREATE INDEX idx_author ON articles(author);
+CREATE INDEX idx_collection ON articles(collection_id);
+```
+
+### 结构化 JSON 输出
+
+提取的核心数据对象经过完美结构化，可直接用于 RAG (检索增强生成) 数据库：
+
+```json
+{
+  "id": "2835848212",
+  "type": "answer",
+  "url": "https://www.zhihu.com/question/28696373/answer/2835848212",
+  "title": "深入理解大模型的底层逻辑",
+  "author": "Tech Whisperer",
+  "content": "<p>大语言模型 (LLM) 本质上是在...</p>",
+  "html": "...",
+  "date": "2026-02-22",
+  "upvotes": 14205
+}
+```
+
+---
+
+## 📖 完整技术细节（供复盘参考）
+
+### 1. curl_cffi API 模式 vs Playwright 降级
+
+**API 模式优先策略：**
+```
+curl_cffi (chromium/edge 指纹) → 知乎 API v4 → JSON 数据
+```
+
+**降级触发条件：**
+- API 返回 403 状态码
+- API 返回空数据或异常
+- 专栏文章 (zhuanlan.zhihu.com) API 解析失败
+
+**降级流程：**
+```
+API 失败 → 打印警告 → 启动 Playwright 浏览器 → 注入 Cookie → 渲染页面 → 提取 DOM
+```
+
+### 2. TLS 指纹伪装
+
+```python
+# 使用 curl_cffi 模拟 Chrome 110
+session = requests.Session(impersonate="chrome110")
+
+# 关键请求头
+headers = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36...",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Referer": "https://www.zhihu.com/",
+}
+```
+
+### 3. x-zse-96 签名生成
+
+知乎 API 请求需要 `x-zse-96` 签名头：
+
+```python
+# z_core.js 中的签名逻辑（由 execjs 执行）
+sig_headers = js_ctx.call("get_sign", api_path, f"d_c0={d_c0}")
+# 返回: {"x-zse-96": "...", "x-zse-101": "..."}
+```
+
+### 4. 反风控策略
+
+| 场景 | 策略 |
+|------|------|
+| 任务间延迟 | 随机 0.5~6 秒均匀分布 |
+| 并发控制 | 信号量限制 max 8 |
+| Cookie 轮换 | 403 时自动切换账号 |
+| 浏览器降级 | 强风控路由自动切换 |
+
+### 5. 图片去重算法
+
+知乎图片命名规则示例：
+- `v2-abc123_720w.jpg` (720px 宽)
+- `v2-abc123_r.jpg` (高清)
+- `v2-abc123_l.jpg` (超高分辨)
+
+**去重逻辑：**
+```python
+base_name = url.split("/")[-1].split("?")[0]
+for suffix in ["_720w", "_r", "_l"]:
+    if base_name.endswith(suffix + ".jpg"):
+        base_name = base_name.replace(suffix + ".jpg", ".jpg")
+        break
+# 只保留 v2-abc123.jpg
+```
+
+### 6. LaTeX 数学公式处理
+
+**知乎格式：**
+```html
+<span class="ztext-math" data-tex="$\sum_{i=1}^{n} i^2$">
+```
+
+**转换后 Markdown：**
+```markdown
+$\sum_{i=1}^{n} i^2$
+```
+
+**KaTeX 兼容性处理：**
+```python
+# array 列数重复语法展开
+# {*{20}{c}} → {cccccccccccccccccccc}
+```
+
+---
