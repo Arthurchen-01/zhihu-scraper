@@ -66,10 +66,10 @@ cd zhihu-scraper
 
 ```mermaid
 flowchart TB
-    subgraph 用户输入 ["🟢 启动方式"]
-        I["`./zhihu interactive`"]
-        F["`./zhihu fetch \"URL\"`"]
-        B["`./zhihu batch urls.txt`"]
+    subgraph 输入 ["🟢 启动方式"]
+        I["interactive"]
+        F["fetch URL"]
+        B["batch file.txt"]
     end
 
     I --> A
@@ -83,9 +83,10 @@ flowchart TB
         C --> D["`db.py` + Markdown<br />持久化存储"]
     end
 
-    D --> O["`data/` 目录 + `zhihu.db`"]
+    D --> O["`data/` + `zhihu.db`"]
 ```
 
+使用示例：
 ```bash
 ./zhihu fetch "https://www.zhihu.com/p/123456"
 ./zhihu interactive

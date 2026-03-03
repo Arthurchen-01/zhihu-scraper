@@ -81,7 +81,29 @@ flowchart LR
     I --> J
 ```
 
-### 5-Second Start
+### Three Steps
+
+```mermaid
+flowchart TB
+    subgraph Input ["🟢 Start Ways"]
+        I["interactive"]
+        F["fetch URL"]
+        B["batch file.txt"]
+    end
+
+    I --> A
+    F --> A
+    B --> A
+
+    subgraph Core_Modules
+        A[cli/app.py<br />CLI Entry]
+        A --> S[core/scraper.py<br />Scraper Core]
+        S --> C[core/converter.py<br />HTML→Markdown]
+        C --> D["`db.py` + Markdown<br />Persistence"]
+    end
+
+    D --> O["`data/` + `zhihu.db`"]
+```
 
 ```bash
 ./zhihu fetch "https://www.zhihu.com/p/123456"
