@@ -96,6 +96,92 @@ source .venv/bin/activate
 ./zhihu interactive
 ```
 
+---
+
+#### 📖 详细启动流程（新手必读）
+
+##### 第一步：确认已安装
+
+```bash
+# 检查 Python 版本
+python3 --version
+# 应该显示: Python 3.10.x 或更高
+
+# 检查虚拟环境是否存在
+ls -la .venv/bin/python
+# 应该能看到 python3 可执行文件
+```
+
+##### 第二步：激活虚拟环境
+
+```bash
+# 在项目根目录下执行
+source .venv/bin/activate
+
+# 激活成功后，终端提示符前面会显示 (.venv)
+# 例如: (.venv) yuchenzhu@macbook zhihu-scraper %
+```
+
+> 💡 **重要**：每次打开新终端都需要重新激活虚拟环境。
+
+##### 第三步：验证依赖安装
+
+```bash
+# 检查核心依赖
+python3 -c "import curl_cffi; import typer; print('✅ 核心依赖正常')"
+
+# 检查 Playwright（如果已安装）
+python3 -c "import playwright; print('✅ Playwright 已安装')"
+```
+
+##### 第四步：配置 Cookie（可选但推荐）
+
+```bash
+# 编辑 Cookie 文件
+vim cookies.json
+# 或使用其他编辑器: nano cookies.json / open -a "Sublime Text" cookies.json
+```
+
+获取 Cookie 方法：
+1. 用浏览器登录知乎
+2. 按 F12 打开开发者工具
+3. 切换到 Network 标签
+4. 刷新页面
+5. 点击任意请求
+6. 在 Request Headers 中找到 Cookie，复制全部值
+7. 填入 cookies.json
+
+##### 第五步：运行爬虫
+
+**方式一：抓取单个链接**
+```bash
+./zhihu fetch "https://www.zhihu.com/p/123456"
+```
+
+**方式二：抓取问题页（多个回答）**
+```bash
+./zhihu fetch "https://www.zhihu.com/question/123456" -n 10
+# -n 10 表示只抓取前 10 个回答
+```
+
+**方式三：批量抓取**
+```bash
+./zhihu batch urls.txt -c 4
+# -c 4 表示并发数为 4
+```
+
+**方式四：增量监控收藏夹**
+```bash
+./zhihu monitor 收藏夹ID
+```
+
+**方式五：交互式界面（推荐新手）**
+```bash
+./zhihu interactive
+```
+
+---
+
 ### 🔑 配置 Cookie（推荐）
 
 如果遇到访问限制，可以配置知乎 Cookie：

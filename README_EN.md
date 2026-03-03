@@ -96,6 +96,92 @@ source .venv/bin/activate
 ./zhihu interactive
 ```
 
+---
+
+#### 📖 Detailed Startup Guide (Must Read for Beginners)
+
+##### Step 1: Verify Installation
+
+```bash
+# Check Python version
+python3 --version
+# Should show: Python 3.10.x or higher
+
+# Check if virtual environment exists
+ls -la .venv/bin/python
+# Should see the python3 executable
+```
+
+##### Step 2: Activate Virtual Environment
+
+```bash
+# Execute in project root directory
+source .venv/bin/activate
+
+# After activation, prompt will show (.venv) prefix
+# Example: (.venv) user@macbook zhihu-scraper %
+```
+
+> 💡 **Important**: You need to activate the environment every time you open a new terminal.
+
+##### Step 3: Verify Dependencies
+
+```bash
+# Check core dependencies
+python3 -c "import curl_cffi; import typer; print('✅ Core dependencies OK')"
+
+# Check Playwright (if installed)
+python3 -c "import playwright; print('✅ Playwright installed')"
+```
+
+##### Step 4: Configure Cookies (Recommended but Optional)
+
+```bash
+# Edit Cookie file
+vim cookies.json
+# Or use other editors: nano cookies.json / open -a "Sublime Text" cookies.json
+```
+
+How to get Cookies:
+1. Log in to Zhihu in your browser
+2. Press F12 to open developer tools
+3. Switch to Network tab
+4. Refresh the page
+5. Click any request
+6. Find Cookie in Request Headers, copy all
+7. Paste into cookies.json
+
+##### Step 5: Run the Scraper
+
+**Option 1: Fetch a single URL**
+```bash
+./zhihu fetch "https://www.zhihu.com/p/123456"
+```
+
+**Option 2: Fetch question page (multiple answers)**
+```bash
+./zhihu fetch "https://www.zhihu.com/question/123456" -n 10
+# -n 10 means fetch only first 10 answers
+```
+
+**Option 3: Batch fetch**
+```bash
+./zhihu batch urls.txt -c 4
+# -c 4 means concurrency = 4
+```
+
+**Option 4: Monitor collection incrementally**
+```bash
+./zhihu monitor COLLECTION_ID
+```
+
+**Option 5: Interactive UI (Recommended for beginners)**
+```bash
+./zhihu interactive
+```
+
+---
+
 ### 🔑 Configuring Cookies (Recommended)
 
 If you encounter access limits, configure your Zhihu cookie:
