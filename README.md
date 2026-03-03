@@ -46,64 +46,80 @@
 
 ### 安装方式
 
-#### 方式一：从 PyPI 安装（推荐）
+#### 方式一：一键安装（推荐）
+
+```bash
+# 克隆并进入项目
+git clone https://github.com/yuchenzhu-research/zhihu-scraper.git
+cd zhihu-scraper
+
+# 一键安装（自动创建环境、安装依赖、配置浏览器）
+./install.sh
+```
+
+#### 方式二：从 PyPI 安装
 
 ```bash
 pip install zhihu-scraper
 zhihu interactive  # 启动交互式界面
 ```
 
-#### 方式二：从源码运行（开发者）
+#### 方式三：从源码运行（开发者）
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/yuchenzhu-research/zhihu-scraper.git
 cd zhihu-scraper
 
-# 2. 创建虚拟环境（推荐）
+# 2. 创建虚拟环境
 python3 -m venv .venv
 source .venv/bin/activate  # macOS/Linux
 # Windows: .venv\Scripts\activate
 
-# 3. 安装依赖
-pip install -e ".[cli]"
+# 3. 安装依赖（包含浏览器引擎）
+pip install -e ".[full]"
 
 # 4. 安装 Playwright 浏览器
 playwright install chromium
 ```
 
-### 运行
+### 快速运行
 
 ```bash
-# 交互式界面（推荐）
-python3 -m cli.app interactive
+# 激活环境（如果用方式一/三，需要先激活）
+source .venv/bin/activate
 
-# 或使用脚本
+# 抓取单个链接
+./zhihu fetch "https://www.zhihu.com/p/123456"
+
+# 交互式界面（推荐）
 ./zhihu interactive
 ```
 
-### 🔑 配置 Cookie（可选）
+### 🔑 配置 Cookie（推荐）
 
 如果遇到访问限制，可以配置知乎 Cookie：
 
 1. 用浏览器登录知乎（F12 → Network → 任意请求 → 复制 `cookie` 值）
 2. 编辑项目根目录下的 `cookies.json`：
 ```json
-{
-  "cookies": [
+[
     {
-      "name": "zse_ck",
-      "value": "你的 Cookie 值"
+        "name": "z_c0",
+        "value": "你的z_c0值",
+        "domain": ".zhihu.com"
     },
     {
-      "name": "其他 Cookie 名称",
-      "value": "其他值"
+        "name": "d_c0",
+        "value": "你的d_c0值",
+        "domain": ".zhihu.com"
     }
-  ]
-}
+]
 ```
 
-> 💡 **提示**：不配置 Cookie 也可以游客身份运行，但部分内容可能受限。
+> 💡 **提示**：核心字段是 `z_c0` 和 `d_c0`，不配置 Cookie 也可以游客身份运行，但部分内容可能受限。
+
+> 📁 **多账号池**：可创建 `cookie_pool/*.json` 文件支持自动轮换
 
 ---
 
@@ -112,11 +128,14 @@ python3 -m cli.app interactive
 在终端中粘贴任何知乎链接（回答、文章或问题）。
 
 ```bash
-# 交互式界面
-python3 -m cli.app interactive
+# 激活环境
+source .venv/bin/activate
 
-# 或直接抓取
-python3 -m cli.app fetch "https://www.zhihu.com/question/123456/answer/987654"
+# 直接抓取
+./zhihu fetch "https://www.zhihu.com/question/123456/answer/987654"
+
+# 或交互式界面
+./zhihu interactive
 ```
 
 *想要构建自己的 Agent 数据管道？这是 Python SDK 的调用方式：*

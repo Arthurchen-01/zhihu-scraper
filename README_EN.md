@@ -46,64 +46,80 @@ Scraping Zhihu (知乎) has historically been an uphill battle against `x-zse-96
 
 ### Installation
 
-#### Option 1: Install from PyPI (Recommended)
+#### Option 1: One-Click Install (Recommended)
+
+```bash
+# Clone and enter the project
+git clone https://github.com/yuchenzhu-research/zhihu-scraper.git
+cd zhihu-scraper
+
+# One-click install (auto-create env, install dependencies, setup browser)
+./install.sh
+```
+
+#### Option 2: Install from PyPI
 
 ```bash
 pip install zhihu-scraper
 zhihu interactive  # Launch interactive UI
 ```
 
-#### Option 2: Run from Source (Developers)
+#### Option 3: Run from Source (Developers)
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/yuchenzhu-research/zhihu-scraper.git
 cd zhihu-scraper
 
-# 2. Create virtual environment (recommended)
+# 2. Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate  # macOS/Linux
 # Windows: .venv\Scripts\activate
 
-# 3. Install dependencies
-pip install -e ".[cli]"
+# 3. Install dependencies (including browser engine)
+pip install -e ".[full]"
 
 # 4. Install Playwright browser
 playwright install chromium
 ```
 
-### Running
+### Quick Start
 
 ```bash
-# Interactive UI (Recommended)
-python3 -m cli.app interactive
+# Activate environment (if using Option 1/3)
+source .venv/bin/activate
 
-# Or use the script
+# Fetch a single URL
+./zhihu fetch "https://www.zhihu.com/p/123456"
+
+# Interactive UI (Recommended)
 ./zhihu interactive
 ```
 
-### 🔑 Configuring Cookies (Optional)
+### 🔑 Configuring Cookies (Recommended)
 
 If you encounter access limits, configure your Zhihu cookie:
 
 1. Log in to Zhihu in your browser (F12 → Network → any request → copy `cookie` value)
 2. Edit `cookies.json` in the project root:
 ```json
-{
-  "cookies": [
+[
     {
-      "name": "zse_ck",
-      "value": "your_cookie_value"
+        "name": "z_c0",
+        "value": "your_z_c0_value",
+        "domain": ".zhihu.com"
     },
     {
-      "name": "other_cookie_name",
-      "value": "other_value"
+        "name": "d_c0",
+        "value": "your_d_c0_value",
+        "domain": ".zhihu.com"
     }
-  ]
-}
+]
 ```
 
-> 💡 **Tip**: You can run without cookies (guest mode), but some content may be restricted.
+> 💡 **Tip**: Core fields are `z_c0` and `d_c0`. You can run without cookies (guest mode), but some content may be restricted.
+
+> 📁 **Multi-Account Pool**: Create `cookie_pool/*.json` files for automatic rotation
 
 ---
 
@@ -112,11 +128,14 @@ If you encounter access limits, configure your Zhihu cookie:
 Open your terminal and paste any Zhihu URL (Answer, Article, or Question).
 
 ```bash
-# Interactive UI
-python3 -m cli.app interactive
+# Activate environment
+source .venv/bin/activate
 
-# Or fetch directly
-python3 -m cli.app fetch "https://www.zhihu.com/question/123456/answer/987654"
+# Fetch directly
+./zhihu fetch "https://www.zhihu.com/question/123456/answer/987654"
+
+# Or interactive UI
+./zhihu interactive
 ```
 
 *Want to build your own agent pipeline? Here is the Python SDK approach:*
