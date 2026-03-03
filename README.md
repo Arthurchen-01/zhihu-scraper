@@ -62,26 +62,29 @@ cd zhihu-scraper
 ./install.sh
 ```
 
-### 使用流程
+### 三步上手
 
 ```mermaid
-flowchart LR
-    A[安装完成] --> B{配置 Cookie?}
-    B -->|是| C[编辑 cookies.json]
-    B -->|否| D[游客模式]
-    C --> E[选择使用方式]
-    D --> E
-    E --> F[./zhihu interactive]
-    E --> G[./zhihu fetch URL]
-    E --> H[./zhihu batch file.txt]
-    E --> I[./zhihu monitor ID]
-    F --> J[输出 data/ + zhihu.db]
-    G --> J
-    H --> J
-    I --> J
-```
+flowchart TB
+    subgraph 用户输入 ["🟢 启动方式"]
+        I["`./zhihu interactive`"]
+        F["`./zhihu fetch \"URL\"`"]
+        B["`./zhihu batch urls.txt`"]
+    end
 
-### 5 秒上手
+    I --> A
+    F --> A
+    B --> A
+
+    subgraph 核心模块
+        A[cli/app.py<br />CLI 入口]
+        A --> S[core/scraper.py<br />抓取核心]
+        S --> C[core/converter.py<br />HTML→Markdown]
+        C --> D["`db.py` + Markdown<br />持久化存储"]
+    end
+
+    D --> O["`data/` 目录 + `zhihu.db`"]
+```
 
 ```bash
 ./zhihu fetch "https://www.zhihu.com/p/123456"
@@ -227,17 +230,12 @@ CREATE TABLE articles (
 
 ## 常见问题
 
-### Q: 报错 "Cookie required" 怎么办？
-A: 编辑 `cookies.json`，填入登录后的 Cookie。
-
-### Q: 速度太慢？
-A: 调整 `config.yaml` 中的 `humanize.min_delay` 和 `max_delay`。
-
-### Q: 提取失败/被拦截？
-A: 项目会自动降级到 Playwright 模式。
-
-### Q: 能在 Windows 上运行吗？
-A: 支持！Python 3.10+ 和 Git 即可。
+| 问题 | 解决 |
+|------|------|
+| 报错 "Cookie required" | 编辑 `cookies.json` 填入登录后的 Cookie |
+| 速度太慢 | 调整 `config.yaml` 中 `humanize.min_delay` 和 `max_delay` |
+| 提取失败/被拦截 | 项目会自动降级到 Playwright 模式 |
+| Windows 能用吗 | 支持！Python 3.10+ 和 Git 即可 |
 
 ---
 
