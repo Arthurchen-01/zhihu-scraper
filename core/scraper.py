@@ -206,26 +206,40 @@ class ZhihuDownloader:
         async def worker(url: str):
             async with sem:
                 try:
-                    # 获取文件名
+                    # 获取文件名（取基础名，去重同主题图片）
+                    # 知乎会返回多种尺寸：_720w.jpg, _r.jpg, 无后缀
+                    # 我们只取第一种，忽略其他尺寸
                     file_name = url.split("/")[-1]
+                    # 去除查询参数
                     if "?" in file_name:
                         file_name = file_name.split("?")[0]
+                    # 去除尺寸后缀，只保留基础名：v2-xxx_720w.jpg → v2-xxx.jpg
+                    for suffix in ["_720w", "_r", "_l"]:
+                        if file_name.endswith(suffix + ".jpg"):
+                            file_name = file_name.replace(suffix + ".jpg", ".jpg")
+                            break
+                        if file_name.endswith(suffix + ".png"):
+                            file_name = file_name.replace(suffix + ".png", ".png")
+                            break
                     # 补全扩展名
-                    if not "." in file_name:
-                         file_name += ".jpg"
-                    
+                    if "." not in file_name:
+                        file_name += ".jpg"
+
                     local_path = dest / file_name
-                    
+
+                    # 已存在就跳过
                     if local_path.exists():
-                        url_to_local[url] = file_name
+                        # 返回带 images/ 前缀的路径
+                        url_to_local[url] = f"images/{file_name}"
                         return
-                        
+
                     resp = await client.get(url, timeout=timeout)
                     resp.raise_for_status()
                     with open(local_path, "wb") as f:
                         f.write(resp.content)
-                        
-                    url_to_local[url] = file_name
+
+                    # 返回带 images/ 前缀的路径
+                    url_to_local[url] = f"images/{file_name}"
                     
                 except Exception as e:
                     # 使用 print 代替 log 避免阻塞过深
