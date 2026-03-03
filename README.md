@@ -80,10 +80,10 @@ flowchart TB
         A[cli/app.py<br />CLI 入口]
         A --> S[core/scraper.py<br />抓取核心]
         S --> C[core/converter.py<br />HTML→Markdown]
-        C --> D["`db.py` + Markdown<br />持久化存储"]
+        C --> D["db.py + Markdown<br />持久化存储"]
     end
 
-    D --> O["`data/` + `zhihu.db`"]
+    D --> O["data/ + zhihu.db"]
 ```
 
 使用示例：

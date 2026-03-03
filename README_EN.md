@@ -99,10 +99,10 @@ flowchart TB
         A[cli/app.py<br />CLI Entry]
         A --> S[core/scraper.py<br />Scraper Core]
         S --> C[core/converter.py<br />HTML→Markdown]
-        C --> D["`db.py` + Markdown<br />Persistence"]
+        C --> D["db.py + Markdown<br />Persistence"]
     end
 
-    D --> O["`data/` + `zhihu.db`"]
+    D --> O["data/ + zhihu.db"]
 ```
 
 ```bash
