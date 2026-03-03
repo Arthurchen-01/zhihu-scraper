@@ -1,9 +1,19 @@
 """
+converter.py - HTML to Markdown Conversion Module
+
+Handles Zhihu-specific LaTeX formulas, code blocks, image link rewriting, and content cleaning.
+
+Core strategy: Use placeholders to protect formulas during BeautifulSoup preprocessing,
+              then restore them as $ / $$ delimiters after markdownify conversion.
+
+================================================================================
 converter.py — HTML → Markdown 转换模块
+
 处理知乎特有的 LaTeX 公式、代码块、图片链接重写、垃圾内容清洗。
 
 核心策略：在 BeautifulSoup 阶段用占位符保护公式，
          markdownify 转换后再还原为 $ / $$ 定界符。
+================================================================================
 """
 
 import re
@@ -17,17 +27,18 @@ from markdownify import MarkdownConverter
 
 class ZhihuConverter:
     """
-    知乎 HTML → Markdown 转换器。
+    Chinese: 知乎 HTML → Markdown 转换器
+    English: Zhihu HTML to Markdown converter
 
-    每次实例化都拥有独立的公式仓库，不存在全局状态污染。
+    Each instance has an isolated formula store, no global state pollution.
 
-    用法::
-
+    Usage:
         converter = ZhihuConverter(img_map={"https://...": "images/abc.jpg"})
         markdown  = converter.convert(html_string)
         img_urls  = ZhihuConverter.extract_image_urls(html_string)
     """
 
+    # Placeholder prefix (alphanumeric only to avoid markdownify escaping)
     # 占位符前缀（纯字母数字，避免被 markdownify 转义）
     _PID = uuid.uuid4().hex[:8]
     _INLINE_PH = f"IMATH{_PID}X"
@@ -38,30 +49,39 @@ class ZhihuConverter:
         self._math_store: dict[str, str] = {}
         self._math_counter = 0
 
-    # ── 公式仓库 ─────────────────────────────────────────────
+    # ── Formula Store (公式仓库) ─────────────────────────────────────────────
 
     def _store_math(self, formula: str, is_block: bool) -> str:
-        """将公式存入实例仓库，返回占位符。"""
+        """
+        Store formula in instance warehouse and return placeholder
+        将公式存入实例仓库，返回占位符
+        """
         prefix = self._BLOCK_PH if is_block else self._INLINE_PH
         key = f"{prefix}{self._math_counter}E"
         self._math_store[key] = formula
         self._math_counter += 1
         return key
 
-    # ── 对外接口 ─────────────────────────────────────────────
+    # ── Public Interface (对外接口) ─────────────────────────────────────────────
 
     def convert(self, html: str) -> str:
-        """一步到位：HTML → 清洁 Markdown。"""
+        """
+        One-step: HTML → Clean Markdown
+        一步到位：HTML → 清洁 Markdown
+        """
         cleaned = self._preprocess(html)
         md = self._to_markdown(cleaned)
         return self._postprocess(md)
 
     @staticmethod
     def extract_image_urls(html: str) -> list[str]:
-        """从 HTML 中抽取所有需要下载的图片 URL（不含公式图片、不含重复尺寸）。"""
+        """
+        Extract all image URLs from HTML (excluding formula images and duplicate sizes)
+        从 HTML 中抽取所有需要下载的图片 URL（不含公式图片、不含重复尺寸）
+        """
         soup = BeautifulSoup(html, "html.parser")
         urls: list[str] = []
-        seen_base: set[str] = set()  # 用于去重同主题图片
+        seen_base: set[str] = set()  # For deduplicating similar theme images / 用于去重同主题图片
 
         for img in soup.find_all("img"):
             if "ztext-math" in (img.get("class") or []):
@@ -75,7 +95,9 @@ class ZhihuConverter:
             if not src or src.startswith("data:") or "noavatar" in src:
                 continue
 
+            # Extract base name for deduplication: v2-xxx_720w.jpg → v2-xxx
             # 提取基础名用于去重：v2-xxx_720w.jpg → v2-xxx
+            # Zhihu image naming rules: v2-xxx_720w.jpg, v2-xxx_r.jpg
             # 知乎图片命名规则：v2-xxx_720w.jpg, v2-xxx_r.jpg
             base_name = src.split("/")[-1].split("?")[0]
             for suffix in ["_720w", "_r", "_l"]:
@@ -86,6 +108,7 @@ class ZhihuConverter:
                     base_name = base_name.replace(suffix + ".png", ".png")
                     break
 
+            # Skip if already seen similar theme image
             # 如果已经见过同主题图片，跳过
             if base_name in seen_base:
                 continue
@@ -94,25 +117,32 @@ class ZhihuConverter:
 
         return urls
 
-    # ── 预处理 HTML ──────────────────────────────────────────
+    # ── HTML Preprocessing (预处理 HTML) ──────────────────────────────────────────
 
     def _preprocess(self, html: str) -> str:
-        """在交给 markdownify 之前做知乎特定的 HTML 清洗。"""
+        """
+        Perform Zhihu-specific HTML cleaning before passing to markdownify
+        在交给 markdownify 之前做知乎特定的 HTML 清洗
+        """
         soup = BeautifulSoup(html, "html.parser")
 
-        # 1) 移除视频 / 卡片 / 按钮等干扰元素
+        # 1) Remove interference elements: videos / cards / buttons / etc.
+        # 移除视频 / 卡片 / 按钮等干扰元素
         for selector in (
             "div.VideoCard, .RichText-video, .VideoCard-player",
             ".LinkCard, .RichText-LinkCard, .Card, .Reward",
             ".ContentItem-actions, .RichContent-actions",
             ".Post-SideActions, .BottomActions",
             ".css-1gomreu, .Voters",
-            "noscript", 
+            "noscript",
         ):
             for tag in soup.select(selector):
                 tag.decompose()
 
-        # 2) 处理数学公式
+        # 2) Process math formulas
+        # 处理数学公式
+        #    Zhihu 2024+ format: <span class="ztext-math" data-tex="...">
+        #    Block formula's data-tex starts with \[ and ends with \]
         #    知乎 2024+ 格式: <span class="ztext-math" data-tex="...">
         #    块级公式的 data-tex 以 \[ 开头、\] 结尾
         for span in soup.find_all("span", class_="ztext-math"):
@@ -127,6 +157,7 @@ class ZhihuConverter:
             marker.string = placeholder
             span.replace_with(marker)
 
+        #    Legacy format: <img class="ztext-math" data-formula="...">
         #    兼容旧版: <img class="ztext-math" data-formula="...">
         for img in soup.select("img.ztext-math"):
             formula = img.get("data-formula", "")
@@ -142,12 +173,14 @@ class ZhihuConverter:
             marker.string = placeholder
             img.replace_with(marker)
 
-        # 3) <code> 里的 <br> 换成换行符
+        # 3) Replace <br> in <code> with newlines
+        # <code> 里的 <br> 换成换行符
         for code in soup.find_all("code"):
             for br in code.find_all("br"):
                 br.replace_with("\n")
 
-        # 4) 代码块语言标注
+        # 4) Code block language labels
+        # 代码块语言标注
         for pre in soup.find_all("pre"):
             code = pre.find("code")
             if code:
@@ -161,10 +194,13 @@ class ZhihuConverter:
 
         return str(soup)
 
-    # ── markdownify 桥接 ─────────────────────────────────────
+    # ── markdownify Bridge (markdownify 桥接) ─────────────────────────────────────
 
     def _to_markdown(self, html: str) -> str:
-        """调用 markdownify，使用自定义的图片处理逻辑。"""
+        """
+        Call markdownify with custom image handling logic
+        调用 markdownify，使用自定义的图片处理逻辑
+        """
         md_converter = _MarkdownBridge(
             img_map=self._img_map,
             heading_style="atx",
@@ -173,15 +209,21 @@ class ZhihuConverter:
         )
         return md_converter.convert(html)
 
-    # ── 后处理 Markdown ──────────────────────────────────────
+    # ── Markdown Post-processing (后处理 Markdown) ──────────────────────────────────────
 
     def _postprocess(self, md: str) -> str:
-        """清理噪音 + 还原公式占位符。"""
+        """
+        Clean noise + restore formula placeholders
+        清理噪音 + 还原公式占位符
+        """
+        # Compress consecutive blank lines
         # 压缩连续空行
         md = re.sub(r"\n{3,}", "\n\n", md)
+        # Clean trailing whitespace
         # 清理行尾空白
         md = "\n".join(line.rstrip() for line in md.splitlines())
 
+        # Restore formulas (with KaTeX compatibility fix)
         # 还原公式 (并做 KaTeX 兼容性处理)
         for key, formula in self._math_store.items():
             fixed_formula = self._fix_katex_array(formula)
@@ -190,6 +232,7 @@ class ZhihuConverter:
             elif key.startswith(self._INLINE_PH):
                 md = md.replace(key, f"${fixed_formula}$")
 
+        # Compress again
         # 再次压缩
         md = re.sub(r"\n{3,}", "\n\n", md)
         return md.strip() + "\n"
@@ -197,6 +240,10 @@ class ZhihuConverter:
     @staticmethod
     def _fix_katex_array(formula: str) -> str:
         """
+        Fix KaTeX unsupported array column definition syntax.
+        GitHub's KaTeX doesn't recognize {*{N}{X}} repeat syntax, needs expansion.
+        Example: {*{20}{c}} → {cccccccccccccccccccc}
+
         修复 KaTeX 不支持的 array 列定义语法。
         GitHub 的 KaTeX 不识别 {*{N}{X}} 这种重复语法，需要展开。
         例如: {*{20}{c}} → {cccccccccccccccccccc}
@@ -206,14 +253,18 @@ class ZhihuConverter:
             char = match.group(2)
             return char * count
 
+        # Match *{digit}{single_char} and expand
         # 匹配 *{数字}{单字符} 并展开
         return re.sub(r'\*\{(\d+)\}\{(.)\}', expand_repeat, formula)
 
 
-# ── markdownify 内部桥接类（不对外暴露）─────────────────────
+# ── markdownify Internal Bridge Class (不对外暴露) ──────────────────────
 
 class _MarkdownBridge(MarkdownConverter):
-    """继承 markdownify，仅覆盖图片标签的转换逻辑。"""
+    """
+    Inherit markdownify, only override image tag conversion logic
+    继承 markdownify，仅覆盖图片标签的转换逻辑
+    """
 
     def __init__(self, img_map: Optional[Dict[str, str]] = None, **kwargs):
         self.img_map = img_map or {}

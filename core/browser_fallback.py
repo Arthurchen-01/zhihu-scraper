@@ -1,18 +1,41 @@
 """
-core/browser_fallback.py — 针对强风控路由的智能降维回退机制
+browser_fallback.py - Intelligent Fallback Mechanism for Heavily Protected Routes
+
+When pure API requests (curl_cffi) encounter Zhihu Columns' extremely strict WAF,
+quickly activate the Playwright instance in the background and use the browser's
+native execution environment to read the final rendered HTML DOM, then pass it
+to upstream converter for Markdown reconstruction.
+
+================================================================================
+browser_fallback.py — 针对强风控路由的智能降维回退机制
 
 当纯 API 请求 (curl_cffi) 遭遇知乎专栏等极度严苛的 WAF 时，
 迅速唤醒后台的 Playwright 实例，并直接利用浏览器的原生执行环境，
 读取页面最终渲染好的 HTML DOM，交还给上游转换器进行 Markdown 重构。
+================================================================================
 """
 
 from typing import Optional, Dict
 from .config import get_logger
 
+
 async def extract_zhuanlan_html(article_id: str, session_cookies: Optional[Dict[str, str]] = None) -> Optional[dict]:
     """
+    Fetch column article data through Playwright silent rendering.
+
+    Returns a dictionary format that should match api_client.get_article() as much as possible
+    for seamless integration with upstream converters.
+
     通过 Playwright 静默渲染专栏文章获取数据。
     返回的字典格式要和 api_client.get_article() 尽量保持一致，以便无缝对接。
+
+    Args:
+        article_id: Zhihu column article ID (e.g., 123456 from zhuanlan.zhihu.com/p/123456)
+        session_cookies: Optional session cookies to inject
+
+    Returns:
+        Dict with keys: title, content, author, voteup_count, created, image_url
+        or None if extraction failed
     """
     from playwright.async_api import async_playwright
     import re
@@ -22,26 +45,29 @@ async def extract_zhuanlan_html(article_id: str, session_cookies: Optional[Dict[
     log.info("trigger_browser_fallback", url=url)
 
     async with async_playwright() as p:
+        # Use real Chrome browser type to reduce risk
         # 使用真实的 Chrome 浏览器类型降低风险
         browser = await p.chromium.launch(headless=True, args=[
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox"
         ])
-        
+
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
             viewport={"width": 1920, "height": 1080}
         )
 
+        # Inject cookie tickets to avoid redirection to homepage login wall
         # 注入 Cookie 票据 (避免被弹到首页重定向登录)
         if session_cookies:
+            # Zhihu strictly validates domain, must be precise
             # 知乎强校验 domain, 必须精确
             mapped_cookies = []
             for k, v in session_cookies.items():
                 mapped_cookies.append({
-                    "name": k, 
-                    "value": v, 
-                    "domain": ".zhihu.com", 
+                    "name": k,
+                    "value": v,
+                    "domain": ".zhihu.com",
                     "path": "/",
                     "secure": True,
                     "httpOnly": False,
@@ -53,21 +79,24 @@ async def extract_zhuanlan_html(article_id: str, session_cookies: Optional[Dict[
         page = await context.new_page()
 
         try:
+            # JS engine is responsible for cracking zse-ck shield, then render column
             # JS 引擎负责解开 zse-ck 的盾，随后才能渲染专栏
             resp = await page.goto(url, wait_until="domcontentloaded", timeout=15000)
-            
+
+            # Check if redirected to homepage login wall
             # 检测是否被重定向到首页登录墙
             if page.url == "https://www.zhihu.com/" or "signin" in page.url:
                 raise Exception("Cookie 已失效，专栏强制重定向到了登录页。")
-            
+
+            # Wait for main content (Post-RichTextContainer is the unique content container for columns)
             # 等待正文内容出现 (Post-RichTextContainer 就是专栏特有的正文容器)
             await page.wait_for_selector(".Post-RichTextContainer", timeout=10000)
 
-            # 获取页面信息
+            # Get page information / 获取页面信息
             title = await page.title()
             title = re.sub(r' - 知乎$', '', title).strip()
 
-            author_name = "未知作者"
+            author_name = "Unknown Author"  # 未知作者
             try:
                 author_elem = await page.wait_for_selector(".AuthorInfo-name", timeout=3000)
                 if author_elem:
@@ -75,7 +104,7 @@ async def extract_zhuanlan_html(article_id: str, session_cookies: Optional[Dict[
             except Exception:
                 pass
 
-            # 提取点赞数
+            # Extract upvotes / 提取点赞数
             voteup_count = 0
             try:
                 vote_btn = await page.wait_for_selector("button.VoteButton--up", timeout=3000)
@@ -87,13 +116,14 @@ async def extract_zhuanlan_html(article_id: str, session_cookies: Optional[Dict[
             except Exception:
                 pass
 
+            # Scrape complete rich text content HTML
             # 抓取完整的富文本内容 HTML
             content_html = ""
             content_elem = await page.query_selector(".Post-RichTextContainer")
             if content_elem:
                 content_html = await content_elem.inner_html()
 
-            # 提炼头图
+            # Extract header image / 提炼头图
             image_url = ""
             try:
                 header_img = await page.query_selector("img.TitleImage")
@@ -109,7 +139,7 @@ async def extract_zhuanlan_html(article_id: str, session_cookies: Optional[Dict[
                 "content": content_html,
                 "author": {"name": author_name},
                 "voteup_count": voteup_count,
-                "created": 0, # 这里不费劲提时间了，Fallback 场景能保住图文是最重要的
+                "created": 0,  # Skip extracting time, fallback scenario focuses on content
                 "image_url": image_url
             }
 

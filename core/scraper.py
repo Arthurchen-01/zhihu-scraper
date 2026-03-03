@@ -1,4 +1,21 @@
 """
+scraper.py - Zhihu Page Scraping & Image Download Module (v3.0 Pure Protocol Engine API Version)
+
+Disclaimer:
+This project is for academic research and learning purposes only.
+Please comply with Zhihu's terms of service and robots.txt.
+
+zhihu-scraper integrates a pure protocol-layer network client that directly fetches from the v4 API.
+Anti-blocking core relies on:
+1. curl_cffi simulates real browser TLS fingerprints (chrome110/edge)
+2. Load multi-account Cookie pools from cookies.json or cookie_pool/
+3. Intelligent fallback to Playwright headless browser (only for heavily protected routes like Columns)
+
+Core scraping strategy:
+- Default to curl_cffi pure protocol API mode (lightweight, fast, no browser required)
+- When API encounters 403/blocking, automatically fall back to Playwright browser rendering
+
+================================================================================
 scraper.py — 知乎页面抓取 & 图片下载模块 (v3.0 纯协议引擎 API 版)
 
 免责声明：
@@ -14,6 +31,7 @@ scraper.py — 知乎页面抓取 & 图片下载模块 (v3.0 纯协议引擎 API
 核心抓取策略：
 - 默认使用 curl_cffi 纯协议 API 模式 (轻量、快速、无需浏览器)
 - 当 API 遭遇 403/风控拦截时，自动降级启动 Playwright 浏览器渲染
+================================================================================
 """
 
 import asyncio
@@ -27,15 +45,25 @@ from .config import get_logger, get_humanizer
 from .api_client import ZhihuAPIClient
 
 class ZhihuDownloader:
-    """从知乎文章/回答页面直接抓取 API 数据并下载图片到本地。"""
+    """
+    Chinese: 从知乎文章/回答页面直接抓取 API 数据并下载图片到本地。
+    English: Downloads API data from Zhihu articles/answers and saves images locally.
+    """
 
     def __init__(self, url: str) -> None:
+        # Initialize URL and detect page type
+        # 初始化 URL 并检测页面类型
         self.url = url.split("?")[0]
         self.page_type = self._detect_type()
         self.api_client = ZhihuAPIClient()
         self.log = get_logger()
 
     def _detect_type(self) -> str:
+        """
+        Detect page type from URL
+        Detect: article (zhuanlan), answer, or question page
+        从 URL 检测页面类型：专栏、回答或问题页面
+        """
         if "zhuanlan.zhihu.com" in self.url:
             return "article"
         if "/answer/" in self.url:
@@ -45,11 +73,21 @@ class ZhihuDownloader:
         return "article"
 
     def has_valid_cookies(self) -> bool:
-        """检查是否有有效 Cookie (兼容 CLI 调用)。"""
+        """
+        Check if valid cookies exist (for CLI compatibility)
+        检查是否有有效 Cookie (兼容 CLI 调用)
+        """
         return bool(self.api_client._cookies_dict)
 
     async def fetch_page(self, **kwargs) -> Union[dict, List[dict]]:
         """
+        Fetch page data using pure protocol layer.
+        Supports kwargs (like start, limit) passed to _extract_question.
+
+        Scraping workflow:
+        1. First try curl_cffi API mode (lightweight and fast)
+        2. If encountering 403/blocking, automatically fall back to Playwright browser rendering
+
         使用纯协议层抓取页面数据。
         支持传入 kwargs (如 start, limit) 传递给 _extract_question。
 
@@ -208,7 +246,7 @@ class ZhihuDownloader:
         print(f"✅ 成功命中 {len(results)} 个回答。")
         return results
 
-    # ── 图片下载 ──────────────────────────────────────────────
+    # ── 图片下载 (Image Download) ──────────────────────────────────────────────
 
     @classmethod
     async def download_images(
@@ -220,8 +258,23 @@ class ZhihuDownloader:
         timeout: float = 30.0,
     ) -> dict[str, str]:
         """
-        并发下载图片。
+        Download images concurrently with deduplication.
 
+        Image deduplication strategy:
+        - Zhihu image naming: v2-xxx_720w.jpg, v2-xxx_r.jpg
+        - For same base_name images, download only once, keeping highest quality
+        - Returns format "images/xxx.jpg" for Markdown references
+
+        Args:
+            img_urls: List of image URLs
+            dest: Image save directory
+            concurrency: Concurrency count (default 4)
+            timeout: Request timeout (default 30s)
+
+        Returns:
+            URL -> relative path mapping dict, format "images/xxx.jpg"
+
+        并发下载图片。
         图片去重策略：
         - 知乎图片命名规则：v2-xxx_720w.jpg, v2-xxx_r.jpg
         - 对于相同 base_name 的图片，只下载一次，保留最高质量版本

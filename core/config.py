@@ -1,8 +1,15 @@
 """
-core/config.py — 配置管理模块
+config.py - Configuration Management Module
+
+Provides unified configuration loading, validation, and environment variable override.
+Uses YAML format configuration files, supports defaults and type safety.
+
+================================================================================
+config.py — 配置管理模块
 
 提供统一的配置加载、验证和环境变量覆盖功能。
 使用 YAML 格式的配置文件，支持默认值和类型安全。
+================================================================================
 """
 
 import logging
@@ -14,12 +21,14 @@ import yaml
 import structlog
 
 # ============================================================
-# 配置数据类
+# Configuration Data Classes (配置数据类)
 # ============================================================
 
 @dataclass
 class BrowserConfig:
-    """浏览器配置"""
+    """
+    Browser configuration / 浏览器配置
+    """
     headless: bool = True
     timeout: int = 30000
     viewport: Dict[str, int] = field(default_factory=lambda: {"width": 1920, "height": 1080})
@@ -28,19 +37,25 @@ class BrowserConfig:
 
 @dataclass
 class AntiDetectionConfig:
-    """反爬配置"""
+    """
+    Anti-crawling configuration / 反爬配置
+    """
     stealth: bool = True
     webgl: bool = True
     navigator: bool = True
 
 @dataclass
 class SignatureConfig:
-    """签名算法配置"""
+    """
+    Signature algorithm configuration / 签名算法配置
+    """
     enabled: bool = False
 
 @dataclass
 class ZhihuConfig:
-    """知乎相关配置"""
+    """
+    Zhihu-related configuration / 知乎相关配置
+    """
     cookies_file: str = "cookies.json"
     cookies_required: bool = True
     browser: BrowserConfig = field(default_factory=BrowserConfig)
@@ -49,7 +64,9 @@ class ZhihuConfig:
 
 @dataclass
 class RetryConfig:
-    """重试配置"""
+    """
+    Retry configuration / 重试配置
+    """
     max_attempts: int = 3
     base_delay: float = 1.0
     max_delay: float = 30.0
@@ -58,23 +75,30 @@ class RetryConfig:
 
 @dataclass
 class ScrollConfig:
-    """滚动配置"""
+    """
+    Scroll configuration / 滚动配置
+    """
     timeout: int = 60000
     pause: int = 1000
     viewport_height: int = 800
 
 @dataclass
 class HumanizeConfig:
-    """人类行为模拟配置"""
+    """
+    Human behavior simulation configuration / 人类行为模拟配置
+    """
     enabled: bool = True
-    min_delay: float = 1.0      # 最小请求间隔 (秒)
-    max_delay: float = 3.0      # 最大请求间隔 (秒)
-    scroll_delay: float = 0.5   # 滚动后等待 (秒)
-    page_load_delay: float = 2.0  # 页面加载后等待 (秒)
+    min_delay: float = 1.0       # Minimum request interval (seconds) / 最小请求间隔 (秒)
+    max_delay: float = 3.0       # Maximum request interval (seconds) / 最大请求间隔 (秒)
+    scroll_delay: float = 0.5    # Wait after scrolling (seconds) / 滚动后等待 (秒)
+    page_load_delay: float = 2.0 # Wait after page load (seconds) / 页面加载后等待 (秒)
 
     @classmethod
     def from_dict(cls, raw: Dict[str, Any]) -> "HumanizeConfig":
-        """从字典构建，支持向后兼容"""
+        """
+        Build from dictionary, support backward compatibility
+        从字典构建，支持向后兼容
+        """
         return cls(
             enabled=raw.get("enabled", True),
             min_delay=raw.get("min_delay", 1.0),
@@ -85,14 +109,18 @@ class HumanizeConfig:
 
 @dataclass
 class ImagesConfig:
-    """图片下载配置"""
+    """
+    Image download configuration / 图片下载配置
+    """
     concurrency: int = 4
     timeout: float = 30.0
     referer: str = "https://www.zhihu.com/"
 
 @dataclass
 class CrawlerConfig:
-    """爬虫通用配置"""
+    """
+    General crawler configuration / 爬虫通用配置
+    """
     retry: RetryConfig = field(default_factory=RetryConfig)
     scroll: ScrollConfig = field(default_factory=ScrollConfig)
     humanize: HumanizeConfig = field(default_factory=HumanizeConfig)
@@ -100,7 +128,9 @@ class CrawlerConfig:
 
 @dataclass
 class OutputConfig:
-    """导出配置"""
+    """
+    Export configuration / 导出配置
+    """
     directory: str = "data"
     format: str = "markdown"
     images_subdir: str = "images"
@@ -108,7 +138,9 @@ class OutputConfig:
 
 @dataclass
 class LoggingConfig:
-    """日志配置"""
+    """
+    Logging configuration / 日志配置
+    """
     level: str = "INFO"
     format: str = "console"
     file: Optional[str] = None
@@ -116,7 +148,9 @@ class LoggingConfig:
 
 @dataclass
 class Config:
-    """主配置类"""
+    """
+    Main configuration class / 主配置类
+    """
     zhihu: ZhihuConfig
     crawler: CrawlerConfig
     output: OutputConfig
@@ -124,8 +158,11 @@ class Config:
 
     @classmethod
     def from_dict(cls, raw: Dict[str, Any]) -> "Config":
-        """从字典构建配置"""
-        # 解析知乎配置
+        """
+        Build configuration from dictionary
+        从字典构建配置
+        """
+        # Parse Zhihu configuration / 解析知乎配置
         zhihu_raw = raw.get("zhihu", {})
         zhihu = ZhihuConfig(
             cookies_file=zhihu_raw.get("cookies", {}).get("file", "cookies.json"),
@@ -135,7 +172,7 @@ class Config:
             signature=SignatureConfig(**zhihu_raw.get("signature", {})),
         )
 
-        # 解析爬虫配置
+        # Parse crawler configuration / 解析爬虫配置
         crawler_raw = raw.get("crawler", {})
         crawler = CrawlerConfig(
             retry=RetryConfig(**crawler_raw.get("retry", {})),
@@ -144,10 +181,10 @@ class Config:
             images=ImagesConfig(**crawler_raw.get("images", {})),
         )
 
-        # 解析导出配置
+        # Parse export configuration / 解析导出配置
         output = OutputConfig(**raw.get("output", {}))
 
-        # 解析日志配置
+        # Parse logging configuration / 解析日志配置
         logging_cfg = LoggingConfig(**raw.get("logging", {}))
 
         return cls(
@@ -158,11 +195,14 @@ class Config:
         )
 
 # ============================================================
-# 配置加载器
+# Configuration Loader (配置加载器)
 # ============================================================
 
 class ConfigLoader:
-    """配置加载器，支持多路径和默认值"""
+    """
+    Configuration loader supporting multiple paths and defaults
+    配置加载器，支持多路径和默认值
+    """
 
     _instance: Optional["ConfigLoader"] = None
     _config: Optional[Config] = None
@@ -184,16 +224,18 @@ class ConfigLoader:
         override_level: Optional[str] = None,
     ) -> Config:
         """
+        Load configuration file
         加载配置文件
 
         Args:
-            config_path: 配置文件路径，默认为项目根目录的 config.yaml
-            override_level: 可选的环境变量覆盖级别 (DEBUG/INFO/WARNING/ERROR)
+            config_path: Configuration file path (default: config.yaml in project root)
+            override_level: Optional environment variable override level (DEBUG/INFO/WARNING/ERROR)
         """
         if self._config is not None:
             return self._config
 
         if config_path is None:
+            # Default search in project root directory
             # 默认查找项目根目录
             root = Path(__file__).parent.parent
             config_path = root / "config.yaml"
@@ -211,24 +253,28 @@ class ConfigLoader:
 
             self._config = Config.from_dict(raw)
 
-            # 环境变量覆盖
+            # Environment variable override / 环境变量覆盖
             if override_level:
                 self._config.logging.level = override_level
 
+            # Set logging level (must be done before returning)
             # 设置日志级别（必须在返回前）
             setup_logging(self._config)
 
             return self._config
 
         except Exception as e:
-            print(f"⚠️ 配置文件加载失败: {e}")
-            print("  使用默认配置")
+            print(f"⚠️ Configuration file load failed: {e}")
+            print("  Using default configuration / 使用默认配置")
             self._config = self._get_default_config()
             setup_logging(self._config)
             return self._config
 
     def _get_default_config(self) -> Config:
-        """获取默认配置（当配置文件不存在或解析失败时）"""
+        """
+        Get default configuration (when config file doesn't exist or parsing fails)
+        获取默认配置（当配置文件不存在或解析失败时）
+        """
         return Config(
             zhihu=ZhihuConfig(),
             crawler=CrawlerConfig(),
@@ -241,39 +287,45 @@ class ConfigLoader:
         log.warning("config_file_not_found", path=str(path), using_defaults=True)
 
     def get(self) -> Config:
-        """获取已加载的配置"""
+        """
+        Get loaded configuration / 获取已加载的配置
+        """
         if self._config is None:
             return self.load()
         return self._config
 
     def reload(self, config_path: Optional[Union[str, Path]] = None) -> Config:
-        """重新加载配置"""
+        """
+        Reload configuration / 重新加载配置
+        """
         self._config = None
         return self.load(config_path)
 
 
 def get_config(config_path: Optional[Union[str, Path]] = None) -> Config:
-    """便捷函数：获取配置"""
+    """
+    Convenience function to get configuration
+    便捷函数：获取配置
+    """
     loader = ConfigLoader()
     return loader.load(config_path)
 
 
 # ============================================================
-# 日志系统
+# Logging System (日志系统)
 # ============================================================
 
 def setup_logging(config: Union[Config, LoggingConfig]) -> None:
     """
+    Initialize structured logging system
     初始化结构化日志系统
-
-    Args:
-        config: 配置对象或日志配置
     """
     if isinstance(config, Config):
         log_config = config.logging
     else:
         log_config = config
 
+    # Configure standard logging (prevent third-party library log mess)
     # 配置标准日志（防止第三方库日志混乱）
     import logging as stdlib_logging
     log_level = getattr(stdlib_logging, log_config.level.upper(), stdlib_logging.INFO)
@@ -282,6 +334,7 @@ def setup_logging(config: Union[Config, LoggingConfig]) -> None:
         format="%(message)s",
     )
 
+    # structlog configuration - new API
     # structlog 配置 - 新 API
     processors = [
         structlog.contextvars.merge_contextvars,
@@ -301,7 +354,7 @@ def setup_logging(config: Union[Config, LoggingConfig]) -> None:
 
 
 # ============================================================
-# 人类行为模拟 (Humanize)
+# Human Behavior Simulation (Humanize) / 人类行为模拟
 # ============================================================
 
 import asyncio
@@ -310,13 +363,22 @@ from contextlib import asynccontextmanager
 
 
 def get_logger(name: str = "zhihu-scraper") -> structlog.BoundLoggerBase:
-    """获取结构化日志记录器"""
+    """
+    Get structured logger
+    获取结构化日志记录器
+    """
     return structlog.get_logger(name)
 
 
 class Humanizer:
     """
+    Human behavior simulator - random delays to simulate human operations
     人类行为模拟器 - 随机延迟以模拟真人操作
+
+    Usage:
+        await humanize.random_delay()      # Random request interval
+        await humanize.page_load()         # Wait after page load
+        await humanize.scroll()            # Wait after scroll
 
     用法:
         await humanize.random_delay()      # 随机请求间隔
@@ -329,26 +391,27 @@ class Humanizer:
 
     @property
     def config(self) -> HumanizeConfig:
-        """获取配置，单例模式避免重复加载"""
+        """
+        Get configuration, singleton pattern to avoid repeated loading
+        获取配置，单例模式避免重复加载
+        """
         if self._config is None:
             try:
                 cfg = get_config()
                 self._config = cfg.crawler.humanize
             except Exception:
+                # Use safe defaults if config loading fails
                 # 如果配置加载失败，使用安全默认值
                 self._config = HumanizeConfig()
         return self._config
 
     def random_delay(self, min_delay: Optional[float] = None, max_delay: Optional[float] = None) -> asyncio.sleep:
         """
+        Random delay simulating human request interval
         随机延迟，模拟人类请求间隔
-
-        Args:
-            min_delay: 最小延迟（秒），默认从配置读取
-            max_delay: 最大延迟（秒），默认从配置读取
         """
         if not self.config.enabled:
-            return  # 禁用时不做延迟
+            return  # No delay when disabled / 禁用时不做延迟
 
         min_d = min_delay if min_delay is not None else self.config.min_delay
         max_d = max_delay if max_delay is not None else self.config.max_delay
@@ -357,7 +420,10 @@ class Humanizer:
         return asyncio.sleep(delay)
 
     async def page_load(self) -> None:
-        """页面加载后等待，模拟阅读/渲染时间"""
+        """
+        Wait after page load, simulating reading/rendering time
+        页面加载后等待，模拟阅读/渲染时间
+        """
         if not self.config.enabled:
             return
 
@@ -365,7 +431,10 @@ class Humanizer:
         await asyncio.sleep(delay)
 
     async def scroll(self) -> None:
-        """滚动后等待，模拟内容加载"""
+        """
+        Wait after scroll, simulating content loading
+        滚动后等待，模拟内容加载
+        """
         if not self.config.enabled:
             return
 
@@ -374,10 +443,8 @@ class Humanizer:
 
     async def before_action(self, action: str = "request") -> None:
         """
+        Wait before action
         操作前等待
-
-        Args:
-            action: 操作类型 (request, click, scroll, type)
         """
         if not self.config.enabled:
             return
@@ -393,12 +460,15 @@ class Humanizer:
         await asyncio.sleep(uniform(min_d, max_d))
 
 
-# 全局 Humanizer 实例
+# Global Humanizer instance / 全局 Humanizer 实例
 _humanizer: Optional[Humanizer] = None
 
 
 def get_humanizer() -> Humanizer:
-    """获取全局 Humanizer 实例"""
+    """
+    Get global Humanizer instance
+    获取全局 Humanizer 实例
+    """
     global _humanizer
     if _humanizer is None:
         try:
@@ -412,9 +482,10 @@ def get_humanizer() -> Humanizer:
 @asynccontextmanager
 async def humanize(action: str = "request"):
     """
+    Context manager form of delay
     上下文管理器形式的延迟
 
-    用法:
+    Usage:
         async with humanize("request"):
             await page.goto(url)
     """
