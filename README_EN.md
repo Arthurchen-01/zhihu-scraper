@@ -151,22 +151,38 @@ asyncio.run(main())
 | `config` | Show configuration | `./zhihu config --show` |
 | `check` | Environment check | `./zhihu check` |
 
-### Configure Cookie (Recommended)
+### Configuring Cookies (Recommended)
 
-Get Cookie after logging into Zhihu:
-1. F12 to open developer tools
-2. Network tab
-3. Any request's Request Headers
-4. Copy the `cookie` value
+You need to get Cookies after logging into Zhihu. We recommend using one of the following two methods:
+
+#### Method A: Browser Application Panel (Fastest)
+
+1. Open Chrome, ensure you are **logged in** to Zhihu (`https://www.zhihu.com`).
+2. Press `F12` (Mac: `⌥⌘I`) to open Developer Tools.
+3. Navigate to the **Application** tab.
+4. On the left pane, expand: `Storage` → `Cookies` → `https://www.zhihu.com`.
+5. In the list on the right, search for or find: `z_c0` and `d_c0`.
+6. Copy their Values and format them into `cookies.json` like this:
 
 ```json
 [
-    {"name": "z_c0", "value": "your_z_c0_value", "domain": ".zhihu.com"},
-    {"name": "d_c0", "value": "your_d_c0_value", "domain": ".zhihu.com"}
+    {"name": "z_c0", "value": "Your z_c0 value", "domain": ".zhihu.com"},
+    {"name": "d_c0", "value": "Your d_c0 value", "domain": ".zhihu.com"}
 ]
 ```
+> 💡 *Note*: If you cannot find them here, it usually means you are not logged in, your session expired, or the current domain is not `www.zhihu.com` (e.g., you are on `zhuanlan.zhihu.com`). Make sure to try this on the Zhihu homepage, and check all Zhihu-related domains on the left.
 
-> 💡 Guest mode works without cookies, but some content may be restricted.
+#### Method B: Browser Network Panel (For HttpOnly Cookies)
+
+If Method A doesn't work, use this method:
+1. Open Developer Tools and navigate to the **Network** tab.
+2. Check the **Preserve log** option.
+3. Refresh the page (`Cmd+R` / `Ctrl+R`).
+4. Click on any Fetch/XHR request in the list (e.g., `api` related requests).
+5. On the right pane, select **Headers** → **Request Headers**.
+6. Find the `cookie:` field, search for `z_c0=` and `d_c0=` within it, extract their values, and format them into the JSON.
+
+> 💡 Guest mode is available without Cookies, but some content will be restricted (e.g. comments, bottom half of Yanxuan articles).
 
 ---
 

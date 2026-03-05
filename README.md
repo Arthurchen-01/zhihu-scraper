@@ -133,11 +133,15 @@ asyncio.run(main())
 
 ### 配置 Cookie（推荐）
 
-需要登录知乎后获取 Cookie：
-1. F12 打开开发者工具
-2. Network 标签
-3. 任意请求的 Request Headers
-4. 复制 `cookie` 值
+需要登录知乎后获取 Cookie。建议使用以下两种方法之一：
+
+#### 方法 A：Application 面板直接找（最快）
+1. 用 Chrome 打开并**确保已登录**知乎（`https://www.zhihu.com`）。
+2. 按 `F12`（Mac: `⌥⌘I`）打开开发者工具。
+3. 进入 **Application（应用）** 标签页。
+4. 左侧导航栏展开：`Storage` → `Cookies` → `https://www.zhihu.com`。
+5. 在右侧列表中直接搜索或找到：`z_c0` 和 `d_c0`。
+6. 复制它们的值（Value），按如下格式填入 `cookies.json`：
 
 ```json
 [
@@ -145,8 +149,18 @@ asyncio.run(main())
     {"name": "d_c0", "value": "你的d_c0值", "domain": ".zhihu.com"}
 ]
 ```
+> 💡 如果这里没有找到，通常是因为未登录、登录过期，或者当前域名不是 `www.zhihu.com`（比如在专栏页）。请确保在知乎首页重试，或检查左侧所有知乎相关的域名。
 
-> 💡 不配置 Cookie 可用游客模式，但部分内容受限。
+#### 方法 B：Network 面板抓取（适合 HttpOnly）
+如果方法 A 找不到，可以使用此方法：
+1. 打开开发者工具，进入 **Network（网络）** 标签页。
+2. 勾选 **Preserve log（保留日志）**。
+3. 刷新页面（`Cmd+R` / `Ctrl+R`）。
+4. 在请求列表中点击任意一个 Fetch/XHR 请求（如 `api` 相关请求）。
+5. 在右侧面板中选择 **Headers（标头）** → **Request Headers（请求标头）**。
+6. 找到 `cookie:` 字段，在其中搜索 `z_c0=` 和 `d_c0=`，提取对应的值填入 JSON 中。
+
+> 💡 不配置 Cookie 可用游客模式，但部分内容（如评论、盐选文章下半部分）会受限。
 
 ---
 
