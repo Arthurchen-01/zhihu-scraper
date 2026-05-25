@@ -6,7 +6,6 @@ from rich.align import Align
 from rich.console import Group
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Vertical
 from textual.events import Key
 from textual.message import Message
 from textual.widget import Widget
@@ -14,34 +13,6 @@ from textual.widgets import Footer, Static, TextArea
 from textual.widgets._footer import FooterKey
 
 from core.i18n import t
-
-
-class HeroCard(Widget):
-    """Centered hero section."""
-
-    def __init__(self, eyebrow: str, title: str, subtitle: str) -> None:
-        super().__init__(id="hero")
-        self._eyebrow = eyebrow
-        self._title = title
-        self._subtitle = subtitle
-
-    def compose(self) -> ComposeResult:
-        yield Static(self._eyebrow, classes="hero-eyebrow")
-        yield Static(self._title, classes="hero-title")
-        yield Static(self._subtitle, classes="hero-subtitle")
-
-
-class HintCard(Widget):
-    """Secondary copy block below the hero content."""
-
-    def __init__(self, notes: tuple[str, ...]) -> None:
-        super().__init__(id="hint")
-        self._notes = notes
-
-    def compose(self) -> ComposeResult:
-        for index, note in enumerate(self._notes):
-            tone = "callout" if index == 0 else "callout dim"
-            yield Static(note, classes=tone)
 
 
 class InputCard(Widget):
@@ -131,7 +102,12 @@ class MutableCard(Widget):
         self._tone = tone
 
     def compose(self) -> ComposeResult:
-        yield Static(self._title, classes="card-title")
+        from textual.containers import Horizontal
+        yield Horizontal(
+            Static(self._get_indicator(self._tone), classes="card-indicator"),
+            Static(self._title, classes="card-title"),
+            classes="card-header-flow"
+        )
         yield Static(self._format_lines(self._lines), classes="card-body")
 
     def on_mount(self) -> None:
@@ -143,6 +119,7 @@ class MutableCard(Widget):
         self._title = title
         self._lines = lines
         self._tone = tone
+        self.query_one(".card-indicator", Static).update(self._get_indicator(tone))
         self.query_one(".card-title", Static).update(title)
         self.query_one(".card-body", Static).update(self._format_lines(lines))
         self._sync_tone()
@@ -150,6 +127,15 @@ class MutableCard(Widget):
     def _sync_tone(self) -> None:
         for candidate in self._TONES:
             self.set_class(candidate == self._tone, f"tone-{candidate}")
+
+    def _get_indicator(self, tone: str) -> str:
+        return {
+            "success": "●",
+            "warn": "●",
+            "danger": "●",
+            "accent": "●",
+            "muted": "○",
+        }.get(tone, "○")
 
     @staticmethod
     def _format_lines(lines: tuple[str, ...]) -> str:
@@ -182,10 +168,6 @@ class DetailCard(MutableCard):
 
     def __init__(self, title: str, lines: tuple[str, ...], tone: str) -> None:
         super().__init__("detail-card", title, lines, tone)
-
-
-class HomeStage(Vertical):
-    """Main stage wrapper for the centered landing view."""
 
 
 class LocalizedFooter(Footer):

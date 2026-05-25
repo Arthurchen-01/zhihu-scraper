@@ -1,96 +1,37 @@
+/*
+ * theme.tcss - Modern minimalistic dark theme for Zhihu interactive TUI.
+ */
+
 Screen {
-    background: #111111;
-    color: #f5f5f7;
-    padding: 0 2;
+    background: #0b0b0c;
+    color: #e5e5ea;
 }
 
-#viewport {
-    width: 1fr;
-    height: 1fr;
-    align: center middle;
-}
-
-#center-stage {
-    width: 72%;
-    max-width: 112;
-    min-width: 56;
-    height: auto;
-}
-
-.compact #center-stage {
-    width: 78%;
-    min-width: 48;
-}
-
-.narrow #center-stage {
-    width: 92%;
-    min-width: 36;
-}
-
-#hero {
-    width: 100%;
-    height: auto;
-    padding: 1 3;
-    background: #171718;
-    border: round #3a3a3c;
-    margin-bottom: 1;
-}
-
-.hero-eyebrow {
-    color: #0a84ff;
-    text-style: bold;
-    margin-bottom: 1;
-    content-align: center middle;
-}
-
-.hero-title {
-    color: #f5f5f7;
-    text-style: bold;
-    content-align: center middle;
-}
-
-.hero-subtitle {
-    color: #8e8e93;
-    margin-top: 1;
-    content-align: center middle;
-    text-align: center;
-}
-
-.tone-success {
-    color: #30d158;
-}
-
-.tone-warn {
-    color: #ffd60a;
-}
-
-.tone-accent {
-    color: #0a84ff;
-}
-
-.tone-muted {
-    color: #8e8e93;
-}
-
-#hint {
-    width: 100%;
-    height: auto;
+#main-layout {
+    layout: grid;
+    grid-size: 2 1;
+    grid-columns: 3fr 2fr;
+    grid-gutter: 2;
     padding: 1 2;
-    background: #141415;
-    border: round #3a3a3c;
-    margin-top: 1;
+    width: 100%;
+    height: 100%;
 }
 
-.callout {
-    content-align: center middle;
-    text-align: center;
-    margin-bottom: 1;
+#left-column,
+#right-column {
+    width: 100%;
+    height: 100%;
 }
 
-.callout.dim {
-    color: #8e8e93;
+/* Response layout for smaller screens */
+.compact #main-layout,
+.narrow #main-layout {
+    grid-size: 1 2;
+    grid-columns: 1fr;
+    grid-gutter: 1;
 }
 
+/* Card layout & typography */
 #input-card,
 #draft-card,
 #queue-card,
@@ -99,24 +40,18 @@ Screen {
     width: 100%;
     height: auto;
     padding: 1 2;
-    background: #141415;
-    border: round #3a3a3c;
+    background: #121214;
+    border: round #2c2c2e;
     margin-bottom: 1;
-    transition: border 0.4s;
+    transition: border 0.3s;
 }
 
-#workflow-grid {
-    width: 100%;
-    layout: grid;
-    grid-size: 2 1;
-    grid-columns: 1fr 1fr;
-    grid-gutter: 1 1;
-}
-
-.compact #workflow-grid,
-.narrow #workflow-grid {
-    grid-size: 1 2;
-    grid-columns: 1fr;
+#input-card:focus,
+#draft-card:focus,
+#queue-card:focus,
+#history-card:focus,
+#detail-card:focus {
+    border: round #0a84ff;
 }
 
 .section-label {
@@ -126,18 +61,67 @@ Screen {
 }
 
 .section-caption {
-    color: #8e8e93;
+    color: #636366;
     margin-top: 1;
-    text-align: center;
+    text-align: left;
 }
 
+/* Card Header with Status Lights */
+.card-header-flow {
+    height: auto;
+    width: 100%;
+    margin-bottom: 1;
+}
+
+.card-indicator {
+    width: auto;
+    margin-right: 1;
+    text-style: bold;
+}
+
+.card-title {
+    text-style: bold;
+    color: #ffffff;
+}
+
+.card-body {
+    color: #c7c7cc;
+}
+
+/* Indicator Lights color schemas */
+.tone-success .card-indicator {
+    color: #30d158; /* Green */
+}
+
+.tone-warn .card-indicator {
+    color: #ffd60a; /* Yellow */
+}
+
+.tone-danger .card-indicator {
+    color: #ff453a; /* Red */
+}
+
+.tone-accent .card-indicator {
+    color: #0a84ff; /* Blue */
+}
+
+.tone-muted .card-indicator {
+    color: #8e8e93; /* Gray */
+}
+
+/* Keep body titles standard gray if muted, or default white */
+.tone-muted .card-title {
+    color: #8e8e93;
+}
+
+/* Input Widget styling */
 #url-input {
     width: 100%;
-    height: 5;
-    max-height: 5;
+    height: 3;
+    max-height: 3;
     border: none;
-    background: #18181a;
-    color: #f5f5f7;
+    background: #1c1c1e;
+    color: #ffffff;
     padding: 0 1;
     overflow-x: hidden;
     overflow-y: auto;
@@ -156,95 +140,35 @@ Screen {
 
 #url-input .text-area--cursor {
     background: #0a84ff 35%;
-    color: #f5f5f7;
+    color: #ffffff;
 }
 
 #url-input .text-area--cursor-line {
-    background: #18181a;
+    background: #1c1c1e;
 }
 
-.card-title {
-    text-style: bold;
-    margin-bottom: 1;
-}
-
-.card-body {
-    color: #c7c7cc;
-}
-
-#draft-card.tone-muted .card-title,
-#queue-card.tone-muted .card-title,
-#history-card.tone-muted .card-title,
-#detail-card.tone-muted .card-title {
-    color: #8e8e93;
-}
-
-#draft-card.tone-accent .card-title,
-#queue-card.tone-accent .card-title,
-#history-card.tone-accent .card-title,
-#detail-card.tone-accent .card-title {
-    color: #0a84ff;
-}
-
-#draft-card.tone-success .card-title,
-#queue-card.tone-success .card-title,
-#history-card.tone-success .card-title,
-#detail-card.tone-success .card-title {
-    color: #30d158;
-}
-
-#draft-card.tone-warn .card-title,
-#queue-card.tone-warn .card-title,
-#history-card.tone-warn .card-title,
-#detail-card.tone-warn .card-title {
-    color: #ffd60a;
-}
-
-#draft-card.tone-danger .card-title,
-#queue-card.tone-danger .card-title,
-#history-card.tone-danger .card-title,
-#detail-card.tone-danger .card-title {
-    color: #ff453a;
-}
-
-/* --- Tone specific borders for visual effects --- */
-#draft-card.tone-accent, #queue-card.tone-accent, #history-card.tone-accent, #detail-card.tone-accent {
-    border: round #0a84ff;
-}
-
-#draft-card.tone-success, #queue-card.tone-success, #history-card.tone-success, #detail-card.tone-success {
-    border: round #30d158;
-}
-
-#draft-card.tone-warn, #queue-card.tone-warn, #history-card.tone-warn, #detail-card.tone-warn {
-    border: round #ffd60a;
-}
-
-#draft-card.tone-danger, #queue-card.tone-danger, #history-card.tone-danger, #detail-card.tone-danger {
-    border: round #ff453a;
-}
-
+/* Footer Styling */
 Footer {
-    background: #101010;
+    background: #0b0b0c;
     color: #8e8e93;
 }
 
+/* Dialog screens */
 QuestionLimitScreen {
     align: center middle;
-    background: #000000 60%;
+    background: #000000 70%;
 }
 
 #question-limit-dialog {
-    width: 72;
-    max-width: 88;
+    width: 60;
     height: auto;
     padding: 1 2;
-    background: #171718;
-    border: round #3a3a3c;
+    background: #1c1c1e;
+    border: round #2c2c2e;
 }
 
 #dialog-title {
-    color: #f5f5f7;
+    color: #ffffff;
     text-style: bold;
     margin-bottom: 1;
     content-align: center middle;
@@ -266,7 +190,7 @@ QuestionLimitScreen {
 
 .limit-button,
 #dialog-actions Button {
-    min-width: 16;
+    min-width: 14;
     margin-right: 1;
 }
 
@@ -274,8 +198,8 @@ QuestionLimitScreen {
     width: 100%;
     margin-top: 1;
     border: none;
-    background: #1c1c1e;
-    color: #f5f5f7;
+    background: #2c2c2e;
+    color: #ffffff;
 }
 
 #custom-limit:focus {

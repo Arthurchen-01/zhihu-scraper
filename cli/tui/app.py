@@ -5,7 +5,7 @@ app.py - Stage 5 Textual shell for zhihu interactive mode.
 from typing import Callable
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Grid
+from textual.containers import Container
 from textual.events import Mount, Resize
 from textual.widgets import Footer
 
@@ -33,9 +33,6 @@ from cli.tui.widgets import (
     ArchiveInput,
     DetailCard,
     HistoryCard,
-    HeroCard,
-    HintCard,
-    HomeStage,
     InputCard,
     LocalizedFooter,
     QueueCard,
@@ -79,20 +76,18 @@ class ZhihuInteractiveShell(App[None]):
         history = build_history_snapshot(tuple(self._history))
         detail = build_detail_snapshot(self._draft, tuple(self._history))
         yield Container(
-            HomeStage(
-                HeroCard(self._snapshot.eyebrow, self._snapshot.title, self._snapshot.subtitle),
+            Container(
                 InputCard(),
                 SummaryCard(self._draft.title, self._draft.lines, self._draft.tone),
-                Grid(
-                    QueueCard(queue.title, queue.lines, queue.tone),
-                    HistoryCard(history.title, history.lines, history.tone),
-                    id="workflow-grid",
-                ),
                 DetailCard(detail.title, detail.lines, detail.tone),
-                HintCard(self._snapshot.notes),
-                id="center-stage",
+                id="left-column",
             ),
-            id="viewport",
+            Container(
+                QueueCard(queue.title, queue.lines, queue.tone),
+                HistoryCard(history.title, history.lines, history.tone),
+                id="right-column",
+            ),
+            id="main-layout",
         )
         yield LocalizedFooter()
 
