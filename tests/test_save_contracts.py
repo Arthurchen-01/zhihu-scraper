@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.save_contracts import SavePipelineError, SaveRunResult, SavedContentRecord
+from cli.contracts import SavePipelineError, SaveRunResult, SavedContentRecord
 from cli.save_pipeline import write_creator_metadata
 from core.scraper_contracts import CreatorProfileSummary, PaginationStats, ScrapedItem
 

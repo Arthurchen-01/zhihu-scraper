@@ -15,9 +15,16 @@ from typing import Awaitable, Callable, Optional, Sequence
 
 from rich import print as rprint
 
-from cli.save_contracts import CreatorSaveResult, SavePipelineError, SaveRunResult
+from cli.contracts import (
+    CreatorSaveResult,
+    SavePipelineError,
+    SaveRunResult,
+    BatchWorkflowResult,
+    CreatorWorkflowResult,
+    MonitorWorkflowResult,
+    UrlTaskResult,
+)
 from cli.save_pipeline import SavePipelineSettings, fetch_and_save_result, fetch_creator_and_save_result
-from cli.workflow_contracts import BatchWorkflowResult, CreatorWorkflowResult, MonitorWorkflowResult, UrlTaskResult
 from core.errors import handle_error
 from core.monitor import CollectionMonitor
 from core.structlog_compat import BoundLoggerBase

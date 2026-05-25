@@ -1,5 +1,5 @@
 """
-save_contracts.py - Stable result contracts for local save orchestration.
+contracts.py - Unified result contracts for zhihu-scraper CLI and TUI.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ class SavedContentRecord:
     markdown_path: Path
 
     @classmethod
-    def from_legacy_dict(cls, raw: Dict) -> "SavedContentRecord":
+    def from_legacy_dict(cls, raw: Dict) -> SavedContentRecord:
         return cls(
             item=ScrapedItem.from_dict(raw["item"]),
             folder=Path(raw["folder"]),
@@ -83,3 +83,61 @@ class CreatorSaveResult:
     save_result: SaveRunResult
     answers: PaginationStats
     articles: PaginationStats
+
+
+@dataclass(frozen=True)
+class UrlTaskResult:
+    url: str
+    success: bool
+    save_result: Optional[SaveRunResult] = None
+    partial_save_result: Optional[SaveRunResult] = None
+    error: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class BatchWorkflowResult:
+    items: Tuple[UrlTaskResult, ...]
+
+    @property
+    def total_count(self) -> int:
+        return len(self.items)
+
+    @property
+    def success_count(self) -> int:
+        return sum(1 for item in self.items if item.success)
+
+    @property
+    def failed_count(self) -> int:
+        return self.total_count - self.success_count
+
+    @property
+    def has_failures(self) -> bool:
+        return self.failed_count > 0
+
+
+@dataclass(frozen=True)
+class CreatorWorkflowResult:
+    creator: str
+    result: Optional[CreatorSaveResult]
+
+    @property
+    def success(self) -> bool:
+        return self.result is not None
+
+
+@dataclass(frozen=True)
+class MonitorWorkflowResult:
+    collection_id: str
+    discovered_count: int
+    batch: BatchWorkflowResult
+    pointer_advanced: bool
+    unsupported_count: int = 0
+    next_pointer: Optional[str] = None
+
+    @property
+    def has_new_items(self) -> bool:
+        return self.discovered_count > 0
+
+    @property
+    def has_new_activity(self) -> bool:
+        return self.discovered_count + self.unsupported_count > 0

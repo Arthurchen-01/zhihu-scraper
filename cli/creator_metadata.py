@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from bs4 import BeautifulSoup
 
-from cli.save_contracts import CreatorSaveResult, SaveRunResult, SavedContentRecord
+from cli.contracts import CreatorSaveResult, SaveRunResult, SavedContentRecord
 from core.scraper_contracts import CreatorProfileSummary
 
 

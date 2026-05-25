@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 from rich import print as rprint
 
 from cli.creator_metadata import write_creator_metadata
-from cli.save_contracts import CreatorSaveResult, SavePipelineError, SaveRunResult, SavedContentRecord
+from cli.contracts import CreatorSaveResult, SavePipelineError, SaveRunResult, SavedContentRecord
 from core.converter import ZhihuConverter
 from core.db import ZhihuDatabase
 from core.media_downloader import MediaDownloader

@@ -1,9 +1,8 @@
 import unittest
 from pathlib import Path
 
-from cli.save_contracts import SavePipelineError, SaveRunResult
+from cli.contracts import SavePipelineError, SaveRunResult, BatchWorkflowResult, UrlTaskResult
 from cli.save_pipeline import SavePipelineSettings
-from cli.workflow_contracts import BatchWorkflowResult, UrlTaskResult
 from cli.workflow_service import (
     DEFAULT_QUESTION_LIMIT,
     ArchiveWorkflowService,

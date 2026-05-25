@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.creator_metadata import _normalize_creator_text
-from cli.save_contracts import SavePipelineError
+from cli.contracts import SavePipelineError
 from cli.save_pipeline import (
     SavePipelineSettings,
     build_output_folder_name,
