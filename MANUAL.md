@@ -82,7 +82,7 @@
 - `cli/app.py`
   Typer 命令注册与总入口。
 - `cli/archive_execution.py`
-  CLI / TUI / legacy 共用的执行桥，避免其他入口反向依赖 `cli.app` 私有 helper。
+  CLI / TUI 共用的执行桥，避免其他入口反向依赖 `cli.app` 私有 helper。
 - `cli/workflow_service.py`
   应用服务层，统一 `fetch / batch / creator / monitor` 的任务编排。
 - `cli/workflow_contracts.py`
@@ -99,8 +99,6 @@
   保存链路稳定 result contract。
 - `cli/interactive.py`
   Textual TUI 启动入口。
-- `cli/interactive_legacy.py`
-  旧 Rich / questionary 回退路径，仅作兼容与排障。
 - `cli/healthcheck.py`
   `zhihu check` 的环境检查逻辑。
 - `cli/optional_deps.py`
@@ -215,7 +213,7 @@
 
 说明：
 
-- `questionary` 仍在 onboarding 和 legacy 流程中使用
+- `questionary` 仍在 onboarding 流程中使用
 - `textual` 是当前默认交互入口所依赖的正式依赖
 
 #### 配置与日志
@@ -312,10 +310,6 @@ zhihu interactive
 -> cli/interactive.py
 -> 直接启动 Textual TUI
 
-zhihu interactive --legacy
--> cli/interactive_legacy.py
--> 旧 Rich / questionary 回退路径
-
 zhihu fetch / creator / batch / monitor / query / config / check / manual / man
 -> cli/app.py Typer 命令入口
 ```
@@ -324,7 +318,6 @@ zhihu fetch / creator / batch / monitor / query / config / check / manual / man
 
 - 裸 `zhihu` 与 `zhihu interactive` 都直达当前默认交互工作台
 - `zhihu onboard` 是当前引导式设置与 questionary launcher 的正式入口
-- `zhihu interactive --legacy` 仅用于兼容与排障
 
 ### 6.2 单条抓取
 
@@ -381,7 +374,6 @@ zhihu onboard
 
 - 裸 `zhihu` 默认直达推荐的 Textual TUI
 - 如需首次引导或 questionary launcher，可使用 `zhihu onboard`
-- `zhihu interactive --legacy` 不属于推荐主路径
 
 ### 6.5 monitor 流程
 
@@ -502,8 +494,6 @@ cp cookies.example.json .local/cookies.json
   无参数时进入全屏 Textual TUI 交互式工作台（带有首次语言选择）。
 - `zhihu interactive`
   当前默认交互工作台的显式直达命令。
-- `zhihu interactive --legacy`
-  旧版 Rich / questionary 回退路径，仅作兼容与排障。
 - `zhihu onboard`
   首次环境体检和引导向导，并可继续进入 questionary launcher。
 

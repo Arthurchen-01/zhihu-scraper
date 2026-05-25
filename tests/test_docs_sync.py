@@ -30,7 +30,6 @@ class DocsSyncTests(unittest.TestCase):
         manual_text = build_manual_text(Path("data"))
         self.assertIn("docs/PLATFORM_SUPPORT.md", manual_text)
         self.assertIn("cli/launcher_flow.py", manual_text)
-        self.assertIn("--legacy", manual_text)
         self.assertIn("opens the default Textual workbench directly", manual_text)
         self.assertIn("zhihu onboard", manual_text)
 

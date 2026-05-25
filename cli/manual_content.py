@@ -55,8 +55,6 @@ HOME MENU
 INTERACTIVE MODES
   - `zhihu interactive`
     direct entry to the default Textual TUI / 直达默认 Textual TUI
-  - `zhihu interactive --legacy`
-    compatibility fallback to the old Rich/questionary flow / 兼容回退到旧版 Rich/questionary
 
 COMMAND INDEX
   - onboard
@@ -182,7 +180,6 @@ COMMAND REFERENCE
   - `zhihu` opens the Textual workbench directly
   - `zhihu interactive` opens the Textual workbench directly
   - `zhihu onboard` runs guided setup and can continue into the questionary launcher
-  - `zhihu interactive --legacy` opens the deprecated fallback
 
   Current support:
   - answer / article / question links
@@ -192,7 +189,6 @@ COMMAND REFERENCE
   - `Ctrl+G`: open the language selector and persist the default language
   - does NOT parse `people/...` creator links in interactive mode
   - use `creator` command for profile URLs
-  - `--legacy`: deprecated fallback to the old Rich/questionary flow
 
 7) config
   Purpose:
@@ -262,7 +258,6 @@ PLATFORM SUPPORT
   - `cli/manual_content.py` built-in manual source
   - `cli/save_pipeline.py` archive save orchestration
   - `cli/interactive.py` Textual-based interactive workbench
-  - `cli/interactive_legacy.py` deprecated Rich/questionary fallback
 
   Fetch Layer
   - `core/scraper.py`

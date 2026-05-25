@@ -512,13 +512,7 @@ def query_db(
 
 
 @app.command("interactive")
-def interactive(
-    legacy: bool = typer.Option(
-        False,
-        "--legacy",
-        help="Deprecated fallback to the legacy Rich/questionary workflow / 已弃用的旧版 Rich/questionary 回退流程",
-    ),
-) -> None:
+def interactive() -> None:
     """
     Launch the interactive archive workspace.
     启动交互式归档工作台。
@@ -526,29 +520,21 @@ def interactive(
     Features:
     - Full-screen archive workbench with in-app URL input
     - Responsive centered layout, question-page limit modal, queue, recent results, and retry flow
-    - Deprecated legacy fallback for regression checks only
     - `zhihu` without arguments launches this TUI directly
 
     功能：
     - 内置链接输入栏的全屏归档工作台
     - 响应式居中布局、问题页数量弹层、队列、最近结果与失败重试
-    - 仅用于回归检查的旧版回退入口
     - `zhihu` 无参数时直接启动此 TUI 工作台
 
     Example:
         zhihu interactive
-        zhihu interactive --legacy
     """
     log = _get_log()
     try:
-        if legacy:
-            from cli.interactive_legacy import run_interactive as run_legacy_interactive
+        from cli.interactive import run_interactive
 
-            asyncio.run(run_legacy_interactive())
-        else:
-            from cli.interactive import run_interactive
-
-            run_interactive()
+        run_interactive()
     except Exception as e:
         handle_error(e, log)
 

@@ -48,7 +48,6 @@
 
 - 裸 `zhihu` 与 `zhihu interactive` 默认直达推荐的 Textual TUI
 - `zhihu onboard` 负责引导式首次配置，并可继续进入 questionary launcher
-- `zhihu interactive --legacy` 仅作为兼容或排障路径
 
 ## 4. 质量门禁
 

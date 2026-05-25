@@ -140,8 +140,7 @@ def run_onboard_flow(runtime: LauncherRuntime, *, from_command: bool = False) ->
             f"2. 在 {configured_cookie_path} 中填入自己的 Cookie\n"
             "3. 执行一次环境检查\n"
             "4. `zhihu` 与 `zhihu interactive` 会直达推荐的 Textual TUI\n"
-            "5. `zhihu onboard` 可继续进入 questionary launcher\n"
-            "6. `zhihu interactive --legacy` 仅用于兼容回退",
+            "5. `zhihu onboard` 可继续进入 questionary launcher",
             justify="left",
         ),
         border_style="magenta",

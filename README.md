@@ -27,28 +27,26 @@ Zhihu-Scraper 是一个**本地优先**的抓取归档工具。输入一条链�
 
 <br>
 
-## 🚀 一分钟入门
+## 🚀 快速开始
 
-只需克隆仓库，运行自动化环境脚本，接着输入 `zhihu` 命令，这就是全部。
+一键克隆并完成安装、配置和拉起：
 
 ```bash
-git clone https://github.com/yuchenzhu-research/zhihu-scraper.git
-cd zhihu-scraper
+# 1. 克隆并进入目录
+git clone https://github.com/yuchenzhu-research/zhihu-scraper.git && cd zhihu-scraper
 
-# 自动创建 venv 并安装依赖
+# 2. 运行一键安装（自动创建虚拟环境与安装所有依赖）
 ./install.sh
 ```
 
-现在，试着抓取你的第一条回答：
+现在，开始你的本地归档：
 
 ```bash
-zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
-```
+# 启动沉浸式全屏 TUI 工作台（推荐）
+./zhihu
 
-或者打开沉浸式全屏工作台，享受交互式的归档乐趣：
-
-```bash
-zhihu
+# 或者直接命令行单链抓取
+./zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
 ```
 
 ## ✨ 核心能力
