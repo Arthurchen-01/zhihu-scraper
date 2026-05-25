@@ -21,12 +21,10 @@ from rich.text import Text
 class LauncherCommands:
     fetch: Callable[..., None]
     creator: Callable[..., None]
-    batch: Callable[..., None]
     monitor: Callable[..., None]
     query: Callable[..., None]
     interactive: Callable[..., None]
     check: Callable[..., None]
-    manual: Callable[..., None]
 
 
 @dataclass(frozen=True)
@@ -139,8 +137,7 @@ def run_onboard_flow(runtime: LauncherRuntime, *, from_command: bool = False) ->
             "1. 先运行 ./install.sh 安装环境\n"
             f"2. 在 {configured_cookie_path} 中填入自己的 Cookie\n"
             "3. 执行一次环境检查\n"
-            "4. `zhihu` 与 `zhihu interactive` 会直达推荐的 Textual TUI\n"
-            "5. `zhihu onboard` 可继续进入 questionary launcher",
+            "4. `zhihu` 或 `zhihu interactive` 直达 Textual TUI",
             justify="left",
         ),
         border_style="magenta",
@@ -193,13 +190,11 @@ def run_launcher(runtime: LauncherRuntime) -> None:
             choices=[
                 questionary.Choice("快速抓取", value="fetch"),
                 questionary.Choice("作者抓取", value="creator"),
-                questionary.Choice("批量抓取", value="batch"),
+                questionary.Choice("批量抓取（从文件）", value="batch"),
                 questionary.Choice("收藏夹监控", value="monitor"),
                 questionary.Choice("搜索本地数据库", value="query"),
                 questionary.Choice("Textual TUI 归档工作台（推荐）", value="interactive"),
-                questionary.Choice("首次使用向导", value="onboard"),
                 questionary.Choice("环境检查", value="check"),
-                questionary.Choice("查看说明书", value="manual"),
                 questionary.Choice("退出", value="exit"),
             ],
             use_shortcuts=False,
@@ -270,8 +265,8 @@ def run_launcher(runtime: LauncherRuntime) -> None:
                 style=_launcher_style(runtime),
             ).ask() or []
             run_action(
-                runtime.commands.batch,
-                input_file=Path(input_file),
+                runtime.commands.fetch,
+                file=Path(input_file),
                 output=default_output_dir,
                 concurrency=concurrency,
                 no_images="images" not in selections,
@@ -319,14 +314,6 @@ def run_launcher(runtime: LauncherRuntime) -> None:
             run_action(runtime.commands.interactive)
             continue
 
-        if choice == "onboard":
-            run_onboard_flow(runtime)
-            continue
-
         if choice == "check":
             run_action(runtime.commands.check)
-            continue
-
-        if choice == "manual":
-            run_action(runtime.commands.manual)
             continue

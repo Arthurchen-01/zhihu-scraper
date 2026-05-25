@@ -51,13 +51,11 @@ import sys
 import typer
 from rich import print as rprint
 from rich.console import Console
-from rich.text import Text
 
 from cli.archive_execution import get_workflow_service
 from cli.config_view import build_config_snapshot, render_config_panel
 from cli.healthcheck import render_environment_check
-from cli.launcher_flow import LauncherCommands, LauncherRuntime, run_launcher, run_onboard_flow
-from cli.manual_content import build_manual_text
+from cli.launcher_flow import LauncherCommands, LauncherRuntime, run_launcher
 from cli.optional_deps import get_questionary as _get_questionary
 from core.config import get_config, get_logger, resolve_project_path
 from core.utils import extract_urls
@@ -159,81 +157,57 @@ def _build_launcher_runtime() -> LauncherRuntime:
         commands=LauncherCommands(
             fetch=fetch,
             creator=creator,
-            batch=batch,
             monitor=monitor,
             query=query_db,
             interactive=interactive,
             check=check,
-            manual=manual,
         ),
     )
-
-
-def _run_onboard_flow(*, from_command: bool = False) -> None:
-    run_onboard_flow(_build_launcher_runtime(), from_command=from_command)
-
-
-def _run_launcher() -> None:
-    run_launcher(_build_launcher_runtime())
 
 
 # ============================================================
 # Command Definitions (命令定义)
 # ============================================================
 
-@app.command("man")
-@app.command("manual")
-def manual() -> None:
-    """
-    Show the built-in terminal manual with paging support.
-    显示内置终端说明书，支持分页查看。
-    """
-    default_output_dir = _get_default_output_dir()
-    manual_text = build_manual_text(default_output_dir)
-
-    with console.pager(styles=True):
-        console.print(Text(manual_text, justify="left"))
-
-
-@app.command("onboard")
-def onboard() -> None:
-    """
-    Guided first-run onboarding.
-    首次使用引导。
-    """
-    _run_onboard_flow(from_command=True)
-
-
 @app.command("fetch")
 def fetch(
-    url: str = typer.Argument(..., help="Zhihu link(s) (article/answer/question) / 知乎链接（支持多条，含混杂文本）"),
+    url: Optional[str] = typer.Argument(None, help="Zhihu link(s) or text containing links / 知乎链接或含链接文本"),
+    file: Optional[Path] = typer.Option(None, "-f", "--file", help="Read URLs from file / 从文件读取链接列表"),
     output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output directory / 输出目录"),
     limit: Optional[int] = typer.Option(None, "-n", "--limit", help="Limit answer count (question pages only) / 限制回答数量 (仅限问题页)"),
+    concurrency: int = typer.Option(4, "-c", "--concurrency", help="Concurrency for batch mode (max 8) / 批量并发数 (最大 8)"),
     no_images: bool = typer.Option(False, "-i", "--no-images", help="Don't download images / 不下载图片"),
     headless: Optional[bool] = typer.Option(None, "-b", "--headless/--no-headless", help="Run browser in headless mode / 无头模式运行浏览器"),
 ) -> None:
     """
-    Scrape one or more Zhihu links. Automatically extracts URLs from text.
-    抓取一个或多个知乎链接。支持从混杂文本中自动提取。
-
-    Supported link types:
-    - Column article: https://zhuanlan.zhihu.com/p/123456
-    - Single answer: https://www.zhihu.com/question/123/answer/456
-    - Question page (batch): https://www.zhihu.com/question/123
+    Scrape Zhihu links. Supports single URL, multiple URLs from text, or batch from file.
+    抓取知乎链接。支持单条/多条 URL、混杂文本提取、或从文件批量读取。
 
     Examples:
-    zhihu fetch "https://www.zhihu.com/p/123456"
-    zhihu fetch "Text containing https://www.zhihu.com/p/123 https://www.zhihu.com/p/456"
-    zhihu fetch "https://www.zhihu.com/question/123456" -n 10
+        zhihu fetch "https://www.zhihu.com/p/123456"
+        zhihu fetch "https://www.zhihu.com/question/123" -n 10
+        zhihu fetch --file urls.txt -c 8
     """
+    if not url and not file:
+        rprint("[red]❌ Please provide a URL or --file / 请提供链接或 --file 参数[/red]")
+        raise SystemExit(1)
+
     cfg = _get_cfg()
     log = _get_log()
     output_dir = _resolve_output_dir(output)
     headless_mode = _resolve_headless(headless)
 
-    urls = extract_urls(url)
+    # Resolve URLs from file or argument
+    if file:
+        if not file.exists():
+            rprint(f"[red]❌ File not found / 文件不存在: {file}[/red]")
+            raise SystemExit(1)
+        urls = extract_urls(file.read_text())
+    else:
+        urls = extract_urls(url)
+
     if not urls:
-        rprint("[red]❌ No valid Zhihu links found in input / 未在输入中找到有效链接[/red]")
+        rprint("[red]❌ No valid Zhihu links found / 未找到有效链接[/red]")
         raise SystemExit(1)
 
     if limit is not None and limit < 1:
@@ -243,7 +217,6 @@ def fetch(
     log.info("fetch_started", count=len(urls), limit=limit)
 
     try:
-        # Check login once / 统一检测一次 Cookie
         from core.api_client import ZhihuAPIClient
         temp_client = ZhihuAPIClient()
         if not temp_client._cookies_dict and cfg.zhihu.cookies_required:
@@ -254,78 +227,44 @@ def fetch(
                 if "/question/" in target_url and "/answer/" not in target_url:
                     print_question_limit_warning(limit)
 
-        result = asyncio.run(
-            _get_workflow_service().run_fetch_urls(
-                urls=urls,
-                output_dir=output_dir,
-                limit=limit,
-                download_images=not no_images,
-                headless=headless_mode,
-                stop_on_error=True,
+        # Batch mode: multiple URLs with concurrency
+        if file or len(urls) > 1:
+            max_concurrency = min(concurrency, len(urls), 8)
+            rprint(f"[bold]📋 Batch mode / 批量模式: {len(urls)} links (concurrency / 并发: {max_concurrency})[/bold]")
+            results = asyncio.run(
+                _get_workflow_service().run_batch(
+                    urls=urls,
+                    output_dir=output_dir,
+                    concurrency=max_concurrency,
+                    download_images=not no_images,
+                    headless=headless_mode,
+                )
             )
-        )
-        if result.has_failures:
-            raise SystemExit(1)
+            success = results.success_count
+            failed = results.failed_count
+            rprint(f"\n[bold]📊 Completed / 完成: {success} success / 成功, {failed} failed / 失败[/bold]")
+            if failed > 0:
+                raise SystemExit(1)
+        else:
+            # Single URL mode
+            result = asyncio.run(
+                _get_workflow_service().run_fetch_urls(
+                    urls=urls,
+                    output_dir=output_dir,
+                    limit=limit,
+                    download_images=not no_images,
+                    headless=headless_mode,
+                    stop_on_error=True,
+                )
+            )
+            if result.has_failures:
+                raise SystemExit(1)
 
     except Exception as e:
         handle_error(e, log)
         raise SystemExit(1)
 
 
-@app.command("batch")
-def batch(
-    input_file: Path = typer.Argument(..., help="URL list file (one link per line) / URL列表文件 (每行一个链接)"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output directory / 输出目录"),
-    concurrency: int = typer.Option(4, "-c", "--concurrency", help="Concurrency count (recommend 4-8) / 并发数 (建议 4-8)"),
-    no_images: bool = typer.Option(False, "-i", "--no-images", help="Don't download images / 不下载图片"),
-    headless: Optional[bool] = typer.Option(None, "-b", "--headless/--no-headless", help="Run browser in headless mode / 无头模式运行浏览器"),
-) -> None:
-    """
-    Batch scrape multiple Zhihu links.
-    批量抓取多个知乎链接。
-
-    Reads URL list from file and executes scraping tasks concurrently.
-    从文件中读取 URL 列表，并发执行抓取任务。
-
-    Examples:
-        zhihu batch ./urls.txt
-        zhihu batch ./urls.txt -c 8 -o ./output
-    """
-    log = _get_log()
-    output_dir = _resolve_output_dir(output)
-    headless_mode = _resolve_headless(headless)
-
-    if not input_file.exists():
-        rprint(f"[red]❌ File not found / 文件不存在: {input_file}[/red]")
-        raise SystemExit(1)
-
-    urls = extract_urls(input_file.read_text())
-    if not urls:
-        rprint("[red]❌ No valid links found / 未找到有效链接[/red]")
-        raise SystemExit(1)
-
-    # Limit concurrency to avoid triggering anti-crawling / 限制并发数，避免触发反爬
-    max_concurrency = min(concurrency, len(urls), 8)
-    log.info("batch_started", file=str(input_file), count=len(urls), concurrency=max_concurrency)
-    rprint(f"[bold]📋 Batch task / 批量任务: {len(urls)} links (concurrency / 并发: {max_concurrency})[/bold]")
-
-    # Execute concurrently / 并发执行
-    results = asyncio.run(
-        _get_workflow_service().run_batch(
-            urls=urls,
-            output_dir=output_dir,
-            concurrency=max_concurrency,
-            download_images=not no_images,
-            headless=headless_mode,
-        )
-    )
-
-    # Statistics / 统计结果
-    success = results.success_count
-    failed = results.failed_count
-
-    rprint(f"\n[bold]📊 Batch completed / 批量完成: {success} success / 成功, {failed} failed / 失败[/bold]")
-    log.info("batch_completed", success=success, failed=failed)
 
 
 @app.command("creator")

@@ -2,35 +2,26 @@ import unittest
 from pathlib import Path
 
 from cli.app import app
-from cli.manual_content import build_manual_text
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_COMMANDS = {
-    "batch",
     "check",
     "config",
     "creator",
     "fetch",
     "interactive",
-    "man",
-    "manual",
     "monitor",
-    "onboard",
     "query",
 }
 EXPECTED_DOC_SNIPPETS = (
-    "zhihu onboard",
     "zhihu fetch",
     "zhihu creator",
-    "zhihu batch",
     "zhihu monitor",
     "zhihu query",
     "zhihu interactive",
-    "zhihu config --show",
+    "zhihu config",
     "zhihu check",
-    "zhihu man",
-    "zhihu manual",
 )
 
 
@@ -40,15 +31,7 @@ class CommandSurfaceTests(unittest.TestCase):
         registered.update({group.name for group in app.registered_groups})
         self.assertEqual(registered, EXPECTED_COMMANDS)
 
-    def test_manual_mentions_current_module_boundaries(self):
-        manual_text = build_manual_text(Path("data"))
-        self.assertIn("cli/archive_execution.py", manual_text)
-        self.assertIn("cli/config_view.py", manual_text)
-        self.assertIn("cli/save_pipeline.py", manual_text)
-        self.assertIn("core/scraper_payloads.py", manual_text)
-        self.assertIn("Textual TUI", manual_text)
-        self.assertIn("zhihu onboard", manual_text)
-        self.assertIn("Textual workbench directly", manual_text)
+
 
     def test_tui_use_execution_bridge_instead_of_cli_app_privates(self):
         runner_text = (REPO_ROOT / "cli" / "tui" / "runner.py").read_text(encoding="utf-8")
@@ -56,19 +39,17 @@ class CommandSurfaceTests(unittest.TestCase):
         self.assertIn("from cli.archive_execution import fetch_and_save_result", runner_text)
         self.assertNotIn("from cli.app import _fetch_and_save_result", runner_text)
 
-    def test_launcher_marks_onboard_as_optional_path_and_textual_as_default(self):
+    def test_launcher_marks_textual_as_default(self):
         launcher_text = (REPO_ROOT / "cli" / "launcher_flow.py").read_text(encoding="utf-8")
 
         self.assertIn("Textual TUI 归档工作台（推荐）", launcher_text)
-        self.assertIn("`zhihu` 与 `zhihu interactive` 会直达推荐的 Textual TUI", launcher_text)
-        self.assertIn("`zhihu onboard` 可继续进入 questionary launcher", launcher_text)
+        self.assertIn("`zhihu` 或 `zhihu interactive` 直达 Textual TUI", launcher_text)
 
     def test_cli_main_keeps_bare_entrypoint_on_textual_tui(self):
         app_text = (REPO_ROOT / "cli" / "app.py").read_text(encoding="utf-8")
 
         self.assertIn("if len(sys.argv) == 1:", app_text)
-        self.assertIn("Bare `zhihu` → launch TUI directly", app_text)
-        self.assertIn("from cli.interactive import run_interactive", app_text)
+        self.assertIn("Bare `zhihu`", app_text)
 
     def test_cli_app_no_longer_keeps_dead_save_or_batch_helpers(self):
         app_text = (REPO_ROOT / "cli" / "app.py").read_text(encoding="utf-8")
@@ -85,15 +66,7 @@ class CommandSurfaceTests(unittest.TestCase):
         self.assertIn("build_scrape_config_for_url", runner_text)
         self.assertNotIn("def _build_scrape_config(", runner_text)
 
-    def test_manual_keep_core_command_snippets(self):
-        manual_cn = (REPO_ROOT / "MANUAL.md").read_text(encoding="utf-8")
 
-        for snippet in EXPECTED_DOC_SNIPPETS:
-            # We skip 'zhihu onboard', 'zhihu check', 'zhihu manual' in the new MANUAL.md
-            # as it focuses on core usage, while onboard/check are auto-triggered or secondary.
-            if snippet in ("zhihu onboard", "zhihu check", "zhihu manual"):
-                continue
-            self.assertIn(snippet, manual_cn)
 
     def test_query_surface_uses_content_key_label(self):
         app_text = (REPO_ROOT / "cli" / "app.py").read_text(encoding="utf-8")

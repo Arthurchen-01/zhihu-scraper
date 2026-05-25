@@ -1,8 +1,6 @@
 import unittest
 from pathlib import Path
 
-from cli.manual_content import build_manual_text
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,19 +24,7 @@ class DocsSyncTests(unittest.TestCase):
         self.assertIn("协议优先", readme_cn)
         self.assertIn("protocol-first", readme_en)
 
-    def test_manual_mentions_platform_boundary_and_current_entry_flow(self):
-        manual_text = build_manual_text(Path("data"))
-        self.assertIn("docs/PLATFORM_SUPPORT.md", manual_text)
-        self.assertIn("cli/launcher_flow.py", manual_text)
-        self.assertIn("opens the default Textual workbench directly", manual_text)
-        self.assertIn("zhihu onboard", manual_text)
 
-    def test_manual_mentions_monitor_pointer_rule_for_unsupported_items(self):
-        manual_text = build_manual_text(Path("data"))
-        self.assertIn("unsupported-only new collection items still advance the pointer", manual_text)
-        self.assertIn("Content Key (type:id)", manual_text)
-        self.assertIn("configured vs active cookie path", manual_text)
-        self.assertIn("single primary Cookie file", manual_text)
 
     def test_governance_docs_reference_constitution_and_validation_baseline(self):
         agents_text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
