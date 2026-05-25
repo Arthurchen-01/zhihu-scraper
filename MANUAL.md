@@ -57,8 +57,6 @@
 .
 ├─ CONSTITUTION.md
 ├─ AGENTS.md
-├─ CHANGELOG.md
-├─ DEVLOG.md
 ├─ MANUAL.md
 ├─ README.md
 ├─ README_EN.md

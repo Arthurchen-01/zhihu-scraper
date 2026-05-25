@@ -66,8 +66,6 @@
 - 维护者细节以 `MANUAL.md` 为准
 - 专题说明以 `docs/` 下相关文档为准
 - 当前验证基线以 `docs/VALIDATION_BASELINE.md` 为准
-- 对外版本变更是否进入 `CHANGELOG.md`，由发布语义决定
-- 任务级维护记录是否进入 `DEVLOG.md`，由维护者决定
 
 ## 5. 风险登记与反模式
 
