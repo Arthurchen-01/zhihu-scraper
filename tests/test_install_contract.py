@@ -22,24 +22,8 @@ class InstallContractTests(unittest.TestCase):
         self.assertIn('sys.version_info >= (3, 14)', install_script)
         self.assertNotIn('cli/app.py check || true', install_script)
 
-    def test_platform_docs_reference_windows_runbook(self):
-        platform_doc = (REPO_ROOT / "docs/PLATFORM_SUPPORT.md").read_text(encoding="utf-8")
-        windows_runbook = (REPO_ROOT / "docs/WINDOWS_RUNBOOK.md").read_text(encoding="utf-8")
-        dependency_map = (REPO_ROOT / "docs/dependency-map.md").read_text(encoding="utf-8")
-
-        self.assertIn("docs/WINDOWS_RUNBOOK.md", platform_doc)
-        self.assertIn("pip install -e .", platform_doc)
-        self.assertIn('pip install -e ".[full]"', platform_doc)
-        self.assertIn("Windows", windows_runbook)
-        self.assertIn("python -m pip install -e .", windows_runbook)
-        self.assertIn("python -m pip install -e \"[full]\"", windows_runbook.replace(".[full]", "[full]"))
-        self.assertIn("python -m playwright install chromium", windows_runbook)
-        self.assertIn("pip install -e .", dependency_map)
-        self.assertIn('pip install -e ".[full]"', dependency_map)
-
     def test_ci_workflow_matches_documented_validation_baseline(self):
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-        baseline = (REPO_ROOT / "docs" / "VALIDATION_BASELINE.md").read_text(encoding="utf-8")
 
         expected_unittest = (
             "python -m unittest -q tests.test_cli_compat tests.test_docs_sync "
@@ -51,12 +35,10 @@ class InstallContractTests(unittest.TestCase):
 
         self.assertIn("pip install -e .", workflow)
         self.assertIn(expected_unittest, workflow)
-        self.assertIn(expected_unittest, baseline)
-        self.assertIn("python cli/app.py man --help", workflow)
-        self.assertIn("python cli/app.py man --help", baseline)
         self.assertNotIn("python -m pytest tests/", workflow)
         self.assertNotIn("pip-audit", workflow)
 
 
 if __name__ == "__main__":
     unittest.main()
+

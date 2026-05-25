@@ -59,14 +59,11 @@ git clone https://github.com/yuchenzhu-research/zhihu-scraper.git && cd zhihu-sc
 
 ## 📚 详细文档与配置
 
-想要了解如何注入 Cookie `z_c0`？如何编写复杂查询？了解每个 CLI 的进阶用法？
+想要了解如何配置 Cookie、编写查询或了解每个命令的用法？
 
-Zhihu-Scraper 包含非常详尽的文档结构：
-
-- 终端内置说明：`zhihu manual` 或短别名 `zhihu man`
-- ⚙️ **[核心说明书 (MANUAL)](MANUAL.md)**：CLI 所有进阶参数、Cookie 路径配置、TUI 操作快捷键详解。
-- 🛠 **[环境兼容性查询](docs/PLATFORM_SUPPORT.md)**：Windows / Linux 部署的专属指引。
+- 终端帮助：直接运行 `zhihu --help` 或 `zhihu [command] --help`
 - 🤖 **[Agent 执行边界](AGENTS.md)**：适合参与共建的代码助手与协作者阅读的架构守则。
+- ⚖️ **[最高治理宪法](CONSTITUTION.md)**：项目最高架构守卫与质量门禁。
 
 <br>
 

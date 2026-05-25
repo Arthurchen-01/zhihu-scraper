@@ -61,14 +61,11 @@ zhihu
 
 ## 📚 Documentation & Configuration
 
-Want to know how to inject your `z_c0` Cookie? Write complex queries? Understand advanced CLI usage?
+Want to know how to configure Cookies, write queries, or understand CLI commands?
 
-We provide comprehensive documentations:
-
-- Built-in terminal manual: `zhihu manual` or short alias `zhihu man`
-- ⚙️ **[Core Manual (MANUAL)](MANUAL.md)**: Details on all CLI advanced parameters, Cookie path configs, and TUI shortcuts.
-- 🛠 **[Platform Compatibility](docs/PLATFORM_SUPPORT.md)**: Specific deployment guidelines for Windows and Linux.
+- Terminal Help: Run `zhihu --help` or `zhihu [command] --help`
 - 🤖 **[Agent Boundaries](AGENTS.md)**: Architectural ground rules designed for AI coding assistants and code contributors.
+- ⚖️ **[Constitution](CONSTITUTION.md)**: Project highest governance rules, architecture guards, and quality gates.
 
 <br>
 

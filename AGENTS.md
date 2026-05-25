@@ -13,12 +13,10 @@
 2. 再阅读 `AGENTS.md`
 3. 再检查与本次任务相关的：
    - `README.md`
-   - `MANUAL.md`
-   - `docs/`
    - `pyproject.toml`
    - 相关代码与测试
 4. 再实施修改
-5. 如果本次任务形成了新的相关 Git commits，则在汇报中明确说明 commit 情况
+5. 如果本次任务形成了新的相关 Git commits，则在汇报中明确说明 commit情况
 
 说明：
 
@@ -52,7 +50,6 @@
 - 已经形成的模块边界优先保留：
   - `cli/` 负责入口与编排
   - `core/` 负责抓取、配置、转换、数据库与运行时能力
-  - `docs/` 负责正式工程文档
 
 ## 4. 依赖管理规则
 
@@ -73,21 +70,14 @@
   最高治理文件。定义项目身份、不变量、架构守卫、质量门禁与高风险漂移。
 - `README.md`
   对外介绍、快速安装、最小运行方式、功能概览、基本目录说明
-- `MANUAL.md`
-  面向维护者与未来协作者的内部说明书
 - `AGENTS.md`
   面向代码代理的执行规范
-- `docs/`
-  放专题文档，例如依赖、配置、工作流、平台支持、阶段审计
 
 修改代码时，优先检查以下内容是否需要同步：
 
 - `CONSTITUTION.md`
 - `README.md`
 - `README_EN.md`
-- `MANUAL.md`
-- `cli/manual_content.py`
-- `docs/` 下相关专题文档
 
 当前直接守卫文档同步与入口语义漂移的测试包括：
 
@@ -100,7 +90,6 @@
 默认最小校验集：
 
 - `./.venv/bin/python -m unittest -q ...` 运行当前验证矩阵
-- `docs/VALIDATION_BASELINE.md` 记录当前最小回归集合、CI 现实与补充验证建议
 - 命令面 smoke：
   - `python cli/app.py --help`
   - `python cli/app.py fetch --help`
@@ -158,18 +147,16 @@
 1. 优先最小改动
 2. 优先保留有价值内容
 3. 优先通过新增标准入口解决混乱
-4. 无法彻底解决时，把歧义写进 `MANUAL.md` 或相应 `docs/` 文档
+4. 无法彻底解决时，把歧义明确记录在任务报告或提交信息中
 
 ## 10. 长期维护约定
 
 - 后续任务开始时，先读 `CONSTITUTION.md`
 - 再读本文件
-- 再读 `MANUAL.md`
-- 再看本次任务相关模块与专题文档
+- 再检查相关代码与测试
 
 如果仓库结构发生重大变化，应同步更新：
 
 - `CONSTITUTION.md`
 - `AGENTS.md`
-- `MANUAL.md`
 - `README.md`

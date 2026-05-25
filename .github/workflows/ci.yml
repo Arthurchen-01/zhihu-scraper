@@ -37,14 +37,11 @@ jobs:
       - name: CLI smoke check
         run: |
           python cli/app.py --help
-          python cli/app.py manual --help
-          python cli/app.py man --help
-          python cli/app.py onboard --help
           python cli/app.py fetch --help
-          python cli/app.py batch --help
           python cli/app.py creator --help
           python cli/app.py monitor --help
           python cli/app.py query --help
           python cli/app.py interactive --help
           python cli/app.py config --help
           python cli/app.py check --help
+

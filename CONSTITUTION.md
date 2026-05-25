@@ -1,7 +1,7 @@
 # CONSTITUTION.md
 
 本文件是本仓库的最高治理文件。
-当 `CONSTITUTION.md`、`AGENTS.md`、`MANUAL.md`、`docs/` 或其他文档出现冲突时，优先以本文件定义的项目身份、不变量、架构守卫和质量门禁为准。
+当 `CONSTITUTION.md`、`AGENTS.md` 或其他文档出现冲突时，优先以本文件定义的项目身份、不变量、架构守卫和质量门禁为准。
 
 ## 1. 项目身份
 
@@ -31,7 +31,7 @@
 - 数据默认保存在本地，且以用户可直接持有的文件和数据库为主
 - `cli/` 负责入口、交互与编排；`core/` 负责抓取、转换、配置、数据库与运行时能力
 - `pyproject.toml` 是主项目依赖的唯一事实来源
-- `README*.md` 面向用户；`AGENTS.md` 面向共享 agent 协作；`MANUAL.md` 面向维护者；`docs/` 面向专题说明
+- `README*.md` 面向用户；`AGENTS.md` 面向共享 agent 协作。
 - legacy / compatibility 路径可以保留，但不能再次伪装成默认主路径
 
 ## 3. 架构守卫
@@ -40,14 +40,12 @@
 
 - 不把已经下沉出去的业务逻辑重新堆回 `cli/app.py`
 - 不让 `README.md` 再次承担内部维护手册职责
-- 不让 `docs/` 长成第二套平行治理手册
 - 不让 `references/external/` 的内容进入主项目正式代码边界
 - 不让本地凭据、日志、缓存继续散落回仓库根目录主路径
 
 当前命令语义守卫：
 
 - 裸 `zhihu` 与 `zhihu interactive` 默认直达推荐的 Textual TUI
-- `zhihu onboard` 负责引导式首次配置，并可继续进入 questionary launcher
 
 ## 4. 质量门禁
 
@@ -63,16 +61,14 @@
 默认质量门禁：
 
 - 文档同步纪律以 `AGENTS.md` 为准
-- 维护者细节以 `MANUAL.md` 为准
-- 专题说明以 `docs/` 下相关文档为准
-- 当前验证基线以 `docs/VALIDATION_BASELINE.md` 为准
+- 验证以自动化单元测试与 CI 流程为准
 
 ## 5. 风险登记与反模式
 
 高风险漂移包括：
 
 - 多个文档同时声称自己是第一入口或真相来源
-- README、MANUAL、内置 manual、专题文档对同一行为给出不同表述
+- 不同的文档对同一行为给出不同表述
 - 文档继续引用已经不存在的验证矩阵、阶段文件或过时入口
 - shim 文件复制整套治理规则，导致平行维护
 - 为了短期便利新增无职责边界的模块、脚本或依赖
