@@ -10,7 +10,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Callable
 
-from cli.archive_execution import fetch_and_save_result
+from cli.workflow_service import fetch_and_save_result_helper as fetch_and_save_result
 from cli.tui.state import (
     DraftSummary,
     DraftTarget,

@@ -52,11 +52,39 @@ import typer
 from rich import print as rprint
 from rich.console import Console
 
-from cli.archive_execution import get_workflow_service
+from cli.workflow_service import get_workflow_service
 from cli.config_view import build_config_snapshot, render_config_panel
 from cli.healthcheck import render_environment_check
 from cli.launcher_flow import LauncherCommands, LauncherRuntime, run_launcher
-from cli.optional_deps import get_questionary as _get_questionary
+import importlib
+
+QUESTIONARY_GUIDANCE_LINES = (
+    "[bold yellow]⚠️ Missing optional TTY dependency / 缺少交互式终端依赖：questionary[/bold yellow]",
+    "请重新同步当前分支依赖，例如：",
+    "[cyan]pip install -e .[/cyan]  或  [cyan]./install.sh --recreate[/cyan]",
+)
+
+
+def _should_emit_guidance(explicit: Optional[bool]) -> bool:
+    """Decide whether optional dependency guidance should be printed."""
+    if explicit is not None:
+        return explicit
+    return bool(getattr(sys.stderr, "isatty", lambda: False)())
+
+
+def _get_questionary(*, emit_guidance: Optional[bool] = None):
+    """
+    Import questionary lazily with actionable guidance.
+    延迟导入 questionary，并只在交互式终端中输出提示。
+    """
+    try:
+        return importlib.import_module("questionary")
+    except ModuleNotFoundError as exc:
+        if _should_emit_guidance(emit_guidance):
+            for line in QUESTIONARY_GUIDANCE_LINES:
+                rprint(line)
+        raise typer.Exit(code=1) from exc
+
 from core.config import get_config, get_logger, resolve_project_path
 from core.utils import extract_urls
 from core.errors import handle_error
@@ -471,9 +499,9 @@ def interactive() -> None:
     """
     log = _get_log()
     try:
-        from cli.interactive import run_interactive
+        from cli.tui.app import launch_tui
 
-        run_interactive()
+        launch_tui()
     except Exception as e:
         handle_error(e, log)
 
@@ -552,8 +580,8 @@ def main() -> None:
     """CLI entry point / CLI 入口"""
     if len(sys.argv) == 1:
         # Bare `zhihu` → launch TUI directly (first run shows language selector)
-        from cli.interactive import run_interactive
-        run_interactive()
+        from cli.tui.app import launch_tui
+        launch_tui()
         return
     app()
 

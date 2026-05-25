@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import typer
 
-import cli.optional_deps as optional_deps
+import cli.app as cli_app
 from cli.app import _get_questionary
 from cli.healthcheck import collect_environment_checks, summarize_playwright_failure
 from cli.save_pipeline import build_output_folder_name
@@ -52,17 +52,17 @@ class ConfigCompatibilityTests(unittest.TestCase):
 
 class LauncherDependencyTests(unittest.TestCase):
     def test_questionary_missing_raises_clean_exit(self):
-        with patch.object(optional_deps.importlib, "import_module", side_effect=ModuleNotFoundError):
-            with patch.object(optional_deps.sys.stderr, "isatty", return_value=False):
-                with patch.object(optional_deps, "rprint") as mocked_print:
+        with patch.object(cli_app.importlib, "import_module", side_effect=ModuleNotFoundError):
+            with patch.object(cli_app.sys.stderr, "isatty", return_value=False):
+                with patch.object(cli_app, "rprint") as mocked_print:
                     with self.assertRaises(typer.Exit):
                         _get_questionary()
                     mocked_print.assert_not_called()
 
     def test_questionary_missing_interactive_tty_prints_guidance(self):
-        with patch.object(optional_deps.importlib, "import_module", side_effect=ModuleNotFoundError):
-            with patch.object(optional_deps.sys.stderr, "isatty", return_value=True):
-                with patch.object(optional_deps, "rprint") as mocked_print:
+        with patch.object(cli_app.importlib, "import_module", side_effect=ModuleNotFoundError):
+            with patch.object(cli_app.sys.stderr, "isatty", return_value=True):
+                with patch.object(cli_app, "rprint") as mocked_print:
                     with self.assertRaises(typer.Exit):
                         _get_questionary()
                     self.assertGreaterEqual(mocked_print.call_count, 1)

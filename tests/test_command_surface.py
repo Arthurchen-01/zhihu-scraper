@@ -30,13 +30,10 @@ class CommandSurfaceTests(unittest.TestCase):
         registered = {command.name for command in app.registered_commands}
         registered.update({group.name for group in app.registered_groups})
         self.assertEqual(registered, EXPECTED_COMMANDS)
-
-
-
     def test_tui_use_execution_bridge_instead_of_cli_app_privates(self):
         runner_text = (REPO_ROOT / "cli" / "tui" / "runner.py").read_text(encoding="utf-8")
 
-        self.assertIn("from cli.archive_execution import fetch_and_save_result", runner_text)
+        self.assertIn("from cli.workflow_service import fetch_and_save_result_helper as fetch_and_save_result", runner_text)
         self.assertNotIn("from cli.app import _fetch_and_save_result", runner_text)
 
     def test_launcher_marks_textual_as_default(self):
