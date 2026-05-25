@@ -9,7 +9,6 @@ import re
 from typing import Any, Dict, Union
 
 from .config_schema import Config, LoggingConfig
-from .project_paths import resolve_project_path
 from .structlog_compat import STRUCTLOG_AVAILABLE, setup_fallback_logging, structlog
 
 _SENSITIVE_KEY_MARKERS = (
@@ -109,6 +108,7 @@ def setup_logging(config: Union[Config, LoggingConfig]) -> None:
         log_config = config
 
     import logging
+    from .config_runtime import resolve_project_path
 
     log_level = getattr(logging, log_config.level.upper(), logging.INFO)
     log_path = resolve_project_path(log_config.file) if log_config.file else None

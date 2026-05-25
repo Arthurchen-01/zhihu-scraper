@@ -185,7 +185,7 @@ async def fetch_creator_and_save_result(
     """
     import asyncio
     from random import uniform
-    from core.config import get_humanizer
+    from core.humanizer import get_humanizer
 
     output_dir.mkdir(parents=True, exist_ok=True)
 

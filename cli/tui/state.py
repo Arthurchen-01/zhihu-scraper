@@ -5,7 +5,7 @@ state.py - View models for the interactive TUI.
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.config import get_config
+from core.config_runtime import get_config
 from core.cookie_manager import has_available_cookie_sources
 from core.i18n import t
 from core.utils import detect_url_type, extract_id_from_url, extract_urls

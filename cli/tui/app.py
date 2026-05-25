@@ -9,7 +9,7 @@ from textual.containers import Container, Grid
 from textual.events import Mount, Resize
 from textual.widgets import Footer
 
-from core.config import get_config, update_config
+from core.config_runtime import get_config, update_config
 from core.i18n import set_language, t
 from core.logging_setup import set_silent_console
 

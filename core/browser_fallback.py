@@ -16,7 +16,8 @@ browser_fallback.py — 针对强风控路由的智能降维回退机制
 """
 
 from typing import Optional, Dict, Any
-from .config import get_config, get_logger, summarize_text_for_logs
+from .config_runtime import get_config, get_logger
+from .logging_setup import summarize_text_for_logs
 
 
 async def _launch_browser_with_fallback(

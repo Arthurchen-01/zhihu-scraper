@@ -19,7 +19,7 @@ from cli.tui.state import (
     build_running_summary,
 )
 from cli.workflow_service import DEFAULT_QUESTION_LIMIT, build_scrape_config_for_url
-from core.config import get_config, resolve_project_path
+from core.config_runtime import get_config, resolve_project_path
 from core.i18n import t
 
 

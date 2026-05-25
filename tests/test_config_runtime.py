@@ -3,7 +3,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.config import Config, resolve_project_path, summarize_text_for_logs
+from core.config_schema import Config
+from core.config_runtime import resolve_project_path
+from core.logging_setup import summarize_text_for_logs
 from core.config_runtime import ConfigLoader
 
 

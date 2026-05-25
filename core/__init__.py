@@ -25,7 +25,7 @@ def __getattr__(name: str):
 
         return ZhihuConverter
     if name in {"get_config", "get_logger"}:
-        from .config import get_config, get_logger
+        from .config_runtime import get_config, get_logger
 
         return {"get_config": get_config, "get_logger": get_logger}[name]
     if name == "get_humanizer":

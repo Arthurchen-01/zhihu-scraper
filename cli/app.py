@@ -85,7 +85,7 @@ def _get_questionary(*, emit_guidance: Optional[bool] = None):
                 rprint(line)
         raise typer.Exit(code=1) from exc
 
-from core.config import get_config, get_logger, resolve_project_path
+from core.config_runtime import get_config, get_logger, resolve_project_path
 from core.utils import extract_urls
 from core.errors import handle_error
 
@@ -506,57 +506,24 @@ def interactive() -> None:
         handle_error(e, log)
 
 
-config_app = typer.Typer(help="View or manage configuration. 查看或管理配置。")
-app.add_typer(config_app, name="config")
-
-
-@config_app.command("show")
-def config_show() -> None:
-    """Show current configuration / 显示当前配置"""
+@app.command("config")
+def config() -> None:
+    """
+    View current configuration and file path.
+    查看当前配置及配置文件路径。
+    """
     cfg = _get_cfg()
     from core.cookie_manager import describe_cookie_file_path
 
+    config_path = Path(__file__).parent.parent / "config.yaml"
     snapshot = build_config_snapshot(
         cfg=cfg,
-        config_path=Path(__file__).parent.parent / "config.yaml",
+        config_path=config_path,
         resolve_project_path=resolve_project_path,
         describe_cookie_file_path=describe_cookie_file_path,
     )
-    rprint(render_config_panel(snapshot))
-
-
-@config_app.command("path")
-def config_path() -> None:
-    """Show configuration file path / 显示配置文件路径"""
-    from pathlib import Path as P
-    config_path = P(__file__).parent.parent / "config.yaml"
     rprint(f"📄 Configuration file / 配置文件: [cyan]{config_path}[/]")
-
-
-@config_app.command("set")
-def config_set(
-    key: str = typer.Argument(..., help="Config key to set (e.g., 'language') / 配置项名称"),
-    value: str = typer.Argument(..., help="Value to set / 配置值"),
-) -> None:
-    """
-    Set a configuration value. 目前仅支持语言切换。
-    Examples:
-        zhihu config set language en
-        zhihu config set language zh_hant
-    """
-    from core.config_runtime import update_config
-    from core.i18n import SUPPORTED_LANGUAGES
-
-    if key == "language":
-        if value not in SUPPORTED_LANGUAGES:
-            rprint(f"[red]Error:[/] Unsupported language '{value}'. Supported: {list(SUPPORTED_LANGUAGES.keys())}")
-            raise SystemExit(1)
-        
-        update_config({"global": {"language": value, "language_configured": True}})
-        rprint(f"✅ Language updated to / 语言已更新为: [green]{value}[/]")
-    else:
-        rprint(f"[yellow]Warning:[/] Currently only 'language' can be set via this command. / 目前仅支持 'language'。")
-        raise SystemExit(1)
+    rprint(render_config_panel(snapshot))
 
 
 @app.command("check")

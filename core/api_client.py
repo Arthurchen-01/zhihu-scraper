@@ -22,7 +22,8 @@ import execjs
 from curl_cffi import requests
 
 import time
-from .config import get_logger, summarize_text_for_logs, get_config
+from .config_runtime import get_config, get_logger
+from .logging_setup import summarize_text_for_logs
 from .cookie_manager import cookie_manager
 
 # Default global JS signature interpreter path

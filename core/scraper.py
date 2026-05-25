@@ -42,7 +42,7 @@ import re
 import hashlib
 from random import uniform
 
-from .config import get_logger
+from .config_runtime import get_logger
 from .humanizer import get_humanizer
 from .api_client import ZhihuAPIClient
 from .scraper_contracts import (
@@ -309,7 +309,7 @@ class ZhihuCreatorDownloader:
             async for page in self._paginate_creator_pages(
                 label="回答",
                 target_limit=answer_limit,
-                fetch_page=lambda offset, limit: self.api_client.get_creator_answers(
+                fetch_page=lambda offset, limit: self.api_client.get_creator_answers_page(
                     self.url_token, offset=offset, limit=limit
                 ),
                 normalize_item=self._normalize_creator_answer,
@@ -322,7 +322,7 @@ class ZhihuCreatorDownloader:
             async for page in self._paginate_creator_pages(
                 label="专栏文章",
                 target_limit=article_limit,
-                fetch_page=lambda offset, limit: self.api_client.get_creator_articles(
+                fetch_page=lambda offset, limit: self.api_client.get_creator_articles_page(
                     self.url_token, offset=offset, limit=limit
                 ),
                 normalize_item=self._normalize_creator_article,

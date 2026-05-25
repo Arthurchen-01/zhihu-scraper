@@ -11,7 +11,7 @@ from typing import Callable
 from rich.panel import Panel
 from rich.text import Text
 
-from core.config import Config
+from core.config_schema import Config
 from core.cookie_manager import RuntimePathResolution
 
 

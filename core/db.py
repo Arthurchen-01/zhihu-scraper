@@ -16,7 +16,7 @@ import sqlite3
 import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
-from .config import get_logger
+from .config_runtime import get_logger
 
 
 class ZhihuDatabase:

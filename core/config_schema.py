@@ -5,9 +5,14 @@ config_schema.py - Configuration schema and parsing helpers.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .runtime_paths import DEFAULT_COOKIE_FILE, DEFAULT_LOG_FILE
+LOCAL_RUNTIME_DIR = Path(".local")
+DEFAULT_COOKIE_FILE = LOCAL_RUNTIME_DIR / "cookies.json"
+DEFAULT_LOG_DIR = LOCAL_RUNTIME_DIR / "logs"
+DEFAULT_LOG_FILE = DEFAULT_LOG_DIR / "scraper.log"
+LEGACY_COOKIE_FILE = Path("cookies.json")
 
 
 @dataclass

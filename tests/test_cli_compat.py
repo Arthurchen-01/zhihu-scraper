@@ -9,7 +9,7 @@ import cli.app as cli_app
 from cli.app import _get_questionary
 from cli.healthcheck import collect_environment_checks, summarize_playwright_failure
 from cli.save_pipeline import build_output_folder_name
-from core.config import Config
+from core.config_schema import Config
 from core.cookie_manager import RuntimePathResolution
 from core.monitor import CollectionMonitor
 from core.utils import sanitize_filename

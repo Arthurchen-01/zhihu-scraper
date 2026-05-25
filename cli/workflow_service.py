@@ -28,7 +28,7 @@ from cli.save_pipeline import SavePipelineSettings, fetch_and_save_result, fetch
 from core.errors import handle_error
 from core.monitor import CollectionMonitor
 from core.structlog_compat import BoundLoggerBase
-from core.config import get_config, get_logger
+from core.config_runtime import get_config, get_logger
 
 
 FetchRunner = Callable[..., Awaitable[SaveRunResult]]

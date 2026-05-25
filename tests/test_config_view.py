@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from cli.config_view import build_config_snapshot, render_config_panel
-from core.config import Config
+from core.config_schema import Config
 from core.cookie_manager import RuntimePathResolution
 
 

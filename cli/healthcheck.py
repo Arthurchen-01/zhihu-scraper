@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 from rich import print as rprint
 from rich.text import Text
 
-from core.config import get_config
+from core.config_runtime import get_config
 
 
 @dataclass(frozen=True)

@@ -17,10 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Optional
 
-from .config import get_config, get_logger, resolve_project_path
-from .runtime_paths import (
+from .config_runtime import (
     DEFAULT_COOKIE_FILE,
     LEGACY_COOKIE_FILE,
+    get_config,
+    get_logger,
+    resolve_project_path,
 )
 
 

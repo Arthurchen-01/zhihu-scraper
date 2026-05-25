@@ -9,10 +9,35 @@ from typing import Optional, Union
 
 import yaml
 
-from .config_schema import Config, build_config_from_dict, build_default_config
+from .config_schema import (
+    Config,
+    build_config_from_dict,
+    build_default_config,
+    DEFAULT_COOKIE_FILE,
+    LEGACY_COOKIE_FILE,
+    DEFAULT_LOG_FILE,
+    LOCAL_RUNTIME_DIR,
+)
 from .logging_setup import setup_logging
-from .project_paths import get_project_root
-from .structlog_compat import structlog
+from .structlog_compat import structlog, BoundLoggerBase
+
+
+def get_project_root() -> Path:
+    """Get project root path / 获取项目根目录"""
+    return Path(__file__).parent.parent
+
+
+def resolve_project_path(path: Union[str, Path]) -> Path:
+    """Resolve relative paths against project root / 将相对路径解析为项目根目录下的绝对路径"""
+    path = Path(path)
+    if path.is_absolute():
+        return path
+    return get_project_root() / path
+
+
+def get_logger(name: str = "zhihu-scraper") -> BoundLoggerBase:
+    """Get structured logger. / 获取结构化日志记录器。"""
+    return structlog.get_logger(name)
 
 
 class ConfigLoader:
