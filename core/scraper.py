@@ -331,6 +331,15 @@ class ZhihuCreatorDownloader:
         else:
             yield creator_info, "article", {"items": [], "stats": self._make_empty_sync_stats(article_limit)}
 
+    async def fetch_profile(self) -> Dict[str, Any]:
+        """
+        Fetch creator profile data through the protocol API.
+        通过协议 API 抓取作者资料。
+        """
+        if not self.url_token:
+            raise Exception(f"无法从作者输入中提取知乎用户标识: {self.creator}")
+        return self.api_client.get_creator_profile(self.url_token)
+
     async def fetch_items_result(self, answer_limit: int = 10, article_limit: int = 5) -> CreatorFetchResult:
         """
         Fetch creator profile and selected content types with a stable result contract.

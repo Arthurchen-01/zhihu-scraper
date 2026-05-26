@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from core.scraper import ZhihuDownloader
+from core.scraper import ZhihuCreatorDownloader, ZhihuDownloader
 from core.scraper_contracts import (
     CreatorFetchResult,
     CreatorProfileSummary,
@@ -12,6 +12,7 @@ from core.scraper_contracts import (
 
 
 class ScraperContractTests(unittest.TestCase):
+
     def test_page_fetch_result_keeps_legacy_answer_shape(self):
         result = PageFetchResult(
             source_url="https://www.zhihu.com/question/1/answer/2",
@@ -128,6 +129,48 @@ class QuestionFetchResultTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.pagination.saved_count, 2)
         self.assertEqual(result.pagination.pages_fetched, 1)
         self.assertTrue(result.pagination.reached_end)
+
+
+class CreatorFetchResultTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fetch_items_result_uses_profile_api_contract(self):
+        class FakeApiClient:
+            def __init__(self):
+                self.profile_calls = []
+
+            def get_creator_profile(self, url_token):
+                self.profile_calls.append(url_token)
+                return {
+                    "id": "user-1",
+                    "name": "Demo User",
+                    "url_token": url_token,
+                    "headline": "headline",
+                    "description": "description",
+                    "avatar_url": "https://pic.zhimg.com/avatar.jpg",
+                    "follower_count": 12,
+                    "following_count": 3,
+                    "voteup_count": 45,
+                    "answer_count": 6,
+                    "articles_count": 7,
+                    "question_count": 8,
+                    "zvideo_count": 9,
+                    "columns_count": 10,
+                }
+
+        fake_api = FakeApiClient()
+        with patch("core.scraper.ZhihuAPIClient", return_value=fake_api):
+            downloader = ZhihuCreatorDownloader("https://www.zhihu.com/people/demo-user")
+
+        result = await downloader.fetch_items_result(answer_limit=0, article_limit=0)
+
+        self.assertIsInstance(result.creator, CreatorProfileSummary)
+        self.assertEqual(fake_api.profile_calls, ["demo-user"])
+        self.assertEqual(result.creator.user_id, "user-1")
+        self.assertEqual(result.creator.url_token, "demo-user")
+        self.assertEqual(result.creator.profile_url, "https://www.zhihu.com/people/demo-user")
+        self.assertEqual(result.creator.video_count, 9)
+        self.assertEqual(result.creator.column_count, 10)
+        self.assertEqual(result.answers.requested_limit, 0)
+        self.assertEqual(result.articles.requested_limit, 0)
 
 
 if __name__ == "__main__":
