@@ -7,7 +7,7 @@ This directory is reserved for local runtime artifacts and is not part of the ma
 ## Suggested Layout / 建议结构
 
 - `data/entries/`
-  普通 `fetch` / `batch` / `monitor` 输出。
+  普通 `fetch` / `fetch --file` / `monitor` 输出。
 - `data/creators/<url_token>/`
   `creator` 模式作者归档。
 - `data/zhihu.db`

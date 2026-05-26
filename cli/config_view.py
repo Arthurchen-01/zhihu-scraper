@@ -21,7 +21,7 @@ CookiePathDescriber = Callable[[str], RuntimePathResolution]
 
 @dataclass(frozen=True)
 class ConfigDisplaySnapshot:
-    """Resolved values shown by `zhihu config --show`."""
+    """Resolved values shown by `zhihu config`."""
 
     config_path: Path
     output_directory: str

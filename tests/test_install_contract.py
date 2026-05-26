@@ -21,6 +21,10 @@ class InstallContractTests(unittest.TestCase):
         self.assertIn('.local/cookies.json', install_script)
         self.assertIn('sys.version_info >= (3, 14)', install_script)
         self.assertNotIn('cli/app.py check || true', install_script)
+        self.assertNotIn('zhihu manual', install_script)
+        self.assertNotIn('cli/app.py manual', install_script)
+        self.assertIn("zhihu fetch", install_script)
+        self.assertIn('cli/app.py --help', install_script)
 
     def test_ci_workflow_matches_documented_validation_baseline(self):
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -41,4 +45,3 @@ class InstallContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

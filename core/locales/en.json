@@ -4,7 +4,7 @@
   "home.subtitle": "A full-screen terminal workbench for scraping, archiving and retrieval",
   "home.hint.enter": "Press Enter to generate a draft, then Ctrl+R to execute.",
   "home.hint.retry": "Press Ctrl+Y to load failed items from the last run as a retry draft.",
-  "home.hint.legacy": "Legacy Rich / questionary flow is still available: zhihu interactive --legacy",
+  "home.hint.legacy": "The legacy Rich / questionary flow remains available as an internal maintenance path.",
 
   "draft.idle.title": "Waiting for Input",
   "draft.idle.line1": "Supports answer, question, and column URLs. Can also extract from mixed text.",

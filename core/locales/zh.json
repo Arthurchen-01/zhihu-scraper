@@ -4,7 +4,7 @@
   "home.subtitle": "一个围绕抓取、归档与后续检索而设计的全屏终端工作台",
   "home.hint.enter": "回车会先生成归档草案，按 Ctrl+R 执行当前草案。",
   "home.hint.retry": "按 Ctrl+Y 可载入最近一轮失败项，生成重试草案。",
-  "home.hint.legacy": "旧版 Rich / questionary 流程仍然可用：zhihu interactive --legacy",
+  "home.hint.legacy": "旧版 Rich / questionary 流程仍保留在仓库内部维护路径中。",
 
   "draft.idle.title": "等待输入链接",
   "draft.idle.line1": "支持回答、问题页、专栏链接，也支持从一段混合文本中自动提取。",
