@@ -30,6 +30,20 @@ class CommandSurfaceTests(unittest.TestCase):
         registered = {command.name for command in app.registered_commands}
         registered.update({group.name for group in app.registered_groups})
         self.assertEqual(registered, EXPECTED_COMMANDS)
+
+    def test_readmes_document_current_command_surface(self):
+        readme_cn = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        readme_en = (REPO_ROOT / "README_EN.md").read_text(encoding="utf-8")
+
+        for snippet in EXPECTED_DOC_SNIPPETS:
+            self.assertIn(snippet, readme_cn)
+            self.assertIn(snippet, readme_en)
+
+        self.assertIn("zhihu fetch --file", readme_cn)
+        self.assertIn("zhihu fetch --file", readme_en)
+        self.assertNotIn("zhihu batch", readme_cn)
+        self.assertNotIn("zhihu batch", readme_en)
+
     def test_tui_use_execution_bridge_instead_of_cli_app_privates(self):
         runner_text = (REPO_ROOT / "cli" / "tui" / "runner.py").read_text(encoding="utf-8")
 

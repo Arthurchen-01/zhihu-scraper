@@ -15,6 +15,7 @@
    - `README.md`
    - `pyproject.toml`
    - 相关代码与测试
+   - 如任务落入特定维护面，再读取 `docs/agent-skills/README.md` 并选择对应项目内 skill
 4. 再实施修改
 5. 如果本次任务形成了新的相关 Git commits，则在汇报中明确说明 commit情况
 
@@ -22,6 +23,7 @@
 
 - 后续在本仓库执行任务时，默认先读 `CONSTITUTION.md` 与本文件，不再依赖用户重复提醒
 - 如果任务范围只涉及文档、测试或配置，也不跳过这个流程
+- `docs/agent-skills/` 是本仓库内的项目维护 skills，不安装到全局 `~/.codex/skills`
 
 ## 2. 项目目标
 

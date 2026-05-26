@@ -33,4 +33,4 @@ This directory contains **showcase exports** kept in the repository so readers c
 - `examples/outputs/` 只保留少量人工挑选的展示样例
 - 不要放真实 Cookie、数据库、监控状态或临时调试产物
 - 本地临时导出结果放回 `data/`
-- 仓库级目录约定见 [MANUAL.md §3](../MANUAL.md)
+- 仓库级目录约定以 [CONSTITUTION.md](../CONSTITUTION.md) 与 [AGENTS.md](../AGENTS.md) 为准

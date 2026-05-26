@@ -57,6 +57,20 @@ git clone https://github.com/yuchenzhu-research/zhihu-scraper.git && cd zhihu-sc
 - **增量监控**：`monitor` 命令可基于本地状态文件检查收藏夹新增内容。
 - **Textual TUI**：提供全屏工作台、任务队列、最近结果、失败重试和语言切换。
 
+## 🧭 命令速览
+
+```bash
+zhihu                         # 打开 Textual TUI 全屏工作台
+zhihu fetch URL               # 抓取单条链接
+zhihu fetch --file urls.txt   # 从文件批量抓取
+zhihu creator PEOPLE_URL      # 归档创作者主页内容
+zhihu monitor COLLECTION_ID   # 增量监控收藏夹
+zhihu query KEYWORD           # 检索本地 SQLite 归档
+zhihu interactive             # 显式打开交互式工作台
+zhihu config                  # 查看当前配置
+zhihu check                   # 检查本地运行环境
+```
+
 ## 📚 详细文档与配置
 
 想要了解如何配置 Cookie、编写查询或了解每个命令的用法？

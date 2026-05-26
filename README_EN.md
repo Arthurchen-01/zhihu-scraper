@@ -59,6 +59,20 @@ zhihu
 - **Incremental Monitoring**: The `monitor` command can check collection updates with local state.
 - **Textual TUI**: A full-screen workbench for queues, recent results, retry flow, and language switching.
 
+## 🧭 Command Quick Reference
+
+```bash
+zhihu                         # Open the Textual TUI full-screen workbench
+zhihu fetch URL               # Archive one link
+zhihu fetch --file urls.txt   # Batch archive links from a file
+zhihu creator PEOPLE_URL      # Archive creator profile content
+zhihu monitor COLLECTION_ID   # Incrementally monitor a collection
+zhihu query KEYWORD           # Search the local SQLite archive
+zhihu interactive             # Explicitly open the interactive workbench
+zhihu config                  # Show current configuration
+zhihu check                   # Check the local runtime environment
+```
+
 ## 📚 Documentation & Configuration
 
 Want to know how to configure Cookies, write queries, or understand CLI commands?

@@ -6,7 +6,7 @@ Provides modern command-line interface using Typer with auto-completion support.
 Core Functions:
 - fetch: Scrape single Zhihu link (article/answer/question)
 - creator: Scrape answers and articles from a Zhihu creator profile
-- batch: Batch scrape multiple links
+- fetch --file: Batch scrape multiple links
 - monitor: Incremental monitoring of collections
 - query: Search scraped content in SQLite database
 - interactive: Interactive scraping mode
@@ -16,7 +16,7 @@ Core Functions:
 Usage Examples:
     zhihu fetch "https://www.zhihu.com/p/123456"
     zhihu fetch "https://www.zhihu.com/question/123456" -n 10
-    zhihu batch ./urls.txt -c 8
+    zhihu fetch --file ./urls.txt -c 8
     zhihu monitor 78170682 -o ./data
     zhihu query "深度学习" -l 20
 
@@ -28,7 +28,7 @@ app.py — CLI 增强模块
 核心功能：
 - fetch: 抓取单个知乎链接 (文章/回答/问题)
 - creator: 抓取知乎作者主页下的回答和专栏
-- batch: 批量抓取多个链接
+- fetch --file: 批量抓取多个链接
 - monitor: 增量监控收藏夹
 - query: 在 SQLite 数据库中检索已抓取的内容
 - interactive: 交互式抓取模式
@@ -38,7 +38,7 @@ app.py — CLI 增强模块
 使用示例：
     zhihu fetch "https://www.zhihu.com/p/123456"
     zhihu fetch "https://www.zhihu.com/question/123456" -n 10
-    zhihu batch ./urls.txt -c 8
+    zhihu fetch --file ./urls.txt -c 8
     zhihu monitor 78170682 -o ./data
     zhihu query "深度学习" -l 20
 ================================================================================
