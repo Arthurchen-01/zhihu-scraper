@@ -68,6 +68,31 @@ class ConfigRuntimeTests(unittest.TestCase):
         self.assertTrue(project_path.is_absolute())
         self.assertIn("cookie_redacted", summary)
 
+    def test_update_config_filters_invalid_keys_preventing_drift(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.yaml"
+            config_path.write_text("global:\n  language: zh\n", encoding="utf-8")
+
+            with patch("core.config_runtime.get_project_root", return_value=Path(tmpdir)):
+                from core.config_runtime import update_config, get_config
+
+                # Update with a valid key and an invalid key
+                update_config({
+                    "global": {"language": "en", "invalid_garbage": "should_be_gced"},
+                    "completely_invalid_root": {"garbage": 123}
+                })
+
+                # Check parsed config
+                config = get_config(config_path)
+                self.assertEqual(config.globals.language, "en")
+
+                # Ensure the invalid keys were never persisted
+                import yaml
+                raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+                self.assertEqual(raw["global"]["language"], "en")
+                self.assertNotIn("invalid_garbage", raw["global"])
+                self.assertNotIn("completely_invalid_root", raw)
+
 
 if __name__ == "__main__":
     unittest.main()

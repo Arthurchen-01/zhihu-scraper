@@ -24,7 +24,8 @@ from cli.contracts import (
     MonitorWorkflowResult,
     UrlTaskResult,
 )
-from cli.save_pipeline import SavePipelineSettings, fetch_and_save_result, fetch_creator_and_save_result
+from core.save_pipeline import SavePipelineSettings, fetch_and_save_result, fetch_creator_and_save_result
+from core.protocols import ProgressEvent, EventSink
 from core.errors import handle_error
 from core.monitor import CollectionMonitor
 from core.structlog_compat import BoundLoggerBase
@@ -38,6 +39,38 @@ Printer = Callable[[str], None]
 ErrorHandler = Callable[[Exception, Optional[BoundLoggerBase]], object]
 SleepFn = Callable[[float], Awaitable[None]]
 DEFAULT_QUESTION_LIMIT = 3
+
+
+def make_rich_event_sink(printer: Printer) -> EventSink:
+    def sink(event: ProgressEvent) -> None:
+        if event.type == "save.warning":
+            printer(f"[yellow]⚠️  {event.message}[/yellow]")
+        elif event.type == "creator.info":
+            msg = event.message
+            if ":" in msg:
+                parts = msg.split(":", 1)
+                printer(f"[cyan]👤 {parts[0].strip()}[/cyan]: {parts[1].strip()}")
+            else:
+                printer(f"[cyan]👤 {msg}[/cyan]")
+        elif event.type == "creator.stats":
+            printer(f"   {event.message}")
+        elif event.type == "media.download.started":
+            msg = event.message
+            if "Downloading" in msg:
+                printer(f"   📥 {msg.strip()}")
+            else:
+                printer(f"   📥 {msg}")
+        elif event.type == "humanizer.pause":
+            printer(event.message)
+        elif event.type == "humanizer.waiting":
+            printer(event.message)
+        elif event.type == "save.item.success":
+            author = event.payload.get("author") if event.payload else ""
+            title = event.payload.get("title") if event.payload else ""
+            markdown_path = event.payload.get("markdown_path") if event.payload else ""
+            printer(f"✅ Saved / 保存: [cyan]{author}[/] - {title[:25]}...")
+            printer(f"   📁 {markdown_path} & DB / 入库 DB")
+    return sink
 
 
 def is_question_listing_url(url: str) -> bool:
@@ -171,7 +204,7 @@ class ArchiveWorkflowService:
                 download_images=download_images,
                 headless=headless,
                 collection_id=collection_id,
-                printer=self._config.printer,
+                event_sink=make_rich_event_sink(self._config.printer),
             )
             return UrlTaskResult(url=url, success=True, save_result=save_result)
         except SavePipelineError as error:
@@ -203,7 +236,7 @@ class ArchiveWorkflowService:
                 article_limit=article_limit,
                 settings=self._config.save_settings,
                 download_images=download_images,
-                printer=self._config.printer,
+                event_sink=make_rich_event_sink(self._config.printer),
             )
             return CreatorWorkflowResult(creator=creator, result=result)
         except Exception as error:

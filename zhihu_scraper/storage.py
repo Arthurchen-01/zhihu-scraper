@@ -1,6 +1,6 @@
 """Public storage and save-pipeline APIs re-exported from existing modules."""
 
-from cli.save_pipeline import (
+from core.save_pipeline import (
     SavePipelineSettings,
     build_output_folder_name,
     fetch_and_save,

@@ -1,8 +1,8 @@
 """
-save_pipeline.py - Local archive save orchestration
+save_pipeline.py - Local archive save orchestration (v3.0 Core)
 
 Extracts output naming, Markdown persistence, image downloading, and creator
-metadata writing from the main CLI module so command entrypoints stay thin.
+metadata writing into a decoupled core service.
 """
 
 from __future__ import annotations
@@ -12,19 +12,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
 
-from rich import print as rprint
-
-from cli.creator_metadata import write_creator_metadata
-from cli.contracts import CreatorSaveResult, SavePipelineError, SaveRunResult, SavedContentRecord
+from .contracts import CreatorSaveResult, SavePipelineError, SaveRunResult, SavedContentRecord
+from .creator_metadata import write_creator_metadata
 from core.converter import ZhihuConverter
 from core.db import ZhihuDatabase
 from core.media_downloader import MediaDownloader
 from core.scraper import ZhihuCreatorDownloader, ZhihuDownloader
 from core.scraper_contracts import ScrapedItem, to_scraped_items
 from core.utils import sanitize_filename
-
-
-Printer = Callable[[str], None]
+from core.protocols import EventSink, ProgressEvent, noop_event_sink
 
 
 @dataclass(frozen=True)
@@ -82,7 +78,7 @@ async def fetch_and_save(
     download_images: bool = True,
     headless: bool = True,
     collection_id: Optional[str] = None,
-    printer: Printer = rprint,
+    event_sink: EventSink = noop_event_sink,
 ) -> list[dict[str, Any]]:
     """
     Execute scraping and save the result to local files and SQLite.
@@ -96,7 +92,7 @@ async def fetch_and_save(
         download_images=download_images,
         headless=headless,
         collection_id=collection_id,
-        printer=printer,
+        event_sink=event_sink,
     )
     return result.to_legacy_records()
 
@@ -110,7 +106,7 @@ async def fetch_and_save_result(
     download_images: bool = True,
     headless: bool = True,
     collection_id: Optional[str] = None,
-    printer: Printer = rprint,
+    event_sink: EventSink = noop_event_sink,
 ) -> SaveRunResult:
     """
     Execute scraping and return a typed save result contract.
@@ -124,7 +120,13 @@ async def fetch_and_save_result(
     fetch_result = await downloader.fetch_result(**fetch_kwargs)
 
     if fetch_result.is_empty:
-        printer("[yellow]⚠️  No content obtained / 未获取到内容[/yellow]")
+        event_sink(
+            ProgressEvent(
+                type="save.warning",
+                severity="warning",
+                message="No content obtained / 未获取到内容",
+            )
+        )
         return SaveRunResult(
             source_url=url,
             content_root=resolve_entries_output_dir(output_dir),
@@ -140,7 +142,7 @@ async def fetch_and_save_result(
         download_images=download_images,
         source_url_fallback=url,
         collection_id=collection_id,
-        printer=printer,
+        event_sink=event_sink,
     )
 
 
@@ -152,7 +154,7 @@ async def fetch_creator_and_save(
     article_limit: int,
     settings: SavePipelineSettings,
     download_images: bool = True,
-    printer: Printer = rprint,
+    event_sink: EventSink = noop_event_sink,
 ) -> Optional[CreatorSaveResult]:
     """
     Fetch creator content and persist it using the standard save pipeline.
@@ -165,7 +167,7 @@ async def fetch_creator_and_save(
         article_limit=article_limit,
         settings=settings,
         download_images=download_images,
-        printer=printer,
+        event_sink=event_sink,
     )
 
 
@@ -177,7 +179,7 @@ async def fetch_creator_and_save_result(
     article_limit: int,
     settings: SavePipelineSettings,
     download_images: bool = True,
-    printer: Printer = rprint,
+    event_sink: EventSink = noop_event_sink,
 ) -> Optional[CreatorSaveResult]:
     """
     Fetch creator content via pagination flow and return a typed save result contract.
@@ -194,21 +196,52 @@ async def fetch_creator_and_save_result(
     creator_info = None
     all_answers = []
     all_articles = []
-    answer_stats = {"saved_count": 0, "pages_fetched": 0, "reached_end": False, "last_offset": 0, "requested_limit": answer_limit, "stopped_early": False}
-    article_stats = {"saved_count": 0, "pages_fetched": 0, "reached_end": False, "last_offset": 0, "requested_limit": article_limit, "stopped_early": False}
+    answer_stats = {
+        "saved_count": 0,
+        "pages_fetched": 0,
+        "reached_end": False,
+        "last_offset": 0,
+        "requested_limit": answer_limit,
+        "stopped_early": False,
+    }
+    article_stats = {
+        "saved_count": 0,
+        "pages_fetched": 0,
+        "reached_end": False,
+        "last_offset": 0,
+        "requested_limit": article_limit,
+        "stopped_early": False,
+    }
 
     page_index = 0
     all_records = []
     creator_root = None
 
-    async for info, typ, page in downloader.fetch_items_pages(answer_limit=answer_limit, article_limit=article_limit):
+    async for info, typ, page in downloader.fetch_items_pages(
+        answer_limit=answer_limit, article_limit=article_limit
+    ):
         if creator_info is None:
             creator_info = info
-            printer(f"[cyan]👤 Creator / 作者[/cyan]: {creator_info.name} ({creator_info.url_token or 'unknown'})")
+            event_sink(
+                ProgressEvent(
+                    type="creator.info",
+                    message=f"Creator / 作者: {creator_info.name} ({creator_info.url_token or 'unknown'})",
+                    payload={"name": creator_info.name, "url_token": creator_info.url_token},
+                )
+            )
             if creator_info.follower_count or creator_info.following_count:
-                printer(
-                    f"   👥 Followers / 粉丝: {creator_info.follower_count}"
-                    f" | Following / 关注: {creator_info.following_count}"
+                event_sink(
+                    ProgressEvent(
+                        type="creator.stats",
+                        message=(
+                            f"Followers / 粉丝: {creator_info.follower_count}"
+                            f" | Following / 关注: {creator_info.following_count}"
+                        ),
+                        payload={
+                            "followers": creator_info.follower_count,
+                            "following": creator_info.following_count,
+                        },
+                    )
                 )
             creator_root = resolve_creator_output_dir(output_dir, creator_info.url_token or creator)
 
@@ -229,8 +262,10 @@ async def fetch_creator_and_save_result(
             db_root=output_dir,
             settings=settings,
             download_images=download_images,
-            source_url_fallback=f"https://www.zhihu.com/people/{creator_info.url_token or creator}",
-            printer=printer,
+            source_url_fallback=(
+                f"https://www.zhihu.com/people/{creator_info.url_token or creator}"
+            ),
+            event_sink=event_sink,
         )
         all_records.extend(run_res.records)
         page_index += 1
@@ -240,16 +275,34 @@ async def fetch_creator_and_save_result(
         if humanizer.config.enabled and not stats.get("reached_end", True):
             if page_index % 3 == 0:
                 delay = uniform(15.0, 30.0)
-                printer(f"⏸️ 已连续抓取 {page_index} 页，额外休息 {delay:.1f} 秒后继续...")
+                event_sink(
+                    ProgressEvent(
+                        type="humanizer.pause",
+                        message=f"已连续抓取 {page_index} 页，额外休息 {delay:.1f} 秒后继续...",
+                        payload={"delay": delay, "page_index": page_index},
+                    )
+                )
             else:
                 min_delay = max(3.0, humanizer.config.min_delay)
                 max_delay = max(min_delay, humanizer.config.max_delay, 8.0)
                 delay = uniform(min_delay, max_delay)
-                printer(f"⏳ 等待 {delay:.1f} 秒后抓取下一页...")
+                event_sink(
+                    ProgressEvent(
+                        type="humanizer.waiting",
+                        message=f"等待 {delay:.1f} 秒后抓取下一页...",
+                        payload={"delay": delay},
+                    )
+                )
             await asyncio.sleep(delay)
 
     if not all_records:
-        printer("[yellow]⚠️  No creator content obtained / 未获取到作者内容[/yellow]")
+        event_sink(
+            ProgressEvent(
+                type="save.warning",
+                severity="warning",
+                message="No creator content obtained / 未获取到作者内容",
+            )
+        )
         return None
 
     save_result = SaveRunResult(
@@ -260,6 +313,7 @@ async def fetch_creator_and_save_result(
     )
 
     from core.scraper_contracts import PaginationStats
+
     creator_result = CreatorSaveResult(
         creator=creator_info,
         save_result=save_result,
@@ -279,7 +333,7 @@ async def save_items(
     download_images: bool,
     source_url_fallback: str,
     collection_id: Optional[str] = None,
-    printer: Printer = rprint,
+    event_sink: EventSink = noop_event_sink,
 ) -> list[dict[str, Any]]:
     """
     Save normalized content items to Markdown, images, and SQLite.
@@ -293,7 +347,7 @@ async def save_items(
         download_images=download_images,
         source_url_fallback=source_url_fallback,
         collection_id=collection_id,
-        printer=printer,
+        event_sink=event_sink,
     )
     return result.to_legacy_records()
 
@@ -307,7 +361,7 @@ async def save_items_result(
     download_images: bool,
     source_url_fallback: str,
     collection_id: Optional[str] = None,
-    printer: Printer = rprint,
+    event_sink: EventSink = noop_event_sink,
 ) -> SaveRunResult:
     """
     Save normalized content items to Markdown, images, and SQLite.
@@ -344,7 +398,17 @@ async def save_items_result(
             if download_images:
                 img_urls = ZhihuConverter.extract_image_urls(item.html)
                 if img_urls:
-                    printer(f"   📥 Downloading {len(img_urls)} images... / 下载 {len(img_urls)} 张图片...")
+                    event_sink(
+                        ProgressEvent(
+                            type="media.download.started",
+                            message=(
+                                f"   📥 Downloading {len(img_urls)} images..."
+                                f" / 下载 {len(img_urls)} 张图片..."
+                            ),
+                            current=0,
+                            total=len(img_urls),
+                        )
+                    )
                     img_map = await MediaDownloader.download_images(
                         img_urls,
                         folder / settings.images_subdir,
@@ -393,8 +457,18 @@ async def save_items_result(
                 )
             )
 
-            printer(f"✅ Saved / 保存: [cyan]{author}[/] - {title[:25]}...")
-            printer(f"   📁 {out_path} & DB / 入库 DB")
+            event_sink(
+                ProgressEvent(
+                    type="save.item.success",
+                    message=f"Saved / 保存: {author} - {title[:25]}...",
+                    payload={
+                        "author": author,
+                        "title": title,
+                        "markdown_path": str(out_path),
+                        "folder": str(folder),
+                    },
+                )
+            )
     finally:
         db.close()
 
@@ -406,7 +480,9 @@ async def save_items_result(
     )
 
 
-def _coerce_scraped_items(items: Sequence[ScrapedItem] | Sequence[dict[str, Any]]) -> Tuple[ScrapedItem, ...]:
+def _coerce_scraped_items(
+    items: Sequence[ScrapedItem] | Sequence[dict[str, Any]],
+) -> Tuple[ScrapedItem, ...]:
     if not items:
         return ()
     first = items[0]

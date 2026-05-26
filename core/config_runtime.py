@@ -76,6 +76,8 @@ class ConfigLoader:
             with open(resolved_path, "r", encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
 
+            raw = _filter_config_dict(raw)
+
             self._config = self._finalize_config(
                 build_config_from_dict(raw),
                 override_level=override_level,
@@ -131,9 +133,10 @@ def update_config(patch: dict) -> None:
             raw = yaml.safe_load(fh) or {}
 
     _deep_merge(raw, patch)
+    cleaned = _filter_config_dict(raw)
 
     with open(config_path, "w", encoding="utf-8") as fh:
-        yaml.dump(raw, fh, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        yaml.dump(cleaned, fh, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     # Reload singleton so in-memory state stays consistent
     ConfigLoader().reload()
@@ -146,3 +149,49 @@ def _deep_merge(base: dict, override: dict) -> None:
             _deep_merge(base[key], value)
         else:
             base[key] = value
+
+
+def _filter_config_dict(data: dict) -> dict:
+    """Filter out keys from data dict that do not conform to Config schema."""
+    valid_schema = {
+        "zhihu": {
+            "cookies": {"file", "required"},
+            "browser": {"headless", "timeout", "viewport", "channel", "args", "user_data_dir"},
+            "anti_detection": {"stealth", "webgl", "navigator"},
+            "signature": {"enabled"},
+        },
+        "crawler": {
+            "retry": {"max_attempts", "base_delay", "max_delay", "exponential_base", "jitter"},
+            "scroll": {"timeout", "pause", "viewport_height"},
+            "humanize": {"enabled", "min_delay", "max_delay", "scroll_delay", "page_load_delay"},
+            "images": {"concurrency", "timeout", "referer"},
+            "proxy": None,
+        },
+        "output": {"directory", "format", "images_subdir", "folder_format", "download_images"},
+        "logging": {"level", "format", "file", "log_exceptions"},
+        "global": {"language", "language_configured"},
+        "translation": {"enabled", "target_language", "engine", "base_url", "api_key", "model"},
+    }
+
+    def filter_node(current_data: Any, schema_node: Any) -> Any:
+        if schema_node is None:
+            return current_data
+        if not isinstance(current_data, dict):
+            return current_data
+
+        filtered = {}
+        for k, v in current_data.items():
+            if k in schema_node:
+                node_schema = schema_node[k]
+                if isinstance(node_schema, dict):
+                    filtered[k] = filter_node(v, node_schema)
+                elif isinstance(node_schema, set):
+                    if isinstance(v, dict):
+                        filtered[k] = {sub_k: sub_v for sub_k, sub_v in v.items() if sub_k in node_schema}
+                    else:
+                        filtered[k] = v
+                else:
+                    filtered[k] = v
+        return filtered
+
+    return filter_node(data, valid_schema)

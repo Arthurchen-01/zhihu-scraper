@@ -4,7 +4,7 @@ from pathlib import Path
 import tomllib
 
 import zhihu_scraper
-from cli.save_pipeline import SavePipelineSettings as InternalSavePipelineSettings
+from core.save_pipeline import SavePipelineSettings as InternalSavePipelineSettings
 from cli.workflow_service import ArchiveWorkflowService as InternalArchiveWorkflowService
 from core.config_schema import Config as InternalConfig
 from core.converter import ZhihuConverter as InternalZhihuConverter

@@ -18,7 +18,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Optional, Dict
 
-import execjs
+from .signature import get_sign
 from curl_cffi import requests
 
 import time
@@ -39,7 +39,6 @@ class ZhihuAPIClient:
 
     def __init__(self):
         self.log = get_logger()
-        self._js_ctx = self._init_js_context()
         self.session = None
         self._cookies_dict = None
 
@@ -78,32 +77,16 @@ class ZhihuAPIClient:
             for k, v in self._cookies_dict.items():
                 self.session.cookies.set(k, v, domain=".zhihu.com")
 
-    def _init_js_context(self):
-        """
-        Initialize PyExecJS execution environment for generating x-zse-96
-        初始化 PyExecJS 执行环境，用于生成 x-zse-96
-        """
-        if ZHIHU_JS_PATH.exists():
-            try:
-                with open(ZHIHU_JS_PATH, "r", encoding="utf-8") as f:
-                    js_code = f.read()
-                return execjs.compile(js_code)
-            except Exception as e:
-                self.log.error("init_js_failed", error=str(e))
-        return None
-
     def _get_signature(self, api_path: str) -> Dict[str, str]:
         """
         Generate x-zse-96 signature request headers for specific API path
         为特定的 API Path 生成 x-zse-96 签名请求头
         """
-        if not self._js_ctx:
-            return {}
         try:
             # One of the salt values for signature is d_c0 from cookies
             # 签名的盐值之一是 Cookie 里的 d_c0
             d_c0 = self._cookies_dict.get("d_c0", "SEARCH_ME")
-            sig_headers = self._js_ctx.call("get_sign", api_path, f"d_c0={d_c0}")
+            sig_headers = get_sign(api_path, d_c0)
             return sig_headers
         except Exception as e:
             self.log.warning("get_signature_failed", path=api_path, error=str(e))

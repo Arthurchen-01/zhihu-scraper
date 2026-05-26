@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.creator_metadata import _normalize_creator_text
-from cli.contracts import SavePipelineError
-from cli.save_pipeline import (
+from core.creator_metadata import _normalize_creator_text
+from core.contracts import SavePipelineError
+from core.save_pipeline import (
     SavePipelineSettings,
     build_output_folder_name,
     resolve_creator_output_dir,
@@ -144,7 +144,7 @@ class SavePipelineFailureTests(unittest.TestCase):
                 image_concurrency=4,
                 image_timeout=30,
             )
-            with patch("cli.save_pipeline.ZhihuDatabase", FailingDb):
+            with patch("core.save_pipeline.ZhihuDatabase", FailingDb):
                 with self.assertRaises(SavePipelineError) as captured:
                     asyncio.run(
                         save_items_result(
@@ -154,7 +154,7 @@ class SavePipelineFailureTests(unittest.TestCase):
                             settings=settings,
                             download_images=False,
                             source_url_fallback=items[0]["url"],
-                            printer=lambda *_args, **_kwargs: None,
+                            event_sink=lambda *_args, **_kwargs: None,
                         )
                     )
                 error = captured.exception
