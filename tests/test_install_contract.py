@@ -34,7 +34,8 @@ class InstallContractTests(unittest.TestCase):
             "tests.test_command_surface tests.test_tui_rebuild tests.test_save_pipeline "
             "tests.test_save_contracts tests.test_config_view tests.test_scraper_payloads "
             "tests.test_scraper_contracts tests.test_config_schema tests.test_config_runtime "
-            "tests.test_install_contract tests.test_workflow_service tests.test_db_contract"
+            "tests.test_install_contract tests.test_workflow_service tests.test_db_contract "
+            "tests.test_public_facade"
         )
 
         self.assertIn("pip install -e .", workflow)

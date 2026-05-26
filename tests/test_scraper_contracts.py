@@ -9,9 +9,28 @@ from core.scraper_contracts import (
     PaginationStats,
     ScrapedItem,
 )
+from core.protocols import ProgressEvent, SearchHit, SearchQuery, noop_event_sink
 
 
 class ScraperContractTests(unittest.TestCase):
+    def test_extension_protocol_payloads_are_typed(self):
+        event = ProgressEvent(type="fetch.started", message="start", phase="fetch", current=1, total=2)
+        query = SearchQuery(keyword="Transformer", limit=5, item_type="article")
+        hit = SearchHit(
+            content_key="article:1",
+            item_id="1",
+            item_type="article",
+            title="Title",
+            author="Author",
+            url="https://zhuanlan.zhihu.com/p/1",
+            created_at="2026-04-04",
+        )
+
+        noop_event_sink(event)
+
+        self.assertEqual(event.type, "fetch.started")
+        self.assertEqual(query.keyword, "Transformer")
+        self.assertEqual(hit.content_key, "article:1")
 
     def test_page_fetch_result_keeps_legacy_answer_shape(self):
         result = PageFetchResult(

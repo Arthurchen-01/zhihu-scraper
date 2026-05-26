@@ -77,4 +77,4 @@ warn_return_any = true
 warn_unused_configs = true
 
 [tool.setuptools.packages.find]
-include = ["cli*", "core*"]
+include = ["cli*", "core*", "zhihu_scraper*"]

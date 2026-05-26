@@ -29,10 +29,10 @@ jobs:
         run: pip install -e .
 
       - name: Compile Python modules
-        run: python -m compileall cli core
+        run: python -m compileall cli core zhihu_scraper
 
       - name: Run unit tests (unittest)
-        run: python -m unittest -q tests.test_cli_compat tests.test_docs_sync tests.test_command_surface tests.test_tui_rebuild tests.test_save_pipeline tests.test_save_contracts tests.test_config_view tests.test_scraper_payloads tests.test_scraper_contracts tests.test_config_schema tests.test_config_runtime tests.test_install_contract tests.test_workflow_service tests.test_db_contract
+        run: python -m unittest -q tests.test_cli_compat tests.test_docs_sync tests.test_command_surface tests.test_tui_rebuild tests.test_save_pipeline tests.test_save_contracts tests.test_config_view tests.test_scraper_payloads tests.test_scraper_contracts tests.test_config_schema tests.test_config_runtime tests.test_install_contract tests.test_workflow_service tests.test_db_contract tests.test_public_facade
 
       - name: CLI smoke check
         run: |
@@ -44,4 +44,3 @@ jobs:
           python cli/app.py interactive --help
           python cli/app.py config --help
           python cli/app.py check --help
-
