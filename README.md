@@ -29,7 +29,7 @@ Zhihu-Scraper 是一个**本地优先**的抓取归档工具。输入一条链�
 
 ## 🚀 快速开始
 
-一键克隆并完成安装、配置和拉起：
+先克隆仓库，并用一键脚本完成安装与本地运行目录初始化：
 
 ```bash
 # 1. 克隆并进入目录
@@ -39,13 +39,49 @@ git clone https://github.com/yuchenzhu-research/zhihu-scraper.git && cd zhihu-sc
 ./install.sh
 ```
 
-现在，开始你的本地归档：
+### macOS / Linux
 
 ```bash
-# 启动沉浸式全屏 TUI 工作台（推荐）
-./zhihu
+# macOS 默认常用 python3；本项目要求 Python 3.14+
+python3 --version
 
-# 或者直接命令行单链抓取
+# 安装脚本会创建 .venv，并尝试安装全局 zhihu 命令
+./install.sh
+
+# 当前终端 PATH 未刷新时，先用仓库内兜底入口
+./zhihu check
+./zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
+```
+
+如果重新打开终端后 `zhihu` 已可用，也可以直接运行：
+
+```bash
+zhihu
+zhihu check
+zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
+```
+
+### Windows
+
+Windows 用户建议使用 PowerShell，并优先通过 WSL 或等价的 Python 3.14+ 环境运行：
+
+```powershell
+py -3.14 --version
+py -3.14 -m venv .venv
+.\.venv\Scripts\python -m pip install -e ".[full]"
+.\.venv\Scripts\python -m playwright install chromium
+New-Item -ItemType Directory -Force .local | Out-Null
+if (!(Test-Path .local\cookies.json)) { Copy-Item cookies.example.json .local\cookies.json }
+.\.venv\Scripts\python cli\app.py check
+.\.venv\Scripts\python cli\app.py fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
+```
+
+### 配置 Cookie
+
+安装脚本会从 `cookies.example.json` 创建 `.local/cookies.json`。如需登录态抓取，请在浏览器登录知乎后，把自己的 `z_c0` 和 `d_c0` 填入 `.local/cookies.json`，再运行：
+
+```bash
+./zhihu check
 ./zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
 ```
 
@@ -73,11 +109,11 @@ zhihu check                   # 检查本地运行环境
 
 ## 📚 详细文档与配置
 
-想要了解如何配置 Cookie、编写查询或了解每个命令的用法？
+想要了解每个命令的用法？
 
 - 终端帮助：直接运行 `zhihu --help` 或 `zhihu [command] --help`
-- 🤖 **[Agent 执行边界](AGENTS.md)**：适合参与共建的代码助手与协作者阅读的架构守则。
-- ⚖️ **[最高治理宪法](CONSTITUTION.md)**：项目最高架构守卫与质量门禁。
+- 配置检查：运行 `zhihu check`，查看 Cookie、配置文件和浏览器依赖状态
+- 维护者与代码代理请先阅读 [CONSTITUTION.md](CONSTITUTION.md) 与 [AGENTS.md](AGENTS.md)
 
 <br>
 

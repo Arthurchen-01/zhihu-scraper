@@ -14,6 +14,7 @@ from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 from pathlib import Path
+import sys
 
 from .structlog_compat import BoundLoggerBase, structlog
 
@@ -115,6 +116,7 @@ class AntiDetectionError(ZhihuScraperError):
         self,
         message: str = "Triggered Zhihu anti-crawling mechanism / 触发知乎反爬机制",
         detection_type: Optional[str] = None,
+        recoverable_hint: Optional[str] = None,
         **kwargs
     ):
         context = {}
@@ -126,7 +128,8 @@ class AntiDetectionError(ZhihuScraperError):
             severity=ErrorSeverity.FATAL,
             category=ErrorCategory.ANTI_DETECTION,
             context=context,
-            recoverable_hint="Please change IP or wait before retrying / 请更换 IP 或等待一段时间后重试",
+            recoverable_hint=recoverable_hint
+            or "Please change IP or wait before retrying / 请更换 IP 或等待一段时间后重试",
             **kwargs
         )
 
@@ -187,7 +190,9 @@ class ContentNotFoundError(ZhihuScraperError):
 
         display_type = type_names.get(content_type, content_type)
         super().__init__(
-            message=f"{display_type} does not exist or has been deleted / {display_type}不存在或已被删除",
+            message=message
+            if message != "Content does not exist / 内容不存在"
+            else f"{display_type} does not exist or has been deleted / {display_type}不存在或已被删除",
             severity=ErrorSeverity.RECOVERABLE,
             category=ErrorCategory.CONTENT,
             context=context,
@@ -204,6 +209,7 @@ class ConfigError(ZhihuScraperError):
         self,
         message: str = "Configuration error / 配置错误",
         config_key: Optional[str] = None,
+        recoverable_hint: Optional[str] = None,
         **kwargs
     ):
         context = {}
@@ -215,7 +221,8 @@ class ConfigError(ZhihuScraperError):
             severity=ErrorSeverity.FATAL,
             category=ErrorCategory.CONFIG,
             context=context,
-            recoverable_hint="Please check configuration file and fix errors / 请检查配置文件并修正错误",
+            recoverable_hint=recoverable_hint
+            or "Please check configuration file and fix errors / 请检查配置文件并修正错误",
             **kwargs
         )
 
@@ -293,20 +300,38 @@ def classify_error(error: Exception) -> ZhihuScraperError:
         return NetworkError(message=str(error), timeout="timeout" in error_msg)
 
     # Anti-crawling related / 反爬相关
-    if any(kw in error_msg for kw in ["403", "40362", "反爬", "verify", "captcha", "ant"]):
-        if "403" in error_msg or "40362" in error_msg:
+    if any(kw in error_msg for kw in ["401", "403", "40362", "429", "反爬", "拦截", "verify", "captcha", "ant"]):
+        if any(code in error_msg for code in ["401", "403", "40362", "429"]):
             return AntiDetectionError(
-                message="Triggered Zhihu anti-crawling mechanism (403) / 触发知乎反爬机制 (403)",
-                detection_type="rate_limit"
+                message=str(error),
+                detection_type="rate_limit",
+                recoverable_hint=(
+                    "请先运行 zhihu check；如果 Cookie 缺失或过期，请刷新 z_c0 / d_c0 后再重试。"
+                ),
             )
         return AntiDetectionError(message="Triggered anti-crawling detection / 触发反爬检测")
 
     # Content not exists / 内容不存在
     if any(kw in error_msg for kw in ["不存在", "已删除", "404", "not found", "gone"]):
-        return ContentNotFoundError(message=str(error))
+        content_type = "unknown"
+        if "回答" in error_msg or "answer" in error_msg:
+            content_type = "answer"
+        elif "问题" in error_msg or "question" in error_msg:
+            content_type = "question"
+        elif "专栏" in error_msg or "article" in error_msg:
+            content_type = "article"
+        return ContentNotFoundError(message=str(error), content_type=content_type)
 
     # Config error / 配置错误
-    if any(kw in error_msg for kw in ["config", "yaml", "cookie"]):
+    if any(kw in error_msg for kw in ["z_c0", "d_c0", "cookie", "登录态", "unauthorized", "login"]):
+        return ConfigError(
+            message=str(error),
+            recoverable_hint=(
+                "请刷新知乎登录态，并把新的 z_c0 / d_c0 填入 .local/cookies.json 后运行 zhihu check。"
+            ),
+        )
+
+    if any(kw in error_msg for kw in ["config", "yaml"]):
         return ConfigError(message=str(error))
 
     # If known exception, return directly
@@ -351,4 +376,16 @@ def handle_error(error: Exception, logger: Optional[BoundLoggerBase] = None) -> 
     if scraper_error.recoverable_hint:
         logger.info("hint", message=scraper_error.recoverable_hint)
 
+    _print_user_error_summary(scraper_error)
     return scraper_error
+
+
+def _print_user_error_summary(error: ZhihuScraperError) -> None:
+    """
+    Emit a concise terminal-visible reason in addition to structured logs.
+    除结构化日志外，额外输出一条用户可读的终端失败原因。
+    """
+    message = error.message.strip() or "Unknown error / 未知错误"
+    print(f"❌ Failed / 失败: {message}", file=sys.stderr)
+    if error.recoverable_hint:
+        print(f"💡 Hint / 提示: {error.recoverable_hint}", file=sys.stderr)

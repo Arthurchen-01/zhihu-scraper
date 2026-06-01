@@ -27,6 +27,45 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(result.failed_count, 1)
         self.assertTrue(result.has_failures)
 
+    def test_print_failed_url_reasons_reports_each_failure(self):
+        from cli.app import print_failed_url_reasons
+
+        captured = []
+        result = BatchWorkflowResult(
+            items=(
+                UrlTaskResult(url="ok", success=True),
+                UrlTaskResult(url="bad", success=False, error="HTTP 403"),
+            )
+        )
+
+        with unittest.mock.patch("cli.app.rprint", side_effect=captured.append):
+            print_failed_url_reasons(result)
+
+        output = "\n".join(captured)
+        self.assertIn("bad", output)
+        self.assertIn("HTTP 403", output)
+        self.assertNotIn("ok", output)
+
+    def test_cookie_diagnostic_message_reports_partial_cookie(self):
+        from core.api_client import ZhihuAPIClient
+
+        client = object.__new__(ZhihuAPIClient)
+        client._cookies_dict = {"z_c0": "token"}
+
+        warning = client.cookie_diagnostic_message()
+
+        self.assertIsNotNone(warning)
+        assert warning is not None
+        self.assertIn("d_c0", warning)
+
+    def test_http_status_failure_descriptions_include_cookie_and_content_hints(self):
+        from core.api_client import ZhihuAPIClient
+
+        client = object.__new__(ZhihuAPIClient)
+
+        self.assertIn("z_c0 / d_c0", client._describe_http_status_failure(403, route="API"))
+        self.assertIn("不存在", client._describe_http_status_failure(404, route="API"))
+
 
 class WorkflowServiceTests(unittest.IsolatedAsyncioTestCase):
     def _make_service(self, **kwargs):

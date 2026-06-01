@@ -39,7 +39,7 @@
 
 1. 保持现有功能可用
 2. 减少结构混乱与文档漂移
-3. 在不破坏兼容性的前提下推进重构
+3. 在不破坏兼容性的前提下做小范围边界清理与明确 bug 修复
 
 `v3.0.1-final` 之后，默认不再主动推进大重构或扩展抓取面。后续任务优先处理安装、文档、最小验证、本地数据可读性和现有命令面的明确 bug。
 
@@ -95,6 +95,9 @@
 - 命令面 smoke：
   - `python cli/app.py --help`
   - `python cli/app.py fetch --help`
+  - `python cli/app.py creator --help`
+  - `python cli/app.py monitor --help`
+  - `python cli/app.py query --help`
   - `python cli/app.py interactive --help`
   - `python cli/app.py config --help`
   - `python cli/app.py check --help`

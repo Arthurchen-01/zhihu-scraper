@@ -8,6 +8,7 @@ import typer
 import cli.app as cli_app
 from cli.app import _get_questionary
 from cli.healthcheck import collect_environment_checks, summarize_playwright_failure
+from core.errors import ConfigError, AntiDetectionError, classify_error
 from core.save_pipeline import build_output_folder_name
 from core.config_schema import Config
 from core.cookie_manager import RuntimePathResolution
@@ -66,6 +67,38 @@ class LauncherDependencyTests(unittest.TestCase):
                     with self.assertRaises(typer.Exit):
                         _get_questionary()
                     self.assertGreaterEqual(mocked_print.call_count, 1)
+
+
+class UserVisibleErrorTests(unittest.TestCase):
+    def test_config_error_accepts_custom_cookie_hint(self):
+        error = ConfigError(
+            "Cookie expired",
+            recoverable_hint="刷新 z_c0 / d_c0 后重试",
+        )
+
+        self.assertIn("z_c0", error.recoverable_hint)
+        self.assertIn("d_c0", error.recoverable_hint)
+
+    def test_http_block_errors_include_cookie_recovery_hint(self):
+        error = classify_error(
+            RuntimeError(
+                "请求遭到 HTTP 403 拦截，重试 3 次后仍失败。"
+                "请检查 .local/cookies.json 中的 z_c0 / d_c0 是否缺失或过期。"
+            )
+        )
+
+        self.assertIsInstance(error, AntiDetectionError)
+        self.assertIsNotNone(error.recoverable_hint)
+        assert error.recoverable_hint is not None
+        self.assertIn("zhihu check", error.recoverable_hint)
+
+    def test_content_not_found_keeps_original_http_reason(self):
+        error = classify_error(
+            RuntimeError("回答 1 API 抓取失败: API 请求返回 HTTP 404，内容可能不存在。")
+        )
+
+        self.assertIn("HTTP 404", error.message)
+        self.assertIn("回答 1", error.message)
 
 
 class HealthcheckSummaryTests(unittest.TestCase):

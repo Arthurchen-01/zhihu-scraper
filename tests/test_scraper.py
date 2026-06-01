@@ -90,6 +90,44 @@ class TestZhihuDownloader:
         downloader = ZhihuDownloader("https://www.zhihu.com/question/123")
         assert downloader.has_valid_cookies() is False
 
+    @patch("core.scraper.get_humanizer")
+    @patch("core.scraper.get_logger")
+    def test_article_failure_preserves_protocol_and_fallback_reasons(self, mock_log, mock_humanizer):
+        """Column failures preserve both protocol and browser fallback reasons."""
+        from core.scraper import ZhihuDownloader
+
+        class FakeApiClient:
+            _cookies_dict = {"z_c0": "token", "d_c0": "d"}
+
+            def get_article(self, _article_id):
+                raise RuntimeError("专栏 HTML 请求遭到 HTTP 403 拦截")
+
+        class FakeHumanizer:
+            class Config:
+                enabled = False
+
+            config = Config()
+
+            async def page_load(self):
+                return None
+
+        async def fake_fallback(*_args, **_kwargs):
+            raise RuntimeError("Cookie 已失效，专栏强制重定向到了登录页。")
+
+        mock_humanizer.return_value = FakeHumanizer()
+        with patch("core.scraper.ZhihuAPIClient", return_value=FakeApiClient()):
+            downloader = ZhihuDownloader("https://zhuanlan.zhihu.com/p/123456")
+
+        with patch("core.browser_fallback.extract_zhuanlan_html", side_effect=fake_fallback):
+            with pytest.raises(Exception) as exc:
+                import asyncio
+
+                asyncio.run(downloader.fetch_result())
+
+        message = str(exc.value)
+        assert "HTTP 403" in message
+        assert "Cookie 已失效" in message
+
 
 class TestScraperUrlPatterns:
     """Test various URL patterns"""

@@ -29,26 +29,60 @@ It's the ultimate companion for command-line workflows—reject cloud lock-ins a
 
 ## 🚀 Quick Start
 
-Just clone the repository, run the automatic environment script, and type `zhihu`. That’s it.
+Clone the repository, then run the installer to create the virtual environment and local runtime directory.
 
 ```bash
 git clone https://github.com/yuchenzhu-research/zhihu-scraper.git
 cd zhihu-scraper
 
-# Creates venv and installs dependencies automatically
+# Creates .venv and installs dependencies automatically
 ./install.sh
 ```
 
-Now, try archiving your first answer:
+### macOS / Linux
 
 ```bash
-zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
+# macOS commonly uses python3, not python. This project requires Python 3.14+.
+python3 --version
+
+# The installer creates .venv and tries to install a global zhihu command.
+./install.sh
+
+# If the current shell has not picked up PATH yet, use the repo launcher.
+./zhihu check
+./zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
 ```
 
-Or open the immersive full-screen workbench and enjoy an interactive archiving experience:
+After opening a new shell, `zhihu` may be available globally:
 
 ```bash
 zhihu
+zhihu check
+zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
+```
+
+### Windows
+
+On Windows, use PowerShell and prefer WSL or an equivalent Python 3.14+ environment:
+
+```powershell
+py -3.14 --version
+py -3.14 -m venv .venv
+.\.venv\Scripts\python -m pip install -e ".[full]"
+.\.venv\Scripts\python -m playwright install chromium
+New-Item -ItemType Directory -Force .local | Out-Null
+if (!(Test-Path .local\cookies.json)) { Copy-Item cookies.example.json .local\cookies.json }
+.\.venv\Scripts\python cli\app.py check
+.\.venv\Scripts\python cli\app.py fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
+```
+
+### Configure Cookies
+
+The installer creates `.local/cookies.json` from `cookies.example.json`. For authenticated scraping, log in to Zhihu in your browser, copy your own `z_c0` and `d_c0` values into `.local/cookies.json`, then run:
+
+```bash
+./zhihu check
+./zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
 ```
 
 ## ✨ Core Features
@@ -75,11 +109,11 @@ zhihu check                   # Check the local runtime environment
 
 ## 📚 Documentation & Configuration
 
-Want to know how to configure Cookies, write queries, or understand CLI commands?
+Want to understand the available CLI commands?
 
 - Terminal Help: Run `zhihu --help` or `zhihu [command] --help`
-- 🤖 **[Agent Boundaries](AGENTS.md)**: Architectural ground rules designed for AI coding assistants and code contributors.
-- ⚖️ **[Constitution](CONSTITUTION.md)**: Project highest governance rules, architecture guards, and quality gates.
+- Config check: Run `zhihu check` to inspect Cookie, config file, and browser dependency status.
+- Maintainers and coding agents should read [CONSTITUTION.md](CONSTITUTION.md) and [AGENTS.md](AGENTS.md) first.
 
 <br>
 
