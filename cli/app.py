@@ -174,6 +174,19 @@ def print_creator_limit_warning(answers: int, articles: int) -> None:
         rprint("   Requests above 20 items use paginated API access with built-in random delays.")
 
 
+def print_failed_url_reasons(results) -> None:
+    """
+    Print per-URL failure reasons for batch-style commands.
+    为批量命令打印每个失败 URL 的简短原因。
+    """
+    for item in results.items:
+        if item.success:
+            continue
+        reason = item.error or "Unknown failure / 未知失败"
+        rprint(f"[red]❌ Failed / 失败:[/red] {item.url}")
+        rprint(f"   [dim]{reason}[/dim]")
+
+
 def _build_launcher_runtime() -> LauncherRuntime:
     return LauncherRuntime(
         console=console,
@@ -249,6 +262,8 @@ def fetch(
         temp_client = ZhihuAPIClient()
         if not temp_client._cookies_dict and cfg.zhihu.cookies_required:
             rprint("[yellow]⚠️  No valid Cookie detected, will use guest mode / 未检测到有效 Cookie，将使用游客模式[/yellow]")
+        elif diagnostic := temp_client.cookie_diagnostic_message():
+            rprint(f"[yellow]⚠️  {diagnostic}[/yellow]")
 
         if limit:
             for target_url in urls:
@@ -272,6 +287,7 @@ def fetch(
             failed = results.failed_count
             rprint(f"\n[bold]📊 Completed / 完成: {success} success / 成功, {failed} failed / 失败[/bold]")
             if failed > 0:
+                print_failed_url_reasons(results)
                 raise SystemExit(1)
         else:
             # Single URL mode
@@ -329,6 +345,8 @@ def creator(
         temp_client = ZhihuAPIClient()
         if not temp_client._cookies_dict and cfg.zhihu.cookies_required:
             rprint("[yellow]⚠️  No valid Cookie detected, creator mode may be incomplete / 未检测到有效 Cookie，作者模式可能不完整[/yellow]")
+        elif diagnostic := temp_client.cookie_diagnostic_message():
+            rprint(f"[yellow]⚠️  {diagnostic}[/yellow]")
 
         print_creator_limit_warning(answers, articles)
 
@@ -416,6 +434,8 @@ def monitor(
     failed = result.batch.failed_count
 
     rprint(f"\n[bold]📊 Monitor download completed / 监控下载完成: {success} success / 成功, {failed} failed / 失败[/bold]")
+    if failed > 0:
+        print_failed_url_reasons(result.batch)
 
     if result.pointer_advanced and result.next_pointer:
         rprint(f"[cyan]✅ Saved latest progress pointer / 已保存最新进度指针: {result.next_pointer}[/cyan]")

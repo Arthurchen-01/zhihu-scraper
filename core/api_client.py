@@ -77,6 +77,24 @@ class ZhihuAPIClient:
             for k, v in self._cookies_dict.items():
                 self.session.cookies.set(k, v, domain=".zhihu.com")
 
+    def cookie_diagnostic_message(self) -> Optional[str]:
+        """
+        Return a user-facing warning when the active Cookie is only partially configured.
+        当当前 Cookie 只配置了一部分时，返回面向用户的提示。
+        """
+        if not self._cookies_dict:
+            return None
+
+        missing = [name for name in ("z_c0", "d_c0") if name not in self._cookies_dict]
+        if not missing:
+            return None
+
+        missing_text = ", ".join(missing)
+        return (
+            f"Cookie 字段不完整，缺少 {missing_text}；请在 .local/cookies.json 中同时填入 z_c0 / d_c0，"
+            "否则登录态或 API 签名可能不稳定。"
+        )
+
     def _get_signature(self, api_path: str) -> Dict[str, str]:
         """
         Generate x-zse-96 signature request headers for specific API path
@@ -108,6 +126,20 @@ class ZhihuAPIClient:
             "Sec-Fetch-Site": "same-origin",
             "Upgrade-Insecure-Requests": "1",
         }
+
+    def _describe_http_status_failure(self, status_code: int, *, route: str) -> str:
+        """
+        Map HTTP status codes to user-facing failure reasons.
+        将 HTTP 状态码映射为用户可理解的失败原因。
+        """
+        if status_code in (401, 403, 429):
+            return (
+                f"{route} 请求遭到 HTTP {status_code} 拦截，可能是 Cookie 缺失、z_c0 / d_c0 过期、"
+                "权限不足或触发知乎风控。"
+            )
+        if status_code == 404:
+            return f"{route} 请求返回 HTTP 404，内容可能不存在、已删除、私密，或当前登录态无权访问。"
+        return f"{route} 请求返回 HTTP {status_code}，未能获取知乎数据。"
 
     def _warmup_article_origin(self) -> None:
         """
@@ -182,7 +214,7 @@ class ZhihuAPIClient:
                 response = self.session.get(url, headers=req_headers, timeout=15.0)
                 if response.status_code == 200:
                     return response.json()
-                elif response.status_code in (403, 429):
+                elif response.status_code in (401, 403, 429):
                     self.log.error(
                         "api_ratelimit_or_forbidden",
                         status=response.status_code,
@@ -197,10 +229,24 @@ class ZhihuAPIClient:
                         
                         continue
                     else:
-                        raise Exception(f"请求遭到 HTTP {response.status_code} 拦截，重试 {max_attempts} 次后仍失败。")
+                        raise Exception(
+                            f"{self._describe_http_status_failure(response.status_code, route='API')} "
+                            f"重试 {max_attempts} 次后仍失败。"
+                        )
+                elif response.status_code == 404:
+                    self.log.error(
+                        "api_content_not_found",
+                        status=response.status_code,
+                        response_preview=summarize_text_for_logs(response.text, kind="response"),
+                    )
+                    raise Exception(self._describe_http_status_failure(response.status_code, route="API"))
                 else:
-                    self.log.error("api_error", status=response.status_code)
-                    return None
+                    self.log.error(
+                        "api_error",
+                        status=response.status_code,
+                        response_preview=summarize_text_for_logs(response.text, kind="response"),
+                    )
+                    raise Exception(self._describe_http_status_failure(response.status_code, route="API"))
             except Exception as e:
                 self.log.error("api_fetch_failed", error=str(e), attempt=attempt)
                 if attempt == max_attempts:
@@ -288,7 +334,7 @@ class ZhihuAPIClient:
                         response_preview=summarize_text_for_logs(response.text, kind="html"),
                     )
                 else:
-                    last_error = f"HTML 请求返回 HTTP {response.status_code}"
+                    last_error = self._describe_http_status_failure(response.status_code, route="专栏 HTML")
                     log_event = "article_forbidden" if response.status_code == 403 else "article_html_unexpected_status"
                     self.log.error(
                         log_event,

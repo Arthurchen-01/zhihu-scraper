@@ -154,9 +154,9 @@ class ZhihuDownloader:
         try:
             print("📰 专栏阶段 1/3: 协议层 HTML 直取")
             data = self.api_client.get_article(article_id)
-        except Exception as e:
-            self.log.warning("article_protocol_failed", article_id=article_id, error=str(e))
-            print(f"⚠️ 协议路径未能提取专栏 ({e})")
+        except Exception as protocol_error:
+            self.log.warning("article_protocol_failed", article_id=article_id, error=str(protocol_error))
+            print(f"⚠️ 协议路径未能提取专栏 ({protocol_error})")
             print("🔁 已尝试 HTML 直取，并使用主 Cookie 重试一次")
             print("🔄 专栏阶段 3/3: 正在启动 Playwright 无头浏览器智能降级回退机制...")
 
@@ -166,10 +166,19 @@ class ZhihuDownloader:
 
             # 使用现有 session 的 cookies
             session_cookies = cookie_manager.get_current_session()
-            data = await extract_zhuanlan_html(article_id, session_cookies, headless=headless)
+            try:
+                data = await extract_zhuanlan_html(article_id, session_cookies, headless=headless)
+            except Exception as fallback_error:
+                raise Exception(
+                    f"专栏文章 {article_id} 协议抓取失败: {protocol_error}; "
+                    f"浏览器回退失败: {fallback_error}"
+                ) from fallback_error
 
             if not data:
-                raise Exception(f"专栏文章 {article_id} API 及降级抓取均失败，请手工检查 URL 或重新分配 Cookie。")
+                raise Exception(
+                    f"专栏文章 {article_id} 协议抓取失败: {protocol_error}; "
+                    "浏览器回退未返回内容，请手工检查 URL 或刷新 z_c0 / d_c0。"
+                )
 
         return build_article_item(url=self.url, article_id=article_id, data=data)
 

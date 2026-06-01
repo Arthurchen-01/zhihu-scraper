@@ -227,7 +227,7 @@ async def extract_zhuanlan_html(
                 page_preview=summarize_text_for_logs(html_dump, kind="html"),
             )
             print("⚠️ 页面调试内容已脱敏，仅记录摘要。")
-            return None
+            raise
         finally:
             if browser:
                 await browser.close()
