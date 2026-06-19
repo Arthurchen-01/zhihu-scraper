@@ -1,7 +1,10 @@
 <div align="center">
 
+<img src="https://socialify.git.ci/yuchenzhu-research/zhihu-scraper/image?description=1&font=Inter&language=1&name=1&owner=1&pattern=Solid&stargazers=1&theme=Auto" alt="Zhihu-Scraper project card" width="720" />
+
 # Zhihu-Scraper
-**Local-first Zhihu Archiving, More Elegant Than Ever**
+
+**Turn Zhihu links into a local knowledge archive you actually own**
 
 <p>
   <img src="https://github.com/yuchenzhu-research/zhihu-scraper/actions/workflows/ci.yml/badge.svg" alt="CI Badge" />
@@ -15,53 +18,37 @@
 
 </div>
 
-Zhihu-Scraper is a **local-first** crawling and archiving tool. Paste a link, and it automatically extracts the main content, metadata, downloads images, and natively converts everything into high-quality Markdown and an SQLite index database for long-term storage.
+Zhihu-Scraper is a **local-first** Zhihu archiving tool. Paste a link and it saves content, metadata, and images as local Markdown files, while also writing an SQLite index for offline reading, search, backup, and migration.
 
-It's the ultimate companion for command-line workflows—reject cloud lock-ins and keep complete ownership of your data locally.
-
-> [!WARNING]  
+> [!WARNING]
 > This project is strictly for learning, research, and personal archiving. Please comply with Terms of Service, crawler guidelines, and local laws.
 
 > [!NOTE]
 > This project is now closed at `v3.0.1-final`. Future compatibility with Zhihu API, page structure, or anti-bot changes is not guaranteed; exported Markdown, images, and SQLite data are the long-term deliverables.
 
-<br>
+## What You Get
 
-## 🚀 Quick Start
+| Output | Why it matters | Default location |
+| --- | --- | --- |
+| Markdown | Read, edit, and sync like normal notes | `data/entries/` |
+| Images | Offline original images referenced by Markdown | Each entry's `images/` |
+| SQLite | Local search, deduplication, and analysis | `data/zhihu.db` |
 
-Clone the repository, then run the installer to create the virtual environment and local runtime directory.
+## Start in Three Minutes
+
+### 1. Install
 
 ```bash
 git clone https://github.com/yuchenzhu-research/zhihu-scraper.git
 cd zhihu-scraper
-
-# Creates .venv and installs dependencies automatically
 ./install.sh
 ```
 
-### macOS / Linux
+macOS / Linux users should check Python first:
 
 ```bash
-# macOS commonly uses python3, not python. This project requires Python 3.14+.
-python3 --version
-
-# The installer creates .venv and tries to install a global zhihu command.
-./install.sh
-
-# If the current shell has not picked up PATH yet, use the repo launcher.
-./zhihu check
-./zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
+python3 --version  # requires Python 3.14+
 ```
-
-After opening a new shell, `zhihu` may be available globally:
-
-```bash
-zhihu
-zhihu check
-zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
-```
-
-### Windows
 
 On Windows, use PowerShell and prefer WSL or an equivalent Python 3.14+ environment:
 
@@ -73,50 +60,95 @@ py -3.14 -m venv .venv
 New-Item -ItemType Directory -Force .local | Out-Null
 if (!(Test-Path .local\cookies.json)) { Copy-Item cookies.example.json .local\cookies.json }
 .\.venv\Scripts\python cli\app.py check
-.\.venv\Scripts\python cli\app.py fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
 ```
 
-### Configure Cookies
-
-The installer creates `.local/cookies.json` from `cookies.example.json`. For authenticated scraping, log in to Zhihu in your browser, copy your own `z_c0` and `d_c0` values into `.local/cookies.json`, then run:
+### 2. Check Runtime
 
 ```bash
 ./zhihu check
+```
+
+After opening a new shell, the global `zhihu` command may also be available:
+
+```bash
+zhihu check
+```
+
+### 3. Archive One Link
+
+```bash
 ./zhihu fetch "https://www.zhihu.com/question/28696373/answer/2835848212"
 ```
 
-## ✨ Core Features
+For authenticated content, log in to Zhihu in your browser, copy your own `z_c0` and `d_c0` values into `.local/cookies.json`, then run `zhihu check`.
 
-- **Local Archiving Paths**: Supports individual answers, question pages (Top-N extraction), column articles, and creator profiles on the currently validated paths.
-- **Local Supremacy**: Outputs directly to `Markdown` files, offline image directories (Images), and `SQLite` metadata.
-- **Protocol First**: Uses protocol-first API / HTML paths, with browser fallback available for complex column pages.
-- **Incremental Monitoring**: The `monitor` command can check collection updates with local state.
-- **Textual TUI**: A full-screen workbench for queues, recent results, retry flow, and language switching.
+## Daily Use
 
-## 🧭 Command Quick Reference
+The easiest entry for beginners is the Textual TUI full-screen workbench:
 
 ```bash
-zhihu                         # Open the Textual TUI full-screen workbench
+zhihu
+zhihu interactive
+```
+
+You can also use direct commands:
+
+```bash
 zhihu fetch URL               # Archive one link
 zhihu fetch --file urls.txt   # Batch archive links from a file
 zhihu creator PEOPLE_URL      # Archive creator profile content
 zhihu monitor COLLECTION_ID   # Incrementally monitor a collection
 zhihu query KEYWORD           # Search the local SQLite archive
-zhihu interactive             # Explicitly open the interactive workbench
 zhihu config                  # Show current configuration
 zhihu check                   # Check the local runtime environment
 ```
 
-## 📚 Documentation & Configuration
+## Core Features
 
-Want to understand the available CLI commands?
+- **Protocol-first**: Uses a protocol-first API / HTML path first, with browser fallback for complex column pages.
+- **Local-first**: Content, images, and indexes stay in local folders instead of a cloud account.
+- **Readable failures**: HTTP blocks, missing cookies, and deleted/private content are surfaced with concrete hints.
+- **Callable API**: The core archiving workflow is available as a public Python API for web, mobile, desktop, or automation layers.
 
-- Terminal Help: Run `zhihu --help` or `zhihu [command] --help`
-- Config check: Run `zhihu check` to inspect Cookie, config file, and browser dependency status.
-- Maintainers and coding agents should read [CONSTITUTION.md](CONSTITUTION.md) and [AGENTS.md](AGENTS.md) first.
+## Developer API
 
-<br>
+```python
+from zhihu_scraper import ArchiveOptions, archive_url_sync
+
+result = archive_url_sync(
+    "https://www.zhihu.com/question/28696373/answer/2835848212",
+    ArchiveOptions(output_dir="data", download_images=True),
+)
+
+print(result.success)
+```
+
+Async services can call the same logic directly:
+
+```python
+from zhihu_scraper import ArchiveOptions, archive_url
+
+result = await archive_url(
+    "https://www.zhihu.com/question/28696373",
+    ArchiveOptions(question_limit=3),
+)
+```
+
+Multi-platform guidance:
+
+| Platform | Recommended integration |
+| --- | --- |
+| Web backend | Call `await archive_url(...)` from FastAPI / Django; keep the frontend display-only |
+| Desktop app | Use Electron / Tauri / PySide with `archive_url_sync(...)` |
+| Mobile app | Call your own backend API; reuse this package on the backend and keep cookies out of the app bundle |
+| Automation | Schedule `archive_urls_sync(...)` or `monitor_collection_sync(...)` |
+
+## More Entry Points
+
+- Terminal help: `zhihu --help` or `zhihu [command] --help`
+- Runtime check: `zhihu check`
+- Maintainers and coding agents: read [CONSTITUTION.md](CONSTITUTION.md) and [AGENTS.md](AGENTS.md) first
 
 <div align="center">
-  <sub>Built with ❤️ by Yuchen Zhu Research.</sub>
+  <sub>Local-first archive tool by Yuchen Zhu Research.</sub>
 </div>
