@@ -1,6 +1,14 @@
 """Public data contracts re-exported from existing internal modules."""
 
-from cli.contracts import CreatorSaveResult, SaveRunResult, SavedContentRecord
+from cli.contracts import (
+    BatchWorkflowResult,
+    CreatorSaveResult,
+    CreatorWorkflowResult,
+    MonitorWorkflowResult,
+    SaveRunResult,
+    SavedContentRecord,
+    UrlTaskResult,
+)
 from core.scraper_contracts import (
     CreatorFetchResult,
     CreatorProfileSummary,
@@ -11,13 +19,17 @@ from core.scraper_contracts import (
 )
 
 __all__ = [
+    "BatchWorkflowResult",
     "CreatorFetchResult",
     "CreatorProfileSummary",
     "CreatorSaveResult",
+    "CreatorWorkflowResult",
+    "MonitorWorkflowResult",
     "PageFetchResult",
     "PaginationStats",
     "SaveRunResult",
     "SavedContentRecord",
     "ScrapedItem",
+    "UrlTaskResult",
     "to_scraped_items",
 ]
