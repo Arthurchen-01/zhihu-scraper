@@ -15,8 +15,11 @@ api_client.py — 纯协议层知乎 API 客户端 (v3.0 核弹)
 import json
 import re
 import urllib.parse
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional, Dict
+from random import uniform
 
 from .signature import get_sign
 from curl_cffi import requests
@@ -139,7 +142,56 @@ class ZhihuAPIClient:
             )
         if status_code == 404:
             return f"{route} 请求返回 HTTP 404，内容可能不存在、已删除、私密，或当前登录态无权访问。"
+        if status_code in (408, 500, 502, 503, 504):
+            return f"{route} 请求返回 HTTP {status_code}，可能是临时网络波动或知乎服务端暂时不可用。"
         return f"{route} 请求返回 HTTP {status_code}，未能获取知乎数据。"
+
+    @staticmethod
+    def _should_retry_status(status_code: int) -> bool:
+        """
+        Return whether an HTTP status is worth retrying.
+        判断 HTTP 状态码是否适合重试。
+        """
+        return status_code in {401, 403, 408, 425, 429, 500, 502, 503, 504}
+
+    @staticmethod
+    def _retry_after_delay(response) -> Optional[float]:
+        """
+        Parse Retry-After from seconds or HTTP-date form.
+        解析 Retry-After 秒数或 HTTP-date 形式。
+        """
+        raw_value = response.headers.get("Retry-After") if response is not None else None
+        if not raw_value:
+            return None
+
+        raw_text = str(raw_value).strip()
+        try:
+            return max(0.0, float(raw_text))
+        except ValueError:
+            pass
+
+        try:
+            retry_at = parsedate_to_datetime(raw_text)
+            now = datetime.now(retry_at.tzinfo) if retry_at.tzinfo else datetime.now()
+            return max(0.0, (retry_at - now).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    def _calculate_retry_delay(self, attempt: int, retry_config, *, response=None) -> float:
+        """
+        Calculate retry delay from Retry-After or configured exponential backoff.
+        根据 Retry-After 或配置的指数退避计算等待时间。
+        """
+        retry_after = self._retry_after_delay(response)
+        if retry_after is not None:
+            return min(retry_after, retry_config.max_delay)
+
+        delay = retry_config.base_delay * (retry_config.exponential_base ** (attempt - 1))
+        delay = min(delay, retry_config.max_delay)
+        if retry_config.jitter and delay > 0:
+            delay = uniform(delay * 0.5, delay * 1.5)
+            delay = min(max(0.0, delay), retry_config.max_delay)
+        return delay
 
     def _warmup_article_origin(self) -> None:
         """
@@ -195,8 +247,8 @@ class ZhihuAPIClient:
         url = f"https://www.zhihu.com{path}"
 
         cfg = get_config()
-        max_attempts = cfg.crawler.retry.max_attempts
-        base_delay = cfg.crawler.retry.base_delay
+        retry_config = cfg.crawler.retry
+        max_attempts = retry_config.max_attempts
 
         for attempt in range(1, max_attempts + 1):
             # Get dynamic signature for current path
@@ -212,47 +264,69 @@ class ZhihuAPIClient:
                 # Use curl_cffi for fingerprint-level request
                 # 使用 curl_cffi 进行指纹级请求
                 response = self.session.get(url, headers=req_headers, timeout=15.0)
-                if response.status_code == 200:
-                    return response.json()
-                elif response.status_code in (401, 403, 429):
-                    self.log.error(
-                        "api_ratelimit_or_forbidden",
-                        status=response.status_code,
-                        attempt=attempt,
-                        response_preview=summarize_text_for_logs(response.text, kind="response"),
-                    )
-                    
-                    if attempt < max_attempts:
-                        delay = min(base_delay * (cfg.crawler.retry.exponential_base ** (attempt - 1)), cfg.crawler.retry.max_delay)
-                        self.log.warning("api_retrying", delay=delay)
-                        time.sleep(delay)
-                        
-                        continue
-                    else:
-                        raise Exception(
-                            f"{self._describe_http_status_failure(response.status_code, route='API')} "
-                            f"重试 {max_attempts} 次后仍失败。"
-                        )
-                elif response.status_code == 404:
-                    self.log.error(
-                        "api_content_not_found",
-                        status=response.status_code,
-                        response_preview=summarize_text_for_logs(response.text, kind="response"),
-                    )
-                    raise Exception(self._describe_http_status_failure(response.status_code, route="API"))
-                else:
-                    self.log.error(
-                        "api_error",
-                        status=response.status_code,
-                        response_preview=summarize_text_for_logs(response.text, kind="response"),
-                    )
-                    raise Exception(self._describe_http_status_failure(response.status_code, route="API"))
             except Exception as e:
                 self.log.error("api_fetch_failed", error=str(e), attempt=attempt)
                 if attempt == max_attempts:
                     raise
-                delay = min(base_delay * (cfg.crawler.retry.exponential_base ** (attempt - 1)), cfg.crawler.retry.max_delay)
+                delay = self._calculate_retry_delay(attempt, retry_config)
+                self.log.warning("api_retrying", delay=delay, reason="request_exception")
                 time.sleep(delay)
+                continue
+
+            if response.status_code == 200:
+                try:
+                    return response.json()
+                except Exception as e:
+                    self.log.error("api_json_decode_failed", error=str(e), attempt=attempt)
+                    if attempt == max_attempts:
+                        raise Exception(f"API 返回 JSON 解析失败，重试 {max_attempts} 次后仍失败: {e}") from e
+                    delay = self._calculate_retry_delay(attempt, retry_config, response=response)
+                    self.log.warning("api_retrying", delay=delay, reason="json_decode")
+                    time.sleep(delay)
+                    continue
+
+            if response.status_code == 404:
+                self.log.error(
+                    "api_content_not_found",
+                    status=response.status_code,
+                    response_preview=summarize_text_for_logs(response.text, kind="response"),
+                )
+                raise Exception(self._describe_http_status_failure(response.status_code, route="API"))
+
+            if self._should_retry_status(response.status_code):
+                log_event = (
+                    "api_ratelimit_or_forbidden"
+                    if response.status_code in (401, 403, 429)
+                    else "api_transient_status"
+                )
+                self.log.error(
+                    log_event,
+                    status=response.status_code,
+                    attempt=attempt,
+                    response_preview=summarize_text_for_logs(response.text, kind="response"),
+                )
+
+                if attempt < max_attempts:
+                    delay = self._calculate_retry_delay(attempt, retry_config, response=response)
+                    self.log.warning(
+                        "api_retrying",
+                        delay=delay,
+                        reason=f"http_{response.status_code}",
+                    )
+                    time.sleep(delay)
+                    continue
+
+                raise Exception(
+                    f"{self._describe_http_status_failure(response.status_code, route='API')} "
+                    f"重试 {max_attempts} 次后仍失败。"
+                )
+
+            self.log.error(
+                "api_error",
+                status=response.status_code,
+                response_preview=summarize_text_for_logs(response.text, kind="response"),
+            )
+            raise Exception(self._describe_http_status_failure(response.status_code, route="API"))
 
     def get_answer(self, answer_id: str) -> dict:
         """

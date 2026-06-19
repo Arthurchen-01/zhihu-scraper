@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from core.contracts import SavePipelineError, SaveRunResult
 from cli.contracts import BatchWorkflowResult, UrlTaskResult
@@ -65,6 +66,80 @@ class WorkflowContractTests(unittest.TestCase):
 
         self.assertIn("z_c0 / d_c0", client._describe_http_status_failure(403, route="API"))
         self.assertIn("不存在", client._describe_http_status_failure(404, route="API"))
+
+
+class ApiClientRetryTests(unittest.TestCase):
+    def _make_client(self, responses):
+        from core.api_client import ZhihuAPIClient
+
+        class FakeSession:
+            def __init__(self, sequence):
+                self.sequence = list(sequence)
+                self.calls = 0
+
+            def get(self, *_args, **_kwargs):
+                self.calls += 1
+                if not self.sequence:
+                    raise RuntimeError("no more responses")
+                return self.sequence.pop(0)
+
+        client = object.__new__(ZhihuAPIClient)
+        client.log = MagicMock()
+        client.session = FakeSession(responses)
+        client._get_signature = lambda _path: {}
+        return client
+
+    def test_fetch_api_retries_transient_status_with_retry_after(self):
+        from core.api_client import ZhihuAPIClient
+        from core.config_schema import Config
+
+        class Response:
+            def __init__(self, status_code, body=None, headers=None):
+                self.status_code = status_code
+                self.text = body or ""
+                self.headers = headers or {}
+
+            def json(self):
+                return {"ok": True}
+
+        client = self._make_client(
+            (
+                Response(503, body="service unavailable", headers={"Retry-After": "0.25"}),
+                Response(200),
+            )
+        )
+
+        cfg = Config.from_dict(
+            {"crawler": {"retry": {"max_attempts": 2, "base_delay": 10.0, "jitter": False}}}
+        )
+        with patch("core.api_client.get_config", return_value=cfg):
+            with patch("core.api_client.time.sleep") as mocked_sleep:
+                result = ZhihuAPIClient.fetch_api(client, "/api/v4/demo")
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(client.session.calls, 2)
+        mocked_sleep.assert_called_once_with(0.25)
+
+    def test_fetch_api_does_not_retry_content_not_found(self):
+        from core.api_client import ZhihuAPIClient
+        from core.config_schema import Config
+
+        class Response:
+            status_code = 404
+            text = "not found"
+            headers = {}
+
+        client = self._make_client((Response(),))
+        cfg = Config.from_dict({"crawler": {"retry": {"max_attempts": 3, "jitter": False}}})
+
+        with patch("core.api_client.get_config", return_value=cfg):
+            with patch("core.api_client.time.sleep") as mocked_sleep:
+                with self.assertRaises(Exception) as captured:
+                    ZhihuAPIClient.fetch_api(client, "/api/v4/missing")
+
+        self.assertIn("HTTP 404", str(captured.exception))
+        self.assertEqual(client.session.calls, 1)
+        mocked_sleep.assert_not_called()
 
 
 class WorkflowServiceTests(unittest.IsolatedAsyncioTestCase):
