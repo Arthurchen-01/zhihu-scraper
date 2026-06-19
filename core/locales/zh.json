@@ -1,14 +1,14 @@
 {
   "home.eyebrow": "ZHIHU ARCHIVE",
   "home.title": "知乎归档台",
-  "home.subtitle": "一个围绕抓取、归档与后续检索而设计的全屏终端工作台",
+  "home.subtitle": "一个把知乎链接保存成本地文件的全屏终端工作台",
   "home.hint.enter": "回车会先生成归档草案，按 Ctrl+R 执行当前草案。",
   "home.hint.retry": "按 Ctrl+Y 可载入最近一轮失败项，生成重试草案。",
-  "home.hint.legacy": "旧版 Rich / questionary 流程仍保留在仓库内部维护路径中。",
+  "home.hint.legacy": "保存结果默认留在本机 data/ 目录，方便搜索、备份和迁移。",
 
-  "draft.idle.title": "等待输入链接",
-  "draft.idle.line1": "支持回答、问题页、专栏链接，也支持从一段混合文本中自动提取。",
-  "draft.idle.line2": "回车先生成草案；确认后按 Ctrl+R 执行当前归档。",
+  "draft.idle.title": "从一条链接开始",
+  "draft.idle.line1": "粘贴知乎链接并回车，系统会先确认本轮要保存什么。",
+  "draft.idle.line2": "完成后到 data/ 里查看 Markdown、图片和 SQLite 索引。",
 
   "draft.no_url.title": "未识别到知乎链接",
   "draft.no_url.line1": "请粘贴回答、问题页或专栏链接。",
@@ -106,7 +106,7 @@
 
   "app.busy.title": "任务仍在执行中",
   "app.busy.line1": "当前归档尚未完成，请等待本轮执行结束。",
-  "app.busy.line2": "阶段 5 仍保持单轮执行，不允许并发启动多个任务。",
+  "app.busy.line2": "为避免重复保存，同一时间只执行一轮归档。",
   "app.busy.retry_line1": "当前归档尚未完成，暂时不能切换到失败重试草案。",
   "app.busy.retry_line2": "等待本轮执行结束后再加载失败项。",
   "app.busy.language_line1": "当前归档尚未完成，暂时不能切换界面语言。",
@@ -120,11 +120,11 @@
 
   "app.no_draft.title": "还没有可执行的草案",
   "app.no_draft.line1": "请先粘贴知乎链接并回车生成当前草案。",
-  "app.no_draft.line2": "阶段 5 已接入真实执行、最近结果和失败重试，但仍以当前草案为单次运行边界。",
+  "app.no_draft.line2": "草案会告诉你识别到了什么、会保存多少内容。",
 
   "app.no_retry.title": "还没有可重试的结果",
   "app.no_retry.line1": "先执行至少一轮归档，最近结果面板才会出现失败项。",
-  "app.no_retry.line2": "阶段 5 的失败重试入口依赖最近一轮执行报告。",
+  "app.no_retry.line2": "失败项会自动整理成可再次执行的草案。",
 
   "app.no_failures.title": "最近一轮没有失败项",
   "app.no_failures.line1": "最近一次执行全部成功，不需要生成重试草案。",
@@ -136,7 +136,7 @@
 
   "app.crash.title": "归档任务异常终止",
   "app.crash.line1": "错误：{error}",
-  "app.crash.line2": "这不是目标级失败，而是执行桥本身中断了。",
+  "app.crash.line2": "请查看日志尾部；已保存的本地文件不会被自动删除。",
 
   "app.quit_blocked.title": "归档进行中",
 
@@ -172,6 +172,13 @@
   "input.label": "输入知乎链接",
   "input.placeholder": "粘贴回答、问题页或专栏链接；支持从混合文本中自动提取",
   "input.caption": "支持多行粘贴；按 Enter 生成草案，Ctrl+R 执行，Ctrl+Y 载入失败重试；按 q 或 Esc 退出。",
+  "input.status.cookie": "Cookie",
+  "input.status.cookie.ready": "已就绪",
+  "input.status.cookie.missing": "游客模式",
+  "input.status.output": "输出",
+  "input.status.output.value": "MD + 图 + DB",
+  "input.status.mode": "策略",
+  "input.status.mode.value": "协议优先",
 
   "binding.focus_input": "输入",
   "binding.run": "执行",

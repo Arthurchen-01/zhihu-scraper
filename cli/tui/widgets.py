@@ -18,12 +18,24 @@ from core.i18n import t
 class InputCard(Widget):
     """Input surface for pasting Zhihu links into the TUI."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, cookie_ready: bool = False) -> None:
         super().__init__(id="input-card")
+        self._cookie_ready = cookie_ready
 
     def compose(self) -> ComposeResult:
         from core.i18n import t
+        from textual.containers import Horizontal
         yield Static(t("input.label"), classes="section-label")
+        yield Horizontal(
+            StatusPill(
+                t("input.status.cookie"),
+                t("input.status.cookie.ready" if self._cookie_ready else "input.status.cookie.missing"),
+                "success" if self._cookie_ready else "warn",
+            ),
+            StatusPill(t("input.status.output"), t("input.status.output.value"), "accent"),
+            StatusPill(t("input.status.mode"), t("input.status.mode.value"), "accent"),
+            classes="status-strip",
+        )
         yield ArchiveInput(
             placeholder=t("input.placeholder"),
             id="url-input",
@@ -72,7 +84,7 @@ class StatusPill(Widget):
     """Small render-only status label used by tests and compact diagnostics."""
 
     def __init__(self, label: str, value: str, tone: str) -> None:
-        super().__init__()
+        super().__init__(classes="status-pill")
         self._label = label
         self._value = value
         self._tone = tone

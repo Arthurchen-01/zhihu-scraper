@@ -77,7 +77,7 @@ class ZhihuInteractiveShell(App[None]):
         detail = build_detail_snapshot(self._draft, tuple(self._history))
         yield Container(
             Container(
-                InputCard(),
+                InputCard(cookie_ready=self._snapshot.cookie_ready),
                 SummaryCard(self._draft.title, self._draft.lines, self._draft.tone),
                 DetailCard(detail.title, detail.lines, detail.tone),
                 id="left-column",

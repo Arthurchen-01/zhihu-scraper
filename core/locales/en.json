@@ -1,14 +1,14 @@
 {
   "home.eyebrow": "ZHIHU ARCHIVE",
   "home.title": "Zhihu Archive Station",
-  "home.subtitle": "A full-screen terminal workbench for scraping, archiving and retrieval",
+  "home.subtitle": "A full-screen terminal workbench that saves Zhihu links as local files",
   "home.hint.enter": "Press Enter to generate a draft, then Ctrl+R to execute.",
   "home.hint.retry": "Press Ctrl+Y to load failed items from the last run as a retry draft.",
-  "home.hint.legacy": "The legacy Rich / questionary flow remains available as an internal maintenance path.",
+  "home.hint.legacy": "Results stay under the local data/ folder for search, backup, and migration.",
 
-  "draft.idle.title": "Waiting for Input",
-  "draft.idle.line1": "Supports answer, question, and column URLs. Can also extract from mixed text.",
-  "draft.idle.line2": "Press Enter to generate a draft; then Ctrl+R to execute the archive.",
+  "draft.idle.title": "Start With One Link",
+  "draft.idle.line1": "Paste a Zhihu link and press Enter to confirm what will be saved.",
+  "draft.idle.line2": "After it finishes, check data/ for Markdown, images, and the SQLite index.",
 
   "draft.no_url.title": "No Zhihu URL Detected",
   "draft.no_url.line1": "Please paste an answer, question page, or column URL.",
@@ -106,7 +106,7 @@
 
   "app.busy.title": "Task Still Running",
   "app.busy.line1": "The current archive has not finished. Please wait.",
-  "app.busy.line2": "Only one run at a time; concurrent execution is not supported.",
+  "app.busy.line2": "Only one archive run is allowed at a time to avoid duplicate saves.",
   "app.busy.retry_line1": "Cannot switch to a retry draft while the current run is active.",
   "app.busy.retry_line2": "Wait for the current run to finish, then load failed items.",
   "app.busy.language_line1": "Cannot switch UI language while the current run is active.",
@@ -120,11 +120,11 @@
 
   "app.no_draft.title": "No Executable Draft",
   "app.no_draft.line1": "Paste a Zhihu URL and press Enter to generate a draft first.",
-  "app.no_draft.line2": "The workbench supports real execution, recent results, and failure retry.",
+  "app.no_draft.line2": "The draft will show what was detected and how much will be saved.",
 
   "app.no_retry.title": "No Retryable Results",
   "app.no_retry.line1": "Run at least one archive first; the results panel will show failures.",
-  "app.no_retry.line2": "The retry entry depends on the most recent execution report.",
+  "app.no_retry.line2": "Failures are automatically turned into a retryable draft.",
 
   "app.no_failures.title": "No Failures in Last Run",
   "app.no_failures.line1": "The last run succeeded completely; no retry draft needed.",
@@ -136,7 +136,7 @@
 
   "app.crash.title": "Archive Task Crashed",
   "app.crash.line1": "Error: {error}",
-  "app.crash.line2": "This is not a target-level failure; the execution bridge itself broke.",
+  "app.crash.line2": "Check the log tail; already written local files are not deleted automatically.",
 
   "app.quit_blocked.title": "Archive in Progress",
 
@@ -172,6 +172,13 @@
   "input.label": "Enter Zhihu Links",
   "input.placeholder": "Paste answer, question, or column links; auto-extracts from mixed text",
   "input.caption": "Supports multiline pasting; Enter to generate draft, Ctrl+R to execute, Ctrl+Y to retry failures; q or Esc to quit.",
+  "input.status.cookie": "Cookie",
+  "input.status.cookie.ready": "Ready",
+  "input.status.cookie.missing": "Guest",
+  "input.status.output": "Output",
+  "input.status.output.value": "MD + IMG + DB",
+  "input.status.mode": "Mode",
+  "input.status.mode.value": "API first",
 
   "binding.focus_input": "Input",
   "binding.run": "Run",
