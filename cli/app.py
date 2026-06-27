@@ -1,146 +1,59 @@
 """
-app.py - CLI Enhancement Module
-
-Provides modern command-line interface using Typer with auto-completion support.
-
-Core Functions:
-- fetch: Scrape single Zhihu link (article/answer/question)
-- creator: Scrape answers and articles from a Zhihu creator profile
-- fetch --file: Batch scrape multiple links
-- monitor: Incremental monitoring of collections
-- query: Search scraped content in SQLite database
-- interactive: Interactive scraping mode
-- config: View/manage configuration
-- check: Check environment dependencies
-
-Usage Examples:
-    zhihu fetch "https://www.zhihu.com/p/123456"
-    zhihu fetch "https://www.zhihu.com/question/123456" -n 10
-    zhihu fetch --file ./urls.txt -c 8
-    zhihu monitor 78170682 -o ./data
-    zhihu query "深度学习" -l 20
-
-================================================================================
-app.py — CLI 增强模块
-
-使用 Typer 提供现代化命令行接口，支持参数自动补全。
-
-核心功能：
-- fetch: 抓取单个知乎链接 (文章/回答/问题)
-- creator: 抓取知乎作者主页下的回答和专栏
-- fetch --file: 批量抓取多个链接
-- monitor: 增量监控收藏夹
-- query: 在 SQLite 数据库中检索已抓取的内容
-- interactive: 交互式抓取模式
-- config: 查看/管理配置
-- check: 检查环境依赖
-
-使用示例：
-    zhihu fetch "https://www.zhihu.com/p/123456"
-    zhihu fetch "https://www.zhihu.com/question/123456" -n 10
-    zhihu fetch --file ./urls.txt -c 8
-    zhihu monitor 78170682 -o ./data
-    zhihu query "深度学习" -l 20
-================================================================================
+app.py - Thin CLI for the local-first Zhihu archiver.
 """
 
+from __future__ import annotations
+
+import asyncio
 from pathlib import Path
 from typing import Optional
-import asyncio
-import sys
+
 import typer
 from rich import print as rprint
 from rich.console import Console
+from rich.table import Table
 
-from cli.workflow_service import get_workflow_service
 from cli.config_view import build_config_snapshot, render_config_panel
 from cli.healthcheck import render_environment_check
-from cli.launcher_flow import LauncherCommands, LauncherRuntime, run_launcher
-import importlib
-
-QUESTIONARY_GUIDANCE_LINES = (
-    "[bold yellow]⚠️ Missing optional TTY dependency / 缺少交互式终端依赖：questionary[/bold yellow]",
-    "请重新同步当前分支依赖，例如：",
-    "[cyan]pip install -e .[/cyan]  或  [cyan]./install.sh --recreate[/cyan]",
-)
-
-
-def _should_emit_guidance(explicit: Optional[bool]) -> bool:
-    """Decide whether optional dependency guidance should be printed."""
-    if explicit is not None:
-        return explicit
-    return bool(getattr(sys.stderr, "isatty", lambda: False)())
-
-
-def _get_questionary(*, emit_guidance: Optional[bool] = None):
-    """
-    Import questionary lazily with actionable guidance.
-    延迟导入 questionary，并只在交互式终端中输出提示。
-    """
-    try:
-        return importlib.import_module("questionary")
-    except ModuleNotFoundError as exc:
-        if _should_emit_guidance(emit_guidance):
-            for line in QUESTIONARY_GUIDANCE_LINES:
-                rprint(line)
-        raise typer.Exit(code=1) from exc
-
+from cli.workflow_service import get_workflow_service
 from core.config_runtime import get_config, get_logger, resolve_project_path
-from core.utils import extract_urls
 from core.errors import handle_error
-
-# ============================================================
-# CLI Application Initialization (CLI 应用初始化)
-# ============================================================
+from core.utils import extract_urls
 
 app = typer.Typer(
     name="zhihu",
-    help=(
-        "🕷️ Local-first Zhihu archiver / 本地优先的知乎归档工具. "
-        "Run without arguments to launch the interactive workspace / 无参数时直接启动交互式归档工作台。"
-    ),
+    help="Local-first Zhihu archiver / 本地优先的知乎归档工具。",
     add_completion=False,
-    no_args_is_help=False,
+    no_args_is_help=True,
 )
 
 console = Console()
 
 
-# ============================================================
-# Utility Functions (工具函数)
-# ============================================================
-
-# Note: sanitize_filename and extract_urls are now imported from core.utils
-# to avoid code duplication across CLI and interactive modules.
-
 def _get_cfg():
-    """Load runtime config lazily / 延迟加载运行时配置"""
     return get_config()
 
 
 def _get_log():
-    """Get configured logger lazily / 延迟获取已配置日志器"""
     _get_cfg()
     return get_logger()
 
 
 def _get_default_output_dir() -> Path:
-    """Resolve output dir from runtime config / 从运行时配置解析输出目录"""
-    return resolve_project_path(_get_cfg().output.directory)
+    return resolve_project_path(_get_cfg().local.output_dir)
 
 
 def _get_default_browser_headless() -> bool:
-    """Resolve browser headless flag from runtime config / 从运行时配置解析无头模式"""
     return _get_cfg().zhihu.browser.headless
 
 
 def _resolve_output_dir(output: Optional[Path]) -> Path:
-    """Resolve CLI output option with runtime fallback / 解析 CLI 输出目录并回落到运行时配置"""
-    return output if output is not None else _get_default_output_dir()
+    if output is None:
+        return _get_default_output_dir()
+    return output if output.is_absolute() else resolve_project_path(output)
 
 
 def _resolve_headless(headless: Optional[bool]) -> bool:
-    """Resolve CLI headless option with runtime fallback / 解析 CLI 无头参数并回落到运行时配置"""
     return _get_default_browser_headless() if headless is None else headless
 
 
@@ -149,36 +62,11 @@ def _get_workflow_service():
 
 
 def print_question_limit_warning(limit: int) -> None:
-    """
-    Print risk warning for large question-page fetches.
-    对大数量问题页抓取打印风险提示。
-    """
-    if limit > 50:
-        rprint("[bold yellow]⚠️ Large batch detected / 大批量抓取提示[/bold yellow]")
-        rprint("   请求超过 50 条回答时，会触发多页连续请求，触发风控的概率会明显上升。")
-        rprint("   Requests above 50 answers increase anti-bot risk due to multi-page API access.")
-    elif limit > 20:
-        rprint("[yellow]⚠️ Multi-page fetch enabled / 已启用多页抓取[/yellow]")
-        rprint("   超过 20 条回答会进入分页抓取，并在页间自动插入随机等待。")
-        rprint("   Requests over 20 answers will use pagination with random waits between pages.")
-
-
-def print_creator_limit_warning(answers: int, articles: int) -> None:
-    """
-    Print warning when creator mode will trigger multi-page requests.
-    当 creator 模式会触发多页请求时打印提示。
-    """
-    if answers > 20 or articles > 20:
-        rprint("[yellow]⚠️ Creator mode will use pagination / 作者模式将启用分页抓取[/yellow]")
-        rprint("   大于 20 条时会进行多页 API 请求，并自动加入随机等待。")
-        rprint("   Requests above 20 items use paginated API access with built-in random delays.")
+    if limit > 20:
+        rprint("[yellow]⚠️ Multi-page question fetch enabled / 已启用问题页分页抓取[/yellow]")
 
 
 def print_failed_url_reasons(results) -> None:
-    """
-    Print per-URL failure reasons for batch-style commands.
-    为批量命令打印每个失败 URL 的简短原因。
-    """
     for item in results.items:
         if item.success:
             continue
@@ -187,93 +75,59 @@ def print_failed_url_reasons(results) -> None:
         rprint(f"   [dim]{reason}[/dim]")
 
 
-def _build_launcher_runtime() -> LauncherRuntime:
-    return LauncherRuntime(
-        console=console,
-        get_cfg=_get_cfg,
-        get_questionary=_get_questionary,
-        get_default_output_dir=_get_default_output_dir,
-        get_default_browser_headless=_get_default_browser_headless,
-        resolve_project_path=resolve_project_path,
-        commands=LauncherCommands(
-            fetch=fetch,
-            creator=creator,
-            monitor=monitor,
-            query=query_db,
-            interactive=interactive,
-            check=check,
-        ),
-    )
-
-
-# ============================================================
-# Command Definitions (命令定义)
-# ============================================================
-
 @app.command("fetch")
 def fetch(
     url: Optional[str] = typer.Argument(None, help="Zhihu link(s) or text containing links / 知乎链接或含链接文本"),
     file: Optional[Path] = typer.Option(None, "-f", "--file", help="Read URLs from file / 从文件读取链接列表"),
     output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output directory / 输出目录"),
-    limit: Optional[int] = typer.Option(None, "-n", "--limit", help="Limit answer count (question pages only) / 限制回答数量 (仅限问题页)"),
+    limit: Optional[int] = typer.Option(None, "-n", "--limit", help="Limit answer count for question pages / 限制问题页回答数量"),
     concurrency: int = typer.Option(4, "-c", "--concurrency", help="Concurrency for batch mode (max 8) / 批量并发数 (最大 8)"),
-    no_images: bool = typer.Option(False, "-i", "--no-images", help="Don't download images / 不下载图片"),
-    headless: Optional[bool] = typer.Option(None, "-b", "--headless/--no-headless", help="Run browser in headless mode / 无头模式运行浏览器"),
+    no_images: bool = typer.Option(False, "-i", "--no-images", help="Do not download images / 不下载图片"),
+    headless: Optional[bool] = typer.Option(None, "-b", "--headless/--no-headless", help="Run browser fallback headless / 浏览器回退是否无头"),
 ) -> None:
-    """
-    Scrape Zhihu links. Supports single URL, multiple URLs from text, or batch from file.
-    抓取知乎链接。支持单条/多条 URL、混杂文本提取、或从文件批量读取。
-
-    Examples:
-        zhihu fetch "https://www.zhihu.com/p/123456"
-        zhihu fetch "https://www.zhihu.com/question/123" -n 10
-        zhihu fetch --file urls.txt -c 8
-    """
+    """Archive one or more Zhihu article/answer/question links."""
     if not url and not file:
         rprint("[red]❌ Please provide a URL or --file / 请提供链接或 --file 参数[/red]")
-        raise SystemExit(1)
+        raise typer.Exit(code=1)
 
     cfg = _get_cfg()
     log = _get_log()
     output_dir = _resolve_output_dir(output)
     headless_mode = _resolve_headless(headless)
 
-    # Resolve URLs from file or argument
     if file:
-        if not file.exists():
-            rprint(f"[red]❌ File not found / 文件不存在: {file}[/red]")
-            raise SystemExit(1)
-        urls = extract_urls(file.read_text())
+        source_file = file if file.is_absolute() else resolve_project_path(file)
+        if not source_file.exists():
+            rprint(f"[red]❌ File not found / 文件不存在: {source_file}[/red]")
+            raise typer.Exit(code=1)
+        urls = extract_urls(source_file.read_text(encoding="utf-8"))
     else:
         urls = extract_urls(url)
 
     if not urls:
-        rprint("[red]❌ No valid Zhihu links found / 未找到有效链接[/red]")
-        raise SystemExit(1)
+        rprint("[red]❌ No valid Zhihu links found / 未找到有效知乎链接[/red]")
+        raise typer.Exit(code=1)
 
     if limit is not None and limit < 1:
         raise typer.BadParameter("Question-page limit must be at least 1 / 问题页抓取数量至少为 1")
 
-    rprint(f"🔍 Found {len(urls)} link(s) / 识别到 {len(urls)} 个链接")
-    log.info("fetch_started", count=len(urls), limit=limit)
-
     try:
         from core.api_client import ZhihuAPIClient
+
         temp_client = ZhihuAPIClient()
         if not temp_client._cookies_dict and cfg.zhihu.cookies_required:
-            rprint("[yellow]⚠️  No valid Cookie detected, will use guest mode / 未检测到有效 Cookie，将使用游客模式[/yellow]")
+            rprint("[yellow]⚠️ No valid Cookie detected; guest mode may be limited / 未检测到有效 Cookie，游客模式可能受限[/yellow]")
         elif diagnostic := temp_client.cookie_diagnostic_message():
-            rprint(f"[yellow]⚠️  {diagnostic}[/yellow]")
+            rprint(f"[yellow]⚠️ {diagnostic}[/yellow]")
 
         if limit:
             for target_url in urls:
                 if "/question/" in target_url and "/answer/" not in target_url:
                     print_question_limit_warning(limit)
 
-        # Batch mode: multiple URLs with concurrency
         if file or len(urls) > 1:
             max_concurrency = min(concurrency, len(urls), 8)
-            rprint(f"[bold]📋 Batch mode / 批量模式: {len(urls)} links (concurrency / 并发: {max_concurrency})[/bold]")
+            rprint(f"[bold]📋 Batch / 批量: {len(urls)} links, concurrency {max_concurrency}[/bold]")
             results = asyncio.run(
                 _get_workflow_service().run_batch(
                     urls=urls,
@@ -281,211 +135,63 @@ def fetch(
                     concurrency=max_concurrency,
                     download_images=not no_images,
                     headless=headless_mode,
+                    question_limit=limit,
                 )
             )
-            success = results.success_count
-            failed = results.failed_count
-            rprint(f"\n[bold]📊 Completed / 完成: {success} success / 成功, {failed} failed / 失败[/bold]")
-            if failed > 0:
+            rprint(f"[bold]📊 Done / 完成: {results.success_count} success, {results.failed_count} failed[/bold]")
+            if results.has_failures:
                 print_failed_url_reasons(results)
-                raise SystemExit(1)
-        else:
-            # Single URL mode
-            result = asyncio.run(
-                _get_workflow_service().run_fetch_urls(
-                    urls=urls,
-                    output_dir=output_dir,
-                    limit=limit,
-                    download_images=not no_images,
-                    headless=headless_mode,
-                    stop_on_error=True,
-                )
-            )
-            if result.has_failures:
-                raise SystemExit(1)
-
-    except Exception as e:
-        handle_error(e, log)
-        raise SystemExit(1)
-
-
-
-
-@app.command("creator")
-def creator(
-    creator: str = typer.Argument(..., help="Zhihu creator profile URL or token / 知乎用户主页 URL 或 token"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output directory / 输出目录"),
-    answers: int = typer.Option(10, "--answers", help="Maximum number of answers / 最大回答数量"),
-    articles: int = typer.Option(5, "--articles", help="Maximum number of articles / 最大专栏数量"),
-    no_images: bool = typer.Option(False, "-i", "--no-images", help="Don't download images / 不下载图片"),
-) -> None:
-    """
-    Scrape answers and articles from a Zhihu creator profile.
-    抓取知乎作者主页下的回答和专栏文章。
-
-    Examples:
-        zhihu creator https://www.zhihu.com/people/hu-xi-jin
-        zhihu creator hu-xi-jin --answers 20 --articles 10
-    """
-    cfg = _get_cfg()
-    log = _get_log()
-    output_dir = _resolve_output_dir(output)
-
-    if answers < 0 or articles < 0:
-        raise typer.BadParameter("Creator limits must be 0 or greater / 作者抓取数量必须大于等于 0")
-    if answers == 0 and articles == 0:
-        raise typer.BadParameter("At least one content type must be enabled / 至少抓取一种内容类型")
-
-    log.info("creator_started", creator=creator, answers=answers, articles=articles)
-    rprint(f"[bold]👤 Creator mode / 作者模式: {creator}[/bold]")
-
-    try:
-        from core.api_client import ZhihuAPIClient
-
-        temp_client = ZhihuAPIClient()
-        if not temp_client._cookies_dict and cfg.zhihu.cookies_required:
-            rprint("[yellow]⚠️  No valid Cookie detected, creator mode may be incomplete / 未检测到有效 Cookie，作者模式可能不完整[/yellow]")
-        elif diagnostic := temp_client.cookie_diagnostic_message():
-            rprint(f"[yellow]⚠️  {diagnostic}[/yellow]")
-
-        print_creator_limit_warning(answers, articles)
+                raise typer.Exit(code=1)
+            return
 
         result = asyncio.run(
-            _get_workflow_service().run_creator(
-                creator=creator,
+            _get_workflow_service().run_fetch_urls(
+                urls=urls,
                 output_dir=output_dir,
-                answer_limit=answers,
-                article_limit=articles,
-                download_images=not no_images,
-            )
-        )
-        if not result.success:
-            raise SystemExit(1)
-    except Exception as e:
-        handle_error(e, log)
-        raise SystemExit(1)
-
-
-@app.command("monitor")
-def monitor(
-    collection_id: str = typer.Argument(..., help="Zhihu collection ID (e.g., 78170682) / 知乎收藏夹ID (如 78170682)"),
-    output: Optional[Path] = typer.Option(None, "-o", "--output", help="Output directory / 输出目录"),
-    concurrency: int = typer.Option(4, "-c", "--concurrency", help="Concurrency count / 并发数"),
-    no_images: bool = typer.Option(False, "-i", "--no-images", help="Don't download images / 不下载图片"),
-    headless: Optional[bool] = typer.Option(None, "-b", "--headless/--no-headless", help="Headless mode / 无头模式"),
-) -> None:
-    """
-    Incrementally monitor and scrape new content from Zhihu collections.
-    增量监控并抓取知乎收藏夹的新增内容。
-
-    Features:
-    - Check new content in collection (since last monitor)
-    - Auto deduplicate, skip already scraped content
-    - Download new content and save locally
-    - Update state file, record latest progress
-
-    功能说明：
-    - 检查收藏夹中新增的内容（自上次监控以来）
-    - 自动去重，跳过已抓取的内容
-    - 下载新增内容并保存到本地
-    - 更新状态文件，记录最新进度
-
-    Examples:
-        zhihu monitor 78170682                    # Monitor with default config / 监控默认配置
-        zhihu monitor 78170682 -o ./data         # Specify output directory / 指定输出目录
-        zhihu monitor 78170682 -c 8             # Increase concurrency / 提高并发数
-    """
-    log = _get_log()
-    output_dir = _resolve_output_dir(output)
-    headless_mode = _resolve_headless(headless)
-
-    log.info("monitor_started", collection_id=collection_id)
-    rprint(f"[bold]📡 Starting incremental monitoring / 启动增量监控: Collection / 收藏夹 {collection_id}[/bold]")
-
-    try:
-        result = asyncio.run(
-            _get_workflow_service().run_monitor(
-                collection_id=collection_id,
-                output_dir=output_dir,
-                concurrency=concurrency,
+                limit=limit,
                 download_images=not no_images,
                 headless=headless_mode,
+                stop_on_error=True,
             )
         )
-    except Exception as e:
-        handle_error(e, log)
-        raise SystemExit(1)
-
-    if not result.has_new_activity:
-        rprint("[green]✨ No new content in collection, monitoring ends / 收藏夹没有新增内容，监控结束。[/green]")
-        return
-
-    if not result.has_new_items:
-        rprint(
-            "[cyan]⏭️ Detected new collection activity, but no answer/article items were ready for archiving "
-            f"/ 检测到收藏夹有新增动态，但没有可归档的回答或文章（跳过 {result.unsupported_count} 个不支持条目）。[/cyan]"
-        )
-        if result.pointer_advanced and result.next_pointer:
-            rprint(f"[cyan]✅ Saved latest progress pointer / 已保存最新进度指针: {result.next_pointer}[/cyan]")
-        return
-
-    rprint(f"\n[bold]🛒 Preparing to download {result.discovered_count} new items... / 准备下载 {result.discovered_count} 个新内容...[/bold]")
-    success = result.batch.success_count
-    failed = result.batch.failed_count
-
-    rprint(f"\n[bold]📊 Monitor download completed / 监控下载完成: {success} success / 成功, {failed} failed / 失败[/bold]")
-    if failed > 0:
-        print_failed_url_reasons(result.batch)
-
-    if result.pointer_advanced and result.next_pointer:
-        rprint(f"[cyan]✅ Saved latest progress pointer / 已保存最新进度指针: {result.next_pointer}[/cyan]")
-    elif failed > 0:
-        rprint("[yellow]⚠️ Partial failures detected, monitoring pointer was not advanced / 存在失败项，本次不会推进监控游标，避免漏抓。[/yellow]")
+        if result.has_failures:
+            raise typer.Exit(code=1)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        handle_error(exc, log)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("query")
 def query_db(
     keyword: str = typer.Argument(..., help="Keyword to search / 要搜索的关键词"),
     limit: int = typer.Option(10, "-l", "--limit", help="Maximum number of results / 最大显示结果数量"),
-    data_dir: Optional[str] = typer.Option(None, "-d", "--data-dir", help="Data directory / 数据目录"),
+    data_dir: Optional[Path] = typer.Option(None, "-d", "--data-dir", help="Data directory / 数据目录"),
 ) -> None:
-    """
-    Search scraped Zhihu content in local SQLite database.
-    在本地 SQLite 数据库中检索已抓取的知乎内容。
-
-    Database structure:
-    - Table: articles
-    - Fields: answer_id, content_key, type, title, author, url, content_md, collection_id, created_at, updated_at
-
-    Examples:
-        zhihu query "深度学习"              # Search title and content / 搜索标题和内容
-        zhihu query "Transformer" -l 20     # Limit results / 限制结果数量
-        zhihu query "LLM" -d ./custom_data  # Specify data directory / 指定数据目录
-    """
-    resolved_data_dir = data_dir or str(_get_default_output_dir())
-    from core.db import ZhihuDatabase
-    from rich.table import Table
-
-    db_path = Path(resolved_data_dir) / "zhihu.db"
+    """Search archived content in the local SQLite index."""
+    resolved_data_dir = _resolve_output_dir(data_dir)
+    db_path = resolved_data_dir / "zhihu.db"
     if not db_path.exists():
-        rprint("[red]❌ Zhihu database not found. Please run fetch or monitor first / 未找到知乎数据库，请先执行抓取任务 (fetch 或 monitor)。[/red]")
-        raise SystemExit(1)
+        rprint("[red]❌ Zhihu database not found. Please run fetch first / 未找到数据库，请先执行 fetch。[/red]")
+        raise typer.Exit(code=1)
+
+    from core.db import ZhihuDatabase
 
     db = ZhihuDatabase(str(db_path))
     results = db.search_articles(keyword, limit)
     db.close()
 
     if not results:
-        rprint(f"[yellow]⚠️ No articles found containing '[bold]{keyword}[/bold]' / 未找到包含关键词 '[bold]{keyword}[/bold]' 的文章。[/yellow]")
+        rprint(f"[yellow]⚠️ No articles found containing '{keyword}' / 未找到包含关键词的文章。[/yellow]")
         return
 
-    table = Table(title=f"🔍 Search Results / 检索结果: '{keyword}' (first / 前 {len(results)} items)")
+    table = Table(title=f"Search Results / 检索结果: {keyword}")
     table.add_column("Type", justify="center", style="cyan")
     table.add_column("Author", style="green")
     table.add_column("Title", style="magenta", overflow="fold")
     table.add_column("Captured At", style="dim")
     table.add_column("Content Key", style="blue")
-
     for row in results:
         table.add_row(
             row["type"],
@@ -494,44 +200,12 @@ def query_db(
             row["created_at"].split("T")[0],
             row["content_key"],
         )
-
     rprint(table)
-
-
-@app.command("interactive")
-def interactive() -> None:
-    """
-    Launch the interactive archive workspace.
-    启动交互式归档工作台。
-
-    Features:
-    - Full-screen archive workbench with in-app URL input
-    - Responsive centered layout, question-page limit modal, queue, recent results, and retry flow
-    - `zhihu` without arguments launches this TUI directly
-
-    功能：
-    - 内置链接输入栏的全屏归档工作台
-    - 响应式居中布局、问题页数量弹层、队列、最近结果与失败重试
-    - `zhihu` 无参数时直接启动此 TUI 工作台
-
-    Example:
-        zhihu interactive
-    """
-    log = _get_log()
-    try:
-        from cli.tui.app import launch_tui
-
-        launch_tui()
-    except Exception as e:
-        handle_error(e, log)
 
 
 @app.command("config")
 def config() -> None:
-    """
-    View current configuration and file path.
-    查看当前配置及配置文件路径。
-    """
+    """View current configuration and resolved local paths."""
     cfg = _get_cfg()
     from core.cookie_manager import describe_cookie_file_path
 
@@ -548,28 +222,11 @@ def config() -> None:
 
 @app.command("check")
 def check() -> None:
-    """
-    Check environment dependencies and configuration.
-    检查环境依赖和配置是否正常。
-
-    Checks:
-    1. config.yaml exists
-    2. cookie readiness and configured/active path compatibility
-    3. Playwright browser available
-    """
+    """Check environment dependencies and local configuration."""
     render_environment_check()
 
-# ============================================================
-# Entry Point (入口点)
-# ============================================================
 
 def main() -> None:
-    """CLI entry point / CLI 入口"""
-    if len(sys.argv) == 1:
-        # Bare `zhihu` → launch TUI directly (first run shows language selector)
-        from cli.tui.app import launch_tui
-        launch_tui()
-        return
     app()
 
 

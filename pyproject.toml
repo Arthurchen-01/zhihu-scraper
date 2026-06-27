@@ -10,18 +10,16 @@ authors = [
 ]
 keywords = ["zhihu", "scraper", "crawler"]
 
-# 基础运行依赖（协议抓取 + CLI/TUI）；浏览器回退不在这一层
+# 基础运行依赖（协议抓取 + CLI）；浏览器回退不在这一层
 dependencies = [
     "curl_cffi>=0.14.0",
     "markdownify>=0.14.1",
     "beautifulsoup4>=4.12.3",
     "httpx>=0.28.1",
     "rich>=13.0.0",
-    "questionary>=2.0.0",
     "pyyaml>=6.0",
     "structlog==24.4.0",
     "typer>=0.9.0",
-    "textual>=8.2.1",
 ]
 
 # CLI 入口

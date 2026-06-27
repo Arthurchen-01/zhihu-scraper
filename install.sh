@@ -101,7 +101,6 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$PROJECT_DIR/.venv"
 LOCAL_DIR="$PROJECT_DIR/.local"
 COOKIE_FILE="$LOCAL_DIR/cookies.json"
-COOKIE_POOL_DIR="$LOCAL_DIR/cookie_pool"
 
 echo "📌 检测 Python 环境..."
 if ! command -v python3 >/dev/null 2>&1; then
@@ -154,8 +153,8 @@ echo "   ✅ Playwright Chromium 已安装"
 
 echo ""
 echo "📌 初始化本地运行目录..."
-mkdir -p "$LOCAL_DIR" "$COOKIE_POOL_DIR"
-echo "   ✅ 已准备 .local/ 与 .local/cookie_pool/"
+mkdir -p "$LOCAL_DIR"
+echo "   ✅ 已准备 .local/"
 
 echo ""
 echo "📌 检查本地 Cookie 模板..."
@@ -164,21 +163,13 @@ if [ ! -f "$COOKIE_FILE" ] && [ -f "cookies.example.json" ]; then
     echo "   ✅ 已从 cookies.example.json 创建 .local/cookies.json"
 fi
 
-if [ ! -f "$COOKIE_FILE" ] && [ -f "cookies.json" ]; then
-    echo "   ℹ️  检测到历史路径 cookies.json，当前版本仍兼容，但建议后续迁移到 .local/cookies.json"
-fi
-
-if [ ! -f "$COOKIE_FILE" ] && [ ! -f "cookies.json" ]; then
+if [ ! -f "$COOKIE_FILE" ]; then
     echo "   ⚠️  未找到 .local/cookies.json"
     echo "   💡 可先游客模式运行，但推荐补上 z_c0 / d_c0"
 elif [ -f "$COOKIE_FILE" ] && grep -q "YOUR_Z_C0_HERE" "$COOKIE_FILE"; then
     echo "   ⚠️  .local/cookies.json 仍是占位符，请填入你自己的 z_c0 / d_c0"
 elif [ -f "$COOKIE_FILE" ]; then
     echo "   ✅ .local/cookies.json 已配置"
-elif grep -q "YOUR_Z_C0_HERE" cookies.json; then
-    echo "   ⚠️  cookies.json 仍是占位符，请填入你自己的 z_c0 / d_c0"
-else
-    echo "   ✅ cookies.json 已配置"
 fi
 
 echo ""
@@ -200,10 +191,10 @@ echo "========================================"
 echo ""
 echo "推荐直接运行:"
 echo ""
-echo "  zhihu"
+echo "  zhihu --help"
 echo "  zhihu fetch \"https://www.zhihu.com/question/28696373/answer/2835848212\""
+echo "  zhihu query \"关键词\""
 echo "  zhihu check"
-echo "  zhihu interactive"
 echo ""
 echo "如果你习惯显式使用 Python:"
 echo ""

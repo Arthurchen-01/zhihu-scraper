@@ -1,6 +1,4 @@
-"""
-contracts.py - Unified result contracts for zhihu-scraper CLI and TUI.
-"""
+"""Unified result contracts for CLI and public archive workflows."""
 
 from __future__ import annotations
 
@@ -8,10 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from core.scraper_contracts import CreatorProfileSummary, PaginationStats, ScrapedItem
-
-
-from core.contracts import SavedContentRecord, SaveRunResult, SavePipelineError, CreatorSaveResult
+from core.contracts import SavePipelineError, SaveRunResult
 
 
 
@@ -44,30 +39,3 @@ class BatchWorkflowResult:
     def has_failures(self) -> bool:
         return self.failed_count > 0
 
-
-@dataclass(frozen=True)
-class CreatorWorkflowResult:
-    creator: str
-    result: Optional[CreatorSaveResult]
-
-    @property
-    def success(self) -> bool:
-        return self.result is not None
-
-
-@dataclass(frozen=True)
-class MonitorWorkflowResult:
-    collection_id: str
-    discovered_count: int
-    batch: BatchWorkflowResult
-    pointer_advanced: bool
-    unsupported_count: int = 0
-    next_pointer: Optional[str] = None
-
-    @property
-    def has_new_items(self) -> bool:
-        return self.discovered_count > 0
-
-    @property
-    def has_new_activity(self) -> bool:
-        return self.discovered_count + self.unsupported_count > 0
