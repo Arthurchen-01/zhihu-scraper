@@ -16,6 +16,7 @@ build/
 venv/
 env/
 .env/
+.env
 
 # Type checking
 .mypy_cache/
@@ -49,6 +50,9 @@ _agents/
 data/**
 !data/
 !data/README.md
+examples/outputs/**
+!examples/outputs/
+!examples/outputs/README.md
 
 # 浏览器 profile / 日志 / 本地数据库 / Cookie 环境
 .local/
@@ -72,6 +76,13 @@ debug_*/
 # 本地实验/外部参考仓库
 MediaCrawler/
 mediacrawler/
+references/**
+!references/
+!references/README.md
+!references/external/
+!references/external/README.md
+!references/skills/
+!references/skills/**
 references/external/*
 !references/external/README.md
 references/skillsmp/
