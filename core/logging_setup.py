@@ -42,7 +42,7 @@ _SILENT_CONSOLE = False
 
 
 def set_silent_console(enabled: bool) -> None:
-    """Toggle console logging. Useful for TUI modes. / 切换控制台日志开关，适用于 TUI 模式。"""
+    """Toggle console logging for embedded or scripted callers."""
     global _SILENT_CONSOLE
     _SILENT_CONSOLE = enabled
 

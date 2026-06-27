@@ -65,7 +65,7 @@ def t(key: str, **kwargs: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Language metadata (used by the TUI language selector)
+# Language metadata for user-facing locale choices
 # ---------------------------------------------------------------------------
 
 SUPPORTED_LANGUAGES: dict[str, str] = {

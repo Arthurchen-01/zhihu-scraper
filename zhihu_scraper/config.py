@@ -2,13 +2,13 @@
 
 from core.config_runtime import ConfigLoader, get_config, get_logger, get_project_root, update_config
 from core.config_schema import (
-    AntiDetectionConfig,
     BrowserConfig,
     Config,
     CrawlerConfig,
     GlobalConfig,
     HumanizeConfig,
     ImagesConfig,
+    LocalConfig,
     LoggingConfig,
     OutputConfig,
     RetryConfig,
@@ -30,7 +30,6 @@ from core.cookie_manager import (
 )
 
 __all__ = [
-    "AntiDetectionConfig",
     "BrowserConfig",
     "Config",
     "ConfigLoader",
@@ -39,6 +38,7 @@ __all__ = [
     "GlobalConfig",
     "HumanizeConfig",
     "ImagesConfig",
+    "LocalConfig",
     "LoggingConfig",
     "OutputConfig",
     "RetryConfig",

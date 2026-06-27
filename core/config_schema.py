@@ -12,7 +12,6 @@ LOCAL_RUNTIME_DIR = Path(".local")
 DEFAULT_COOKIE_FILE = LOCAL_RUNTIME_DIR / "cookies.json"
 DEFAULT_LOG_DIR = LOCAL_RUNTIME_DIR / "logs"
 DEFAULT_LOG_FILE = DEFAULT_LOG_DIR / "scraper.log"
-LEGACY_COOKIE_FILE = Path("cookies.json")
 
 
 @dataclass
@@ -26,23 +25,20 @@ class BrowserConfig:
 
 
 @dataclass
-class AntiDetectionConfig:
-    stealth: bool = True
-    webgl: bool = True
-    navigator: bool = True
-
-
-@dataclass
 class SignatureConfig:
     enabled: bool = False
 
 
 @dataclass
-class ZhihuConfig:
+class LocalConfig:
     cookies_file: str = str(DEFAULT_COOKIE_FILE)
+    output_dir: str = "data"
+
+
+@dataclass
+class ZhihuConfig:
     cookies_required: bool = True
     browser: BrowserConfig = field(default_factory=BrowserConfig)
-    anti_detection: AntiDetectionConfig = field(default_factory=AntiDetectionConfig)
     signature: SignatureConfig = field(default_factory=SignatureConfig)
 
 
@@ -99,7 +95,6 @@ class CrawlerConfig:
 
 @dataclass
 class OutputConfig:
-    directory: str = "data"
     format: str = "markdown"
     images_subdir: str = "images"
     folder_format: str = "[{date}] {title}"
@@ -132,6 +127,7 @@ class TranslationConfig:
 
 @dataclass
 class Config:
+    local: LocalConfig
     zhihu: ZhihuConfig
     crawler: CrawlerConfig
     output: OutputConfig
@@ -145,13 +141,17 @@ class Config:
 
 
 def build_config_from_dict(raw: Dict[str, Any]) -> Config:
+    local_raw = raw.get("local", {})
     zhihu_raw = raw.get("zhihu", {})
     cookies_raw = zhihu_raw.get("cookies", {})
+    output_raw = raw.get("output", {})
+    local = LocalConfig(
+        cookies_file=local_raw.get("cookies_file", cookies_raw.get("file", str(DEFAULT_COOKIE_FILE))),
+        output_dir=local_raw.get("output_dir", output_raw.get("directory", "data")),
+    )
     zhihu = ZhihuConfig(
-        cookies_file=cookies_raw.get("file", str(DEFAULT_COOKIE_FILE)),
         cookies_required=cookies_raw.get("required", True),
         browser=BrowserConfig(**zhihu_raw.get("browser", {})),
-        anti_detection=AntiDetectionConfig(**zhihu_raw.get("anti_detection", {})),
         signature=SignatureConfig(**zhihu_raw.get("signature", {})),
     )
 
@@ -164,7 +164,7 @@ def build_config_from_dict(raw: Dict[str, Any]) -> Config:
         proxy=crawler_raw.get("proxy", None),
     )
 
-    output = OutputConfig(**raw.get("output", {}))
+    output = OutputConfig(**{k: v for k, v in output_raw.items() if k != "directory"})
     logging_cfg = LoggingConfig(**raw.get("logging", {}))
 
     global_raw = raw.get("global", {})
@@ -187,6 +187,7 @@ def build_config_from_dict(raw: Dict[str, Any]) -> Config:
     )
 
     return Config(
+        local=local,
         zhihu=zhihu,
         crawler=crawler,
         output=output,
@@ -198,6 +199,7 @@ def build_config_from_dict(raw: Dict[str, Any]) -> Config:
 
 def build_default_config() -> Config:
     return Config(
+        local=LocalConfig(),
         zhihu=ZhihuConfig(),
         crawler=CrawlerConfig(),
         output=OutputConfig(),

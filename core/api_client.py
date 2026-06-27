@@ -17,7 +17,6 @@ import re
 import urllib.parse
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from pathlib import Path
 from typing import Optional, Dict
 from random import uniform
 
@@ -28,11 +27,6 @@ import time
 from .config_runtime import get_config, get_logger
 from .logging_setup import summarize_text_for_logs
 from .cookie_manager import cookie_manager
-
-# Default global JS signature interpreter path
-# 默认全局 JS 签名解释器路径
-ZHIHU_JS_PATH = Path(__file__).parent.parent / "static" / "z_core.js"
-
 
 class ZhihuAPIClient:
     """
@@ -336,10 +330,9 @@ class ZhihuAPIClient:
         # Include parameters for complete answer data from Zhihu API
         # 知乎回答完整数据的请求 Include 参数
         include = (
-            "data[*].is_normal,admin_closed_comment,reward_info,is_collapsed,"
-            "annotation_action,annotation_detail,collapse_reason,is_sticky,collapsed_by,"
-            "suggest_edit,comment_count,can_comment,content,editable_content,attachment,"
-            "voteup_count,reshipment_settings,comment_permission,created_time,updated_time,"
+            "data[*].is_normal,reward_info,is_collapsed,annotation_action,annotation_detail,"
+            "collapse_reason,is_sticky,collapsed_by,suggest_edit,content,editable_content,"
+            "attachment,voteup_count,reshipment_settings,created_time,updated_time,"
             "review_info,relevant_info,question,excerpt,is_labeled,paid_info,paid_info_content,"
             "reaction_instruction,relationship.is_authorized,is_author,voting,is_thanked,"
             "is_nothelp,is_recognized;data[*].mark_infos[*].url;data[*].author.follower_count,"
@@ -434,14 +427,13 @@ class ZhihuAPIClient:
         """
         page_limit = max(1, min(limit, 20))
         include = (
-            "data[*].is_normal,admin_closed_comment,reward_info,is_collapsed,annotation_action,"
-            "annotation_detail,collapse_reason,is_sticky,collapsed_by,suggest_edit,comment_count,"
-            "can_comment,content,editable_content,attachment,voteup_count,reshipment_settings,"
-            "comment_permission,created_time,updated_time,review_info,relevant_info,question,"
-            "excerpt,is_labeled,paid_info,paid_info_content,reaction_instruction,"
-            "relationship.is_authorized,is_author,voting,is_thanked,is_nothelp,is_recognized;"
-            "data[*].mark_infos[*].url;data[*].author.follower_count,vip_info,badge[*].topics;"
-            "data[*].settings.table_of_content.enabled"
+            "data[*].is_normal,reward_info,is_collapsed,annotation_action,annotation_detail,"
+            "collapse_reason,is_sticky,collapsed_by,suggest_edit,content,editable_content,"
+            "attachment,voteup_count,reshipment_settings,created_time,updated_time,"
+            "review_info,relevant_info,question,excerpt,is_labeled,paid_info,paid_info_content,"
+            "reaction_instruction,relationship.is_authorized,is_author,voting,is_thanked,"
+            "is_nothelp,is_recognized;data[*].mark_infos[*].url;data[*].author.follower_count,"
+            "vip_info,badge[*].topics;data[*].settings.table_of_content.enabled"
         )
         path = f"/api/v4/questions/{question_id}/answers?include={urllib.parse.quote(include)}&limit={page_limit}&offset={offset}&platform=desktop&sort_by=default"
         data = self.fetch_api(path)
@@ -465,101 +457,3 @@ class ZhihuAPIClient:
         """
         page = self.get_question_answers_page(question_id, limit=limit, offset=offset)
         return page.get("data", [])
-
-    def get_creator_profile(self, url_token: str) -> dict:
-        """
-        Get creator profile information.
-        获取创作者资料信息。
-        """
-        include = (
-            "id,name,headline,description,url_token,avatar_url,avatar_url_template,"
-            "answer_count,articles_count,question_count,zvideo_count,columns_count,"
-            "follower_count,following_count,voteup_count"
-        )
-        path = f"/api/v4/members/{url_token}?include={urllib.parse.quote(include)}"
-        data = self.fetch_api(path)
-        if not data:
-            raise Exception(f"作者 {url_token} 资料抓取失败。")
-        return data
-
-    def get_creator_answers_page(self, url_token: str, limit: int = 20, offset: int = 0) -> dict:
-        """
-        Get one paginated page of answers from a creator.
-        获取某个作者回答列表的一页数据。
-        """
-        page_limit = max(1, min(limit, 20))
-        include = (
-            "data[*].is_normal,admin_closed_comment,reward_info,is_collapsed,"
-            "annotation_action,annotation_detail,collapse_reason,suggest_edit,"
-            "comment_count,can_comment,content,attachment,voteup_count,"
-            "comment_permission,created_time,updated_time,question,excerpt,"
-            "reaction_instruction,is_author,voting,is_thanked,is_nothelp,"
-            "is_recognized;data[*].mark_infos[*].url;data[*].author.follower_count,"
-            "vip_info,badge[*].topics"
-        )
-        path = (
-            f"/api/v4/members/{url_token}/answers?"
-            f"include={urllib.parse.quote(include)}&offset={offset}&limit={page_limit}&order_by=created"
-        )
-        data = self.fetch_api(path)
-        if not data or "data" not in data:
-            return {"data": [], "paging": {"is_end": True}}
-
-        paging = data.get("paging") or {}
-        return {
-            "data": data.get("data", []),
-            "paging": {
-                "is_end": bool(paging.get("is_end", len(data.get("data", [])) < page_limit)),
-                "totals": paging.get("totals"),
-                "next": paging.get("next"),
-            },
-        }
-
-    def get_creator_articles_page(self, url_token: str, limit: int = 20, offset: int = 0) -> dict:
-        """
-        Get one paginated page of articles from a creator.
-        获取某个作者专栏列表的一页数据。
-        """
-        page_limit = max(1, min(limit, 20))
-        include = (
-            "data[*].comment_count,is_normal,thumbnail,can_comment,comment_permission,"
-            "admin_closed_comment,content,voteup_count,created,updated,"
-            "reaction_instruction;data[*].author.badge[*].topics;data[*].author.vip_info"
-        )
-        path = (
-            f"/api/v4/members/{url_token}/articles?"
-            f"include={urllib.parse.quote(include)}&offset={offset}&limit={page_limit}&order_by=created"
-        )
-        data = self.fetch_api(path)
-        if not data or "data" not in data:
-            return {"data": [], "paging": {"is_end": True}}
-
-        paging = data.get("paging") or {}
-        return {
-            "data": data.get("data", []),
-            "paging": {
-                "is_end": bool(paging.get("is_end", len(data.get("data", [])) < page_limit)),
-                "totals": paging.get("totals"),
-                "next": paging.get("next"),
-            },
-        }
-
-    def get_collection_page(self, collection_id: str, limit: int = 20, offset: int = 0) -> dict:
-        """
-        Get detailed content of a collection page (articles or answers), includes paging info
-        获取收藏夹某页的详细内容（文章或回答），并包含 paging 信息
-        """
-        include = (
-            "data[*].content.is_normal,admin_closed_comment,reward_info,is_collapsed,"
-            "annotation_action,annotation_detail,collapse_reason,is_sticky,collapsed_by,"
-            "suggest_edit,comment_count,can_comment,content,editable_content,attachment,"
-            "voteup_count,reshipment_settings,comment_permission,created_time,updated_time,"
-            "review_info,relevant_info,question,excerpt,is_labeled,paid_info,paid_info_content,"
-            "reaction_instruction,relationship.is_authorized,is_author,voting,is_thanked,"
-            "is_nothelp,is_recognized;data[*].content.author.follower_count,vip_info,badge[*].topics"
-        )
-        path = f"/api/v4/collections/{collection_id}/items?offset={offset}&limit={limit}&include={urllib.parse.quote(include)}"
-        data = self.fetch_api(path)
-        if not data:
-            return {"data": [], "paging": {"is_end": True}}
-        return data

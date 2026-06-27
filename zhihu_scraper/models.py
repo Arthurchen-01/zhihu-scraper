@@ -2,16 +2,10 @@
 
 from cli.contracts import (
     BatchWorkflowResult,
-    CreatorSaveResult,
-    CreatorWorkflowResult,
-    MonitorWorkflowResult,
-    SaveRunResult,
-    SavedContentRecord,
     UrlTaskResult,
 )
+from core.contracts import SaveRunResult, SavedContentRecord
 from core.scraper_contracts import (
-    CreatorFetchResult,
-    CreatorProfileSummary,
     PageFetchResult,
     PaginationStats,
     ScrapedItem,
@@ -20,11 +14,6 @@ from core.scraper_contracts import (
 
 __all__ = [
     "BatchWorkflowResult",
-    "CreatorFetchResult",
-    "CreatorProfileSummary",
-    "CreatorSaveResult",
-    "CreatorWorkflowResult",
-    "MonitorWorkflowResult",
     "PageFetchResult",
     "PaginationStats",
     "SaveRunResult",

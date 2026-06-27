@@ -1,6 +1,8 @@
+local:
+  cookies_file: .local/cookies.json
+  output_dir: data
 zhihu:
   cookies:
-    file: .local/cookies.json
     required: true
   browser:
     headless: true
@@ -13,10 +15,6 @@ zhihu:
     - --disable-blink-features=AutomationControlled
     - --no-sandbox
     - --disable-infobars
-  anti_detection:
-    stealth: true
-    webgl: true
-    navigator: true
   signature:
     enabled: false
 crawler:
@@ -41,7 +39,6 @@ crawler:
     timeout: 30.0
     referer: https://www.zhihu.com/
 output:
-  directory: data
   format: markdown
   images_subdir: images
   folder_format: '[{date}] {title}'

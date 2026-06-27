@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from core.scraper_contracts import CreatorProfileSummary, PaginationStats, ScrapedItem
+from core.scraper_contracts import ScrapedItem
 
 
 @dataclass(frozen=True)
@@ -75,11 +75,3 @@ class SavePipelineError(RuntimeError):
     @property
     def saved_count(self) -> int:
         return self.partial_result.saved_count
-
-
-@dataclass(frozen=True)
-class CreatorSaveResult:
-    creator: CreatorProfileSummary
-    save_result: SaveRunResult
-    answers: PaginationStats
-    articles: PaginationStats

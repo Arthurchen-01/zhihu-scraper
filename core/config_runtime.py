@@ -5,7 +5,7 @@ config_runtime.py - Runtime config loading and singleton access.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 import yaml
 
@@ -13,10 +13,6 @@ from .config_schema import (
     Config,
     build_config_from_dict,
     build_default_config,
-    DEFAULT_COOKIE_FILE,
-    LEGACY_COOKIE_FILE,
-    DEFAULT_LOG_FILE,
-    LOCAL_RUNTIME_DIR,
 )
 from .logging_setup import setup_logging
 from .structlog_compat import structlog, BoundLoggerBase
@@ -157,9 +153,9 @@ def _filter_config_dict(data: dict) -> dict:
         "zhihu": {
             "cookies": {"file", "required"},
             "browser": {"headless", "timeout", "viewport", "channel", "args", "user_data_dir"},
-            "anti_detection": {"stealth", "webgl", "navigator"},
             "signature": {"enabled"},
         },
+        "local": {"cookies_file", "output_dir"},
         "crawler": {
             "retry": {"max_attempts", "base_delay", "max_delay", "exponential_base", "jitter"},
             "scroll": {"timeout", "pause", "viewport_height"},

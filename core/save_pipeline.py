@@ -1,8 +1,8 @@
 """
 save_pipeline.py - Local archive save orchestration (v3.0 Core)
 
-Extracts output naming, Markdown persistence, image downloading, and creator
-metadata writing into a decoupled core service.
+Extracts output naming, Markdown persistence, image downloading, and SQLite
+writing into a decoupled core service.
 """
 
 from __future__ import annotations
@@ -10,14 +10,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple
 
-from .contracts import CreatorSaveResult, SavePipelineError, SaveRunResult, SavedContentRecord
-from .creator_metadata import write_creator_metadata
+from .contracts import SavePipelineError, SaveRunResult, SavedContentRecord
 from core.converter import ZhihuConverter
 from core.db import ZhihuDatabase
 from core.media_downloader import MediaDownloader
-from core.scraper import ZhihuCreatorDownloader, ZhihuDownloader
+from core.scraper import ZhihuDownloader
 from core.scraper_contracts import ScrapedItem, to_scraped_items
 from core.utils import sanitize_filename
 from core.protocols import EventSink, ProgressEvent, noop_event_sink
@@ -57,16 +56,10 @@ def build_output_folder_name(
 
 
 def resolve_entries_output_dir(base_dir: Path) -> Path:
-    """Resolve the content root for normal fetch/batch/monitor outputs."""
+    """Resolve the content root for local archive outputs."""
     if base_dir.name == "entries":
         return base_dir
     return base_dir / "entries"
-
-
-def resolve_creator_output_dir(base_dir: Path, url_token: str) -> Path:
-    """Resolve the content root for creator outputs."""
-    safe_token = sanitize_filename(url_token, max_length=80)
-    return base_dir / "creators" / safe_token
 
 
 async def fetch_and_save(
@@ -77,7 +70,6 @@ async def fetch_and_save(
     settings: SavePipelineSettings,
     download_images: bool = True,
     headless: bool = True,
-    collection_id: Optional[str] = None,
     event_sink: EventSink = noop_event_sink,
 ) -> list[dict[str, Any]]:
     """
@@ -91,7 +83,6 @@ async def fetch_and_save(
         settings=settings,
         download_images=download_images,
         headless=headless,
-        collection_id=collection_id,
         event_sink=event_sink,
     )
     return result.to_legacy_records()
@@ -105,7 +96,6 @@ async def fetch_and_save_result(
     settings: SavePipelineSettings,
     download_images: bool = True,
     headless: bool = True,
-    collection_id: Optional[str] = None,
     event_sink: EventSink = noop_event_sink,
 ) -> SaveRunResult:
     """
@@ -131,7 +121,7 @@ async def fetch_and_save_result(
             source_url=url,
             content_root=resolve_entries_output_dir(output_dir),
             records=(),
-            collection_id=collection_id,
+            collection_id=None,
         )
 
     return await save_items_result(
@@ -141,187 +131,9 @@ async def fetch_and_save_result(
         settings=settings,
         download_images=download_images,
         source_url_fallback=url,
-        collection_id=collection_id,
-        event_sink=event_sink,
-    )
-
-
-async def fetch_creator_and_save(
-    *,
-    creator: str,
-    output_dir: Path,
-    answer_limit: int,
-    article_limit: int,
-    settings: SavePipelineSettings,
-    download_images: bool = True,
-    event_sink: EventSink = noop_event_sink,
-) -> Optional[CreatorSaveResult]:
-    """
-    Fetch creator content and persist it using the standard save pipeline.
-    抓取作者内容，并复用标准保存链路落地。
-    """
-    return await fetch_creator_and_save_result(
-        creator=creator,
-        output_dir=output_dir,
-        answer_limit=answer_limit,
-        article_limit=article_limit,
-        settings=settings,
-        download_images=download_images,
-        event_sink=event_sink,
-    )
-
-
-async def fetch_creator_and_save_result(
-    *,
-    creator: str,
-    output_dir: Path,
-    answer_limit: int,
-    article_limit: int,
-    settings: SavePipelineSettings,
-    download_images: bool = True,
-    event_sink: EventSink = noop_event_sink,
-) -> Optional[CreatorSaveResult]:
-    """
-    Fetch creator content via pagination flow and return a typed save result contract.
-    抓取作者内容，并返回类型化保存结果契约。
-    """
-    import asyncio
-    from random import uniform
-    from core.humanizer import get_humanizer
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    downloader = ZhihuCreatorDownloader(creator)
-    humanizer = get_humanizer()
-    creator_info = None
-    all_answers = []
-    all_articles = []
-    answer_stats = {
-        "saved_count": 0,
-        "pages_fetched": 0,
-        "reached_end": False,
-        "last_offset": 0,
-        "requested_limit": answer_limit,
-        "stopped_early": False,
-    }
-    article_stats = {
-        "saved_count": 0,
-        "pages_fetched": 0,
-        "reached_end": False,
-        "last_offset": 0,
-        "requested_limit": article_limit,
-        "stopped_early": False,
-    }
-
-    page_index = 0
-    all_records = []
-    creator_root = None
-
-    async for info, typ, page in downloader.fetch_items_pages(
-        answer_limit=answer_limit, article_limit=article_limit
-    ):
-        if creator_info is None:
-            creator_info = info
-            event_sink(
-                ProgressEvent(
-                    type="creator.info",
-                    message=f"Creator / 作者: {creator_info.name} ({creator_info.url_token or 'unknown'})",
-                    payload={"name": creator_info.name, "url_token": creator_info.url_token},
-                )
-            )
-            if creator_info.follower_count or creator_info.following_count:
-                event_sink(
-                    ProgressEvent(
-                        type="creator.stats",
-                        message=(
-                            f"Followers / 粉丝: {creator_info.follower_count}"
-                            f" | Following / 关注: {creator_info.following_count}"
-                        ),
-                        payload={
-                            "followers": creator_info.follower_count,
-                            "following": creator_info.following_count,
-                        },
-                    )
-                )
-            creator_root = resolve_creator_output_dir(output_dir, creator_info.url_token or creator)
-
-        page_items = page.get("items", [])
-        if typ == "answer":
-            all_answers.extend(page_items)
-            answer_stats = page.get("stats", answer_stats)
-        elif typ == "article":
-            all_articles.extend(page_items)
-            article_stats = page.get("stats", article_stats)
-
-        if not page_items:
-            continue
-
-        run_res = await save_items_result(
-            items=tuple(page_items),
-            content_root=creator_root,
-            db_root=output_dir,
-            settings=settings,
-            download_images=download_images,
-            source_url_fallback=(
-                f"https://www.zhihu.com/people/{creator_info.url_token or creator}"
-            ),
-            event_sink=event_sink,
-        )
-        all_records.extend(run_res.records)
-        page_index += 1
-
-        # Pagination delay control inverted to this caller
-        stats = page.get("stats", {})
-        if humanizer.config.enabled and not stats.get("reached_end", True):
-            if page_index % 3 == 0:
-                delay = uniform(15.0, 30.0)
-                event_sink(
-                    ProgressEvent(
-                        type="humanizer.pause",
-                        message=f"已连续抓取 {page_index} 页，额外休息 {delay:.1f} 秒后继续...",
-                        payload={"delay": delay, "page_index": page_index},
-                    )
-                )
-            else:
-                min_delay = max(3.0, humanizer.config.min_delay)
-                max_delay = max(min_delay, humanizer.config.max_delay, 8.0)
-                delay = uniform(min_delay, max_delay)
-                event_sink(
-                    ProgressEvent(
-                        type="humanizer.waiting",
-                        message=f"等待 {delay:.1f} 秒后抓取下一页...",
-                        payload={"delay": delay},
-                    )
-                )
-            await asyncio.sleep(delay)
-
-    if not all_records:
-        event_sink(
-            ProgressEvent(
-                type="save.warning",
-                severity="warning",
-                message="No creator content obtained / 未获取到作者内容",
-            )
-        )
-        return None
-
-    save_result = SaveRunResult(
-        source_url=f"https://www.zhihu.com/people/{creator_info.url_token or creator}",
-        content_root=creator_root,
-        records=tuple(all_records),
         collection_id=None,
+        event_sink=event_sink,
     )
-
-    from core.scraper_contracts import PaginationStats
-
-    creator_result = CreatorSaveResult(
-        creator=creator_info,
-        save_result=save_result,
-        answers=PaginationStats.from_dict(answer_stats),
-        articles=PaginationStats.from_dict(article_stats),
-    )
-    write_creator_metadata(creator_root, creator_info, save_result, creator_result)
-    return creator_result
 
 
 async def save_items(

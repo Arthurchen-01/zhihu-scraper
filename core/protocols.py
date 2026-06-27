@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence, Tuple
 
-from .scraper_contracts import CreatorFetchResult, PageFetchResult, ScrapedItem
+from .scraper_contracts import PageFetchResult, ScrapedItem
 
 
 @dataclass(frozen=True)
@@ -63,17 +63,6 @@ class Fetcher(Protocol):
     """Fetch one Zhihu URL and return normalized content."""
 
     async def fetch_result(self, **kwargs: Any) -> PageFetchResult:
-        ...
-
-
-class CreatorFetcher(Protocol):
-    """Fetch creator profile content and return normalized content."""
-
-    async def fetch_items_result(
-        self,
-        answer_limit: int = 10,
-        article_limit: int = 5,
-    ) -> CreatorFetchResult:
         ...
 
 

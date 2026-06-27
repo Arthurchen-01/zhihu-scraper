@@ -1,14 +1,12 @@
 """
 cookie_manager.py - Single Cookie Session Manager
 
-Loads one canonical Zhihu cookie file from `.local/cookies.json`, while keeping
-legacy repository-root `cookies.json` fallback for existing local installs.
+Loads one canonical Zhihu cookie file configured by `local.cookies_file`.
 
 ================================================================================
 cookie_manager.py — 单 Cookie 会话管理
 
-只加载 `.local/cookies.json` 这一份主 Cookie 文件，同时兼容历史仓库根目录
-`cookies.json` 路径。
+只加载 `local.cookies_file` 配置指定的一份主 Cookie 文件。
 ================================================================================
 """
 
@@ -18,8 +16,6 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 from .config_runtime import (
-    DEFAULT_COOKIE_FILE,
-    LEGACY_COOKIE_FILE,
     get_config,
     get_logger,
     resolve_project_path,
@@ -36,14 +32,12 @@ PLACEHOLDER_COOKIE_VALUES = {
 @dataclass(frozen=True)
 class RuntimePathResolution:
     """
-    Resolved runtime path plus legacy-fallback diagnostics.
-    运行时路径解析结果，以及旧路径兼容诊断。
+    Resolved runtime path diagnostics.
+    运行时路径解析结果。
     """
 
     configured_path: Path
     active_path: Path
-    legacy_path: Path
-    used_legacy_fallback: bool
 
 
 def is_placeholder_cookie_value(value: Optional[str]) -> bool:
@@ -92,69 +86,38 @@ def has_real_cookie_values(path: Path) -> bool:
     return "z_c0" in session or "d_c0" in session
 
 
-def count_available_cookie_sources(
-    base_cookies_path: Optional[str] = None,
-    pool_dir: Optional[str] = None,
-) -> int:
+def count_available_cookie_sources(base_cookies_path: Optional[str] = None) -> int:
     """
     Count valid cookie sources.
     统计当前可用 Cookie 来源数量。
 
-    `pool_dir` is accepted for backward-compatible call sites, but the runtime
-    no longer scans a cookie pool.
-    `pool_dir` 仅为兼容旧调用保留；运行时不再扫描 Cookie 池。
     """
     base_path = resolve_cookie_file_path(base_cookies_path)
     return 1 if has_real_cookie_values(base_path) else 0
 
 
-def has_available_cookie_sources(
-    base_cookies_path: Optional[str] = None,
-    pool_dir: Optional[str] = None,
-) -> bool:
+def has_available_cookie_sources(base_cookies_path: Optional[str] = None) -> bool:
     """
     Check whether at least one valid cookie source is available.
     检查是否至少存在一个有效 Cookie 来源。
     """
-    return count_available_cookie_sources(base_cookies_path, pool_dir) > 0
-
-
-def _resolve_runtime_path(configured: Path, *, default_path: Path, legacy_path: Path) -> RuntimePathResolution:
-    """
-    Keep old repo-root paths working when users upgrade in place, while exposing
-    whether the legacy fallback was actually used.
-    在用户原地升级时继续兼容旧的仓库根目录路径，同时暴露是否真实命中了旧路径兼容。
-    """
-    default_abs = resolve_project_path(default_path)
-    legacy_abs = resolve_project_path(legacy_path)
-
-    use_legacy = configured == default_abs and not configured.exists() and legacy_abs.exists()
-    return RuntimePathResolution(
-        configured_path=configured,
-        active_path=legacy_abs if use_legacy else configured,
-        legacy_path=legacy_abs,
-        used_legacy_fallback=use_legacy,
-    )
+    return count_available_cookie_sources(base_cookies_path) > 0
 
 
 def describe_cookie_file_path(configured_path: Optional[str] = None) -> RuntimePathResolution:
     """
-    Resolve the cookie file path and report whether legacy fallback is active.
-    解析 Cookie 文件路径，并报告是否命中了旧路径兼容。
+    Resolve the configured cookie file path.
+    解析配置中的 Cookie 文件路径。
     """
     cfg = get_config()
-    configured = resolve_project_path(configured_path or cfg.zhihu.cookies_file)
-    return _resolve_runtime_path(
-        configured,
-        default_path=DEFAULT_COOKIE_FILE,
-        legacy_path=LEGACY_COOKIE_FILE,
-    )
+    configured = resolve_project_path(configured_path or cfg.local.cookies_file)
+    return RuntimePathResolution(configured_path=configured, active_path=configured)
 
 
 def resolve_cookie_file_path(configured_path: Optional[str] = None) -> Path:
     """
-    Resolve the active cookie file path with legacy fallback.
-    解析当前生效的 Cookie 文件路径，并兼容旧路径。
+    Resolve the active configured cookie file path.
+    解析当前生效的配置 Cookie 文件路径。
     """
     return describe_cookie_file_path(configured_path).active_path
 
@@ -165,7 +128,7 @@ class CookieManager:
     English: Zhihu single-cookie session manager
     """
 
-    def __init__(self, base_cookies_path: Optional[str] = None, pool_dir: Optional[str] = None):
+    def __init__(self, base_cookies_path: Optional[str] = None):
         self.log = get_logger()
         self.base_path = resolve_cookie_file_path(base_cookies_path)
         self.sessions: List[Dict[str, str]] = []
@@ -221,18 +184,6 @@ class CookieManager:
         """
         if not self.sessions:
             return None
-        return self.sessions[self._current_index]
-
-    def rotate_session(self) -> Optional[Dict[str, str]]:
-        """
-        Backward-compatible no-op for older anti-blocking call sites.
-        为旧的风控处理调用保留的兼容空操作。
-        """
-        if not self.sessions:
-            self.log.warning("cookie_rotation_skipped", reason="no_primary_cookie")
-            return None
-
-        self.log.warning("cookie_rotation_skipped", reason="single_cookie_mode")
         return self.sessions[self._current_index]
 
     def has_sessions(self) -> bool:
