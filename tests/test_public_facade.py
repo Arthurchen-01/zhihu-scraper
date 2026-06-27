@@ -68,7 +68,7 @@ class PublicApiTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertTrue(result.success)
-        self.assertEqual(captured["output_dir"], Path("tmp-data"))
+        self.assertEqual(captured["output_dir"], REPO_ROOT / "tmp-data")
         self.assertEqual(captured["scrape_config"], {"start": 0, "limit": 7})
         self.assertFalse(captured["download_images"])
 

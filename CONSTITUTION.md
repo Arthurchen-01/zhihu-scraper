@@ -11,7 +11,7 @@
 
 核心交付保持为：
 
-- 稳定的 CLI 与 TUI 入口
+- 稳定的 CLI 入口
 - Markdown + 图片 + SQLite 的本地输出闭环
 - 可维护的配置系统与运行时路径
 - 明确的模块边界与 typed contracts
@@ -45,7 +45,8 @@
 
 当前命令语义守卫：
 
-- 裸 `zhihu` 与 `zhihu interactive` 默认直达推荐的 Textual TUI
+- 裸 `zhihu` 显示 CLI 帮助
+- 正式命令面为 `fetch`、`query`、`config`、`check`
 
 ## 4. 质量门禁
 
@@ -55,7 +56,7 @@
 - 配置字段或运行时路径
 - 安装方式
 - 平台支持边界
-- TUI 行为
+- CLI 行为
 - 核心模块边界
 
 默认质量门禁：

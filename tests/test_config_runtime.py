@@ -22,8 +22,8 @@ class ConfigRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.yaml"
             config_path.write_text(
-                "output:\n"
-                "  directory: custom-data\n"
+                "local:\n"
+                "  output_dir: custom-data\n"
                 "logging:\n"
                 "  level: DEBUG\n",
                 encoding="utf-8",
@@ -32,12 +32,12 @@ class ConfigRuntimeTests(unittest.TestCase):
             config = self.loader.load(config_path)
 
         self.assertIsInstance(config, Config)
-        self.assertEqual(config.output.directory, "custom-data")
+        self.assertEqual(config.local.output_dir, "custom-data")
         self.assertEqual(config.logging.level, "DEBUG")
 
     def test_loader_missing_file_falls_back_to_defaults(self):
         config = self.loader.load(Path("/tmp/definitely-missing-config.yaml"))
-        self.assertEqual(config.output.directory, "data")
+        self.assertEqual(config.local.output_dir, "data")
         self.assertTrue(config.zhihu.cookies_required)
 
     def test_loader_missing_file_still_initializes_logging_and_override_level(self):

@@ -84,24 +84,25 @@ For authenticated content, log in to Zhihu in your browser, copy your own `z_c0`
 
 ## Daily Use
 
-The easiest entry for beginners is the Textual TUI full-screen workbench:
-
-```bash
-zhihu
-zhihu interactive
-```
-
-You can also use direct commands:
+The daily entry point is the CLI:
 
 ```bash
 zhihu fetch URL               # Archive one link
 zhihu fetch --file urls.txt   # Batch archive links from a file
-zhihu creator PEOPLE_URL      # Archive creator profile content
-zhihu monitor COLLECTION_ID   # Incrementally monitor a collection
 zhihu query KEYWORD           # Search the local SQLite archive
 zhihu config                  # Show current configuration
 zhihu check                   # Check the local runtime environment
 ```
+
+Local paths are controlled by the `local` section in `config.yaml`:
+
+```yaml
+local:
+  cookies_file: .local/cookies.json
+  output_dir: data
+```
+
+Both `cookies_file` and `output_dir` support absolute paths; relative paths are resolved from the project root on macOS, Linux, and Windows.
 
 ## Core Features
 
@@ -141,7 +142,7 @@ Multi-platform guidance:
 | Web backend | Call `await archive_url(...)` from FastAPI / Django; keep the frontend display-only |
 | Desktop app | Use Electron / Tauri / PySide with `archive_url_sync(...)` |
 | Mobile app | Call your own backend API; reuse this package on the backend and keep cookies out of the app bundle |
-| Automation | Schedule `archive_urls_sync(...)` or `monitor_collection_sync(...)` |
+| Automation | Schedule `archive_urls_sync(...)` |
 
 ## More Entry Points
 

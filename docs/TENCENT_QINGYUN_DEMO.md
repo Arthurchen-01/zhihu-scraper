@@ -9,7 +9,7 @@ Zhihu-Scraper is a local-first archive tool:
 - Input: Zhihu links or local URL lists.
 - Processing: protocol-first fetch, optional browser fallback, typed payload handling.
 - Output: Markdown, images, and SQLite owned by the user.
-- Interfaces: Textual TUI for humans, CLI for automation.
+- Interfaces: CLI for humans and automation.
 
 ## Five-Minute Flow
 
@@ -21,38 +21,22 @@ zhihu check
 zhihu config
 ```
 
-2. Show the interactive workbench.
-
-```bash
-zhihu
-```
-
-Point out:
-
-- link input
-- queue and recent results
-- retry flow
-- language switching
-- full-screen TUI as the default entry
-
-3. Show the command surface.
+2. Show the command surface.
 
 ```bash
 zhihu fetch --help
-zhihu creator --help
-zhihu monitor --help
 zhihu query --help
 ```
 
-4. Show local archive value without depending on live network.
+3. Show local archive value without depending on live network.
 
 ```bash
 zhihu query "深度学习"
 ```
 
-If the local demo database is not present, show `examples/outputs/` and explain that the durable deliverable is plain Markdown plus local assets.
+If the local demo database is not present, show a freshly generated local export under `data/entries/` or `examples/outputs/` and explain that the durable deliverable is plain Markdown plus local assets.
 
-5. Show maintainability.
+4. Show maintainability.
 
 ```bash
 python -m unittest -q tests.test_docs_sync tests.test_command_surface tests.test_install_contract
@@ -82,4 +66,4 @@ Then point to:
 
 ## Preferred Closing
 
-The repository is now converged around one `main` branch, one local-first product story, and one guarded command surface. The next high-value polish is local config separation and a query-oriented TUI view.
+The repository is now converged around one `main` branch, one local-first product story, and one guarded CLI command surface. The next high-value polish is local config separation and a no-network demo fixture.

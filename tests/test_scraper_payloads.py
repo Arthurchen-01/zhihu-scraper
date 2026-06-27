@@ -3,10 +3,6 @@ import unittest
 from core.scraper_payloads import (
     build_answer_item,
     build_article_item,
-    build_creator_answer_item,
-    build_creator_article_item,
-    build_creator_profile_payload,
-    build_empty_sync_stats,
     build_question_answer_item,
 )
 
@@ -51,52 +47,6 @@ class ScraperPayloadTests(unittest.TestCase):
             },
         )
         self.assertEqual(item["url"], "https://www.zhihu.com/question/123/answer/456")
-
-    def test_build_creator_profile_payload_normalizes_counts(self):
-        payload = build_creator_profile_payload(
-            "demo-user",
-            {
-                "name": "Demo User",
-                "url_token": "demo-user",
-                "follower_count": 12,
-                "columns_count": 3,
-            },
-        )
-        self.assertEqual(payload["name"], "Demo User")
-        self.assertEqual(payload["profile_url"], "https://www.zhihu.com/people/demo-user")
-        self.assertEqual(payload["column_count"], 3)
-
-    def test_build_empty_sync_stats_marks_disabled_limits_as_end(self):
-        stats = build_empty_sync_stats(0)
-        self.assertTrue(stats["reached_end"])
-        self.assertEqual(stats["saved_count"], 0)
-
-    def test_build_creator_answer_item_handles_missing_question_id(self):
-        item = build_creator_answer_item(
-            url_token="demo-user",
-            data={
-                "id": "99",
-                "question": {"title": "问题"},
-                "author": {"name": "作者"},
-            },
-        )
-        self.assertEqual(item["url"], "https://www.zhihu.com/answer/99")
-        self.assertEqual(item["creator_url_token"], "demo-user")
-
-    def test_build_creator_article_item_preserves_thumbnail_header(self):
-        item = build_creator_article_item(
-            url_token="demo-user",
-            data={
-                "id": "77",
-                "title": "文章",
-                "author": {"name": "作者"},
-                "thumbnail": "https://pic.zhimg.com/v2-thumb.jpg",
-                "updated": 1712073600,
-            },
-        )
-        self.assertIn("TitleImage", item["html"])
-        self.assertEqual(item["creator_url_token"], "demo-user")
-
 
 if __name__ == "__main__":
     unittest.main()

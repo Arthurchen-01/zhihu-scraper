@@ -1,6 +1,6 @@
 ---
 name: zhihu-save-pipeline
-description: Use when changing Markdown output, image downloading, SQLite writes, save contracts, or creator/fetch workflow persistence behavior.
+description: Use when changing Markdown output, image downloading, SQLite writes, save contracts, or fetch workflow persistence behavior.
 ---
 
 # Save Pipeline

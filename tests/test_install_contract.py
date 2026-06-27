@@ -25,13 +25,15 @@ class InstallContractTests(unittest.TestCase):
         self.assertNotIn('cli/app.py manual', install_script)
         self.assertIn("zhihu fetch", install_script)
         self.assertIn('cli/app.py --help', install_script)
+        self.assertNotIn("cookie_pool", install_script)
+        self.assertNotIn("zhihu interactive", install_script)
 
     def test_ci_workflow_matches_documented_validation_baseline(self):
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
         expected_unittest = (
             "python -m unittest -q tests.test_cli_compat tests.test_docs_sync "
-            "tests.test_command_surface tests.test_tui_rebuild tests.test_save_pipeline "
+            "tests.test_command_surface tests.test_save_pipeline "
             "tests.test_save_contracts tests.test_config_view tests.test_scraper_payloads "
             "tests.test_scraper_contracts tests.test_config_schema tests.test_config_runtime "
             "tests.test_install_contract tests.test_workflow_service tests.test_db_contract "

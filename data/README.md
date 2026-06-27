@@ -7,13 +7,9 @@ This directory is reserved for local runtime artifacts and is not part of the ma
 ## Suggested Layout / 建议结构
 
 - `data/entries/`
-  普通 `fetch` / `fetch --file` / `monitor` 输出。
-- `data/creators/<url_token>/`
-  `creator` 模式作者归档。
+  `fetch` / `fetch --file` 输出。
 - `data/zhihu.db`
   本地 SQLite 数据库。
-- `data/.monitor_state.json`
-  收藏夹监控游标。
 
 ## Boundary Rules / 边界规则
 

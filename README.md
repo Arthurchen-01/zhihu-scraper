@@ -84,24 +84,25 @@ zhihu check
 
 ## 日常怎么用
 
-最适合新手的是 Textual TUI 全屏工作台：
-
-```bash
-zhihu
-zhihu interactive
-```
-
-也可以直接使用命令：
+日常入口是 CLI 命令：
 
 ```bash
 zhihu fetch URL               # 抓取单条链接
 zhihu fetch --file urls.txt   # 从文件批量抓取
-zhihu creator PEOPLE_URL      # 归档创作者主页内容
-zhihu monitor COLLECTION_ID   # 增量监控收藏夹
 zhihu query KEYWORD           # 检索本地 SQLite 归档
 zhihu config                  # 查看当前配置
 zhihu check                   # 检查本地运行环境
 ```
+
+本地路径统一由 `config.yaml` 的 `local` 段控制：
+
+```yaml
+local:
+  cookies_file: .local/cookies.json
+  output_dir: data
+```
+
+`cookies_file` 和 `output_dir` 都支持绝对路径；相对路径会按项目根目录解析，适用于 macOS、Linux 和 Windows。
 
 ## 核心能力
 
@@ -141,7 +142,7 @@ result = await archive_url(
 | Web 后端 | 在 FastAPI / Django 中调用 `await archive_url(...)`，前端只展示结果 |
 | 桌面端 | Electron / Tauri / PySide 调同步包装 `archive_url_sync(...)` |
 | 移动端 | App 调自己的后端接口，由后端复用本项目 API，不把 Cookie 放进移动包 |
-| 自动化 | 定时任务调用 `archive_urls_sync(...)` 或 `monitor_collection_sync(...)` |
+| 自动化 | 定时任务调用 `archive_urls_sync(...)` |
 
 ## 更多入口
 

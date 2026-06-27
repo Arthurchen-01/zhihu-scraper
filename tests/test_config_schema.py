@@ -8,7 +8,7 @@ class ConfigSchemaTests(unittest.TestCase):
         config = build_config_from_dict(
             {
                 "zhihu": {
-                    "cookies": {"file": ".local/cookies.json", "pool_dir": ".local/cookie_pool"},
+                    "cookies": {"file": ".local/cookies.json"},
                     "browser": {"headless": False},
                 },
                 "crawler": {"images": {"concurrency": 8}},
@@ -23,13 +23,16 @@ class ConfigSchemaTests(unittest.TestCase):
 
         self.assertIsInstance(config, Config)
         self.assertFalse(config.zhihu.browser.headless)
+        self.assertEqual(config.local.cookies_file, ".local/cookies.json")
+        self.assertEqual(config.local.output_dir, "data")
         self.assertEqual(config.crawler.images.concurrency, 8)
         self.assertTrue(config.output.download_images)
         self.assertEqual(config.logging.level, "DEBUG")
 
     def test_build_default_config_is_safe_and_complete(self):
         config = build_default_config()
-        self.assertEqual(config.output.directory, "data")
+        self.assertEqual(config.local.output_dir, "data")
+        self.assertEqual(config.local.cookies_file, ".local/cookies.json")
         self.assertTrue(config.zhihu.cookies_required)
         self.assertEqual(config.crawler.retry.max_attempts, 3)
 

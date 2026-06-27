@@ -1,19 +1,15 @@
 import asyncio
-import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.creator_metadata import _normalize_creator_text
 from core.contracts import SavePipelineError
 from core.save_pipeline import (
     SavePipelineSettings,
     build_output_folder_name,
-    resolve_creator_output_dir,
     resolve_entries_output_dir,
     save_items_result,
-    write_creator_metadata,
 )
 
 
@@ -37,70 +33,6 @@ class OutputPathTests(unittest.TestCase):
     def test_entries_output_dir_only_appends_entries_once(self):
         self.assertEqual(resolve_entries_output_dir(Path("data")), Path("data/entries"))
         self.assertEqual(resolve_entries_output_dir(Path("entries")), Path("entries"))
-
-    def test_creator_output_dir_places_content_under_creators(self):
-        self.assertEqual(
-            resolve_creator_output_dir(Path("data"), "hu-xi-jin"),
-            Path("data/creators/hu-xi-jin"),
-        )
-
-
-class CreatorMetadataTests(unittest.TestCase):
-    def test_write_creator_metadata_emits_json_and_readme(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            creator_root = Path(tmpdir) / "creators" / "demo-user"
-            creator_root.mkdir(parents=True, exist_ok=True)
-            article_folder = creator_root / "2026-04-03_demo--article-1"
-            article_folder.mkdir(parents=True, exist_ok=True)
-            markdown_path = article_folder / "index.md"
-            markdown_path.write_text("# demo\n", encoding="utf-8")
-
-            write_creator_metadata(
-                creator_root,
-                {
-                    "user_id": "u-1",
-                    "name": "Demo User",
-                    "url_token": "demo-user",
-                    "profile_url": "https://www.zhihu.com/people/demo-user",
-                    "headline": "https://example.com/",
-                    "description": '<a href="https://link.zhihu.com/?target=https%3A//example.com/" class="external"><span>example</span></a>',
-                },
-                [
-                    {
-                        "item": {
-                            "id": "1",
-                            "type": "article",
-                            "title": "示例标题",
-                            "date": "2026-04-03",
-                            "url": "https://zhuanlan.zhihu.com/p/1",
-                        },
-                        "folder": article_folder,
-                        "markdown_path": markdown_path,
-                    }
-                ],
-                sync_info={"articles": {"requested_limit": 5, "saved_count": 1}},
-            )
-
-            creator_json = json.loads((creator_root / "creator.json").read_text(encoding="utf-8"))
-            creator_readme = (creator_root / "README.md").read_text(encoding="utf-8")
-
-            self.assertEqual(creator_json["url_token"], "demo-user")
-            self.assertEqual(creator_json["saved_articles"], 1)
-            self.assertEqual(creator_json["description"], "https://example.com/")
-            self.assertIn("## Summary / 概览", creator_readme)
-            self.assertIn("> **Headline / 简介**: https://example.com/", creator_readme)
-            self.assertNotIn("> **Description / 描述**:", creator_readme)
-            self.assertNotIn("<a href=", creator_readme)
-            self.assertIn("[index.md](2026-04-03_demo--article-1/index.md)", creator_readme)
-
-    def test_normalize_creator_text_collapses_html_and_whitespace(self):
-        self.assertEqual(
-            _normalize_creator_text(
-                '<div>  graphics   researcher <a href="https://link.zhihu.com/?target=https%3A//example.com/">link</a></div>'
-            ),
-            "graphics researcher https://example.com/",
-        )
-
 
 class SavePipelineFailureTests(unittest.TestCase):
     def test_save_items_result_raises_typed_error_with_partial_context(self):

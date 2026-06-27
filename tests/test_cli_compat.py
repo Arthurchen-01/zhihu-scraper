@@ -1,18 +1,12 @@
-import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import typer
-
-import cli.app as cli_app
-from cli.app import _get_questionary
 from cli.healthcheck import collect_environment_checks, summarize_playwright_failure
 from core.errors import ConfigError, AntiDetectionError, classify_error
 from core.save_pipeline import build_output_folder_name
 from core.config_schema import Config
 from core.cookie_manager import RuntimePathResolution
-from core.monitor import CollectionMonitor
 from core.utils import sanitize_filename
 
 
@@ -27,7 +21,7 @@ class ConfigCompatibilityTests(unittest.TestCase):
                 }
             }
         )
-        self.assertEqual(config.output.directory, "data")
+        self.assertEqual(config.local.output_dir, "data")
         self.assertEqual(config.output.folder_format, "[{date}] {title}")
         self.assertTrue(config.output.download_images)
 
@@ -49,24 +43,6 @@ class ConfigCompatibilityTests(unittest.TestCase):
     def test_shell_safe_filename_removes_common_shell_metacharacters(self):
         value = sanitize_filename("[draft] hello (world) & more", shell_safe=True)
         self.assertEqual(value, "draft_hello_world_more")
-
-
-class LauncherDependencyTests(unittest.TestCase):
-    def test_questionary_missing_raises_clean_exit(self):
-        with patch.object(cli_app.importlib, "import_module", side_effect=ModuleNotFoundError):
-            with patch.object(cli_app.sys.stderr, "isatty", return_value=False):
-                with patch.object(cli_app, "rprint") as mocked_print:
-                    with self.assertRaises(typer.Exit):
-                        _get_questionary()
-                    mocked_print.assert_not_called()
-
-    def test_questionary_missing_interactive_tty_prints_guidance(self):
-        with patch.object(cli_app.importlib, "import_module", side_effect=ModuleNotFoundError):
-            with patch.object(cli_app.sys.stderr, "isatty", return_value=True):
-                with patch.object(cli_app, "rprint") as mocked_print:
-                    with self.assertRaises(typer.Exit):
-                        _get_questionary()
-                    self.assertGreaterEqual(mocked_print.call_count, 1)
 
 
 class UserVisibleErrorTests(unittest.TestCase):
@@ -121,16 +97,11 @@ class HealthcheckSummaryTests(unittest.TestCase):
         assert hint is not None
         self.assertIn("playwright install chromium", hint)
 
-    def test_collect_environment_checks_reports_legacy_cookie_fallback(self):
+    def test_collect_environment_checks_reports_configured_cookie_path(self):
         cfg = Config.from_dict(
             {
-                "zhihu": {
-                    "cookies": {
-                        "file": ".local/cookies.json",
-                        "pool_dir": ".local/cookie_pool",
-                        "required": True,
-                    }
-                }
+                "local": {"cookies_file": ".local/cookies.json"},
+                "zhihu": {"cookies": {"required": True}},
             }
         )
         with patch("cli.healthcheck.get_config", return_value=cfg):
@@ -140,9 +111,7 @@ class HealthcheckSummaryTests(unittest.TestCase):
                         "core.cookie_manager.describe_cookie_file_path",
                         return_value=RuntimePathResolution(
                             configured_path=Path("/repo/.local/cookies.json"),
-                            active_path=Path("/repo/cookies.json"),
-                            legacy_path=Path("/repo/cookies.json"),
-                            used_legacy_fallback=True,
+                            active_path=Path("/repo/.local/cookies.json"),
                         ),
                     ):
                         with patch(
@@ -151,71 +120,9 @@ class HealthcheckSummaryTests(unittest.TestCase):
                         ):
                             items = collect_environment_checks()
 
-        compatibility = next(item for item in items if item.label == "Cookie 路径兼容 / Cookie path compatibility")
-        self.assertEqual(compatibility.status, "warn")
-        self.assertIn("configured /repo/.local/cookies.json -> active /repo/cookies.json", compatibility.detail)
-        self.assertIsNotNone(compatibility.hint)
-        assert compatibility.hint is not None
-        self.assertIn(".local/", compatibility.hint)
-
-
-class MonitorContractTests(unittest.TestCase):
-    def test_collection_monitor_counts_unsupported_items(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("core.monitor.ZhihuAPIClient") as mock_client_cls:
-                mock_client = mock_client_cls.return_value
-                mock_client.get_collection_page.return_value = {
-                    "data": [
-                        {"content": {"id": "900", "type": "video", "title": "Unsupported"}},
-                        {
-                            "content": {
-                                "id": "901",
-                                "type": "answer",
-                                "question": {"id": "12", "title": "Demo Question"},
-                            }
-                        },
-                    ],
-                    "paging": {"is_end": True},
-                }
-
-                monitor = CollectionMonitor(data_dir=tmpdir)
-                delta = monitor.get_new_items("78170682")
-
-        self.assertTrue(delta.has_new_activity)
-        self.assertTrue(delta.has_supported_items)
-        self.assertEqual(delta.next_pointer, "900")
-        self.assertEqual(delta.unseen_count, 2)
-        self.assertEqual(delta.unsupported_count, 1)
-        self.assertEqual(len(delta.items), 1)
-        self.assertEqual(delta.items[0]["url"], "https://www.zhihu.com/question/12/answer/901")
-
-    def test_collection_monitor_clears_pointer_when_head_is_already_known(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("core.monitor.ZhihuAPIClient") as mock_client_cls:
-                mock_client = mock_client_cls.return_value
-                mock_client.get_collection_page.return_value = {
-                    "data": [
-                        {
-                            "content": {
-                                "id": "known-id",
-                                "type": "answer",
-                                "question": {"id": "12", "title": "Demo Question"},
-                            }
-                        }
-                    ],
-                    "paging": {"is_end": True},
-                }
-
-                monitor = CollectionMonitor(data_dir=tmpdir)
-                monitor.store.set_state("78170682", "known-id")
-                delta = monitor.get_new_items("78170682")
-
-        self.assertFalse(delta.has_new_activity)
-        self.assertFalse(delta.has_supported_items)
-        self.assertIsNone(delta.next_pointer)
-        self.assertEqual(delta.unseen_count, 0)
-        self.assertEqual(delta.unsupported_count, 0)
-        self.assertEqual(delta.items, ())
+        cookie_path = next(item for item in items if item.label == "Cookie 路径 / Cookie path")
+        self.assertEqual(cookie_path.status, "ok")
+        self.assertIn("configured /repo/.local/cookies.json -> active /repo/.local/cookies.json", cookie_path.detail)
 
 
 if __name__ == "__main__":

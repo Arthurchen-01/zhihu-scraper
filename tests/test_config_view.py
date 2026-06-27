@@ -10,16 +10,9 @@ class ConfigViewTests(unittest.TestCase):
     def test_build_config_snapshot_resolves_paths_and_modes(self):
         cfg = Config.from_dict(
             {
-                "zhihu": {
-                    "cookies": {
-                        "file": ".local/cookies.json",
-                        "pool_dir": ".local/cookie_pool",
-                        "required": True,
-                    },
-                    "browser": {"headless": False},
-                },
+                "local": {"cookies_file": ".local/cookies.json", "output_dir": "data"},
+                "zhihu": {"cookies": {"required": True}, "browser": {"headless": False}},
                 "crawler": {"retry": {"max_attempts": 5}, "images": {"concurrency": 6}},
-                "output": {"directory": "data"},
                 "logging": {"file": ".local/logs/app.log", "level": "DEBUG"},
             }
         )
@@ -31,22 +24,19 @@ class ConfigViewTests(unittest.TestCase):
             describe_cookie_file_path=lambda raw: RuntimePathResolution(
                 configured_path=Path("/repo") / raw,
                 active_path=Path("/active") / Path(raw).name,
-                legacy_path=Path("/repo/cookies.json"),
-                used_legacy_fallback=True,
             ),
         )
 
-        self.assertEqual(snapshot.output_directory, "data")
+        self.assertEqual(snapshot.output_directory, "/repo/data")
         self.assertEqual(snapshot.browser_mode, "Visible / 有头")
         self.assertEqual(snapshot.retry_attempts, 5)
         self.assertEqual(snapshot.image_concurrency, 6)
         self.assertEqual(snapshot.configured_cookie_path, Path("/repo/.local/cookies.json"))
         self.assertEqual(snapshot.active_cookie_path, Path("/active/cookies.json"))
-        self.assertTrue(snapshot.cookie_file_legacy_fallback)
         self.assertEqual(snapshot.cookie_mode, "Single .local/cookies.json file / 单主 Cookie 文件")
 
     def test_render_config_panel_contains_key_labels(self):
-        cfg = Config.from_dict({"output": {"directory": "data"}})
+        cfg = Config.from_dict({"local": {"output_dir": "data"}})
         snapshot = build_config_snapshot(
             cfg=cfg,
             config_path=Path("/repo/config.yaml"),
@@ -54,8 +44,6 @@ class ConfigViewTests(unittest.TestCase):
             describe_cookie_file_path=lambda raw: RuntimePathResolution(
                 configured_path=Path("/repo") / raw,
                 active_path=Path("/repo") / raw,
-                legacy_path=Path("/repo/cookies.json"),
-                used_legacy_fallback=False,
             ),
         )
         rendered = render_config_panel(snapshot)

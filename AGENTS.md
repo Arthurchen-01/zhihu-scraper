@@ -29,7 +29,7 @@
 
 本项目的目标是维护一个**本地优先**的知乎抓取与归档工具，核心交付包括：
 
-- 稳定的 CLI 与 TUI 入口
+- 稳定的 CLI 入口
 - Markdown + 图片 + SQLite 的本地输出
 - 可维护的配置系统
 - 明确的模块边界与 typed contracts
@@ -95,10 +95,7 @@
 - 命令面 smoke：
   - `python cli/app.py --help`
   - `python cli/app.py fetch --help`
-  - `python cli/app.py creator --help`
-  - `python cli/app.py monitor --help`
   - `python cli/app.py query --help`
-  - `python cli/app.py interactive --help`
   - `python cli/app.py config --help`
   - `python cli/app.py check --help`
 

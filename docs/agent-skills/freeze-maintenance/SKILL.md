@@ -15,4 +15,4 @@ description: Use when maintaining this repository after v3.0.1-final, deciding s
 
 ## Default Validation
 
-Run the smallest relevant unittest slice plus command smoke checks when touching commands, config, install, TUI, or docs.
+Run the smallest relevant unittest slice plus command smoke checks when touching commands, config, install, or docs.
