@@ -47,6 +47,3 @@ logging:
   format: console
   file: .local/logs/scraper.log
   log_exceptions: true
-global:
-  language: zh
-  language_configured: true

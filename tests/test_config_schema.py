@@ -40,6 +40,10 @@ class ConfigSchemaTests(unittest.TestCase):
         config = build_default_config()
         self.assertFalse(hasattr(config, "translation"))
 
+    def test_default_config_does_not_expose_removed_language_settings(self):
+        config = build_default_config()
+        self.assertFalse(hasattr(config, "globals"))
+
 
 if __name__ == "__main__":
     unittest.main()

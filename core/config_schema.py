@@ -110,19 +110,12 @@ class LoggingConfig:
 
 
 @dataclass
-class GlobalConfig:
-    language: str = "zh"
-    language_configured: bool = False
-
-
-@dataclass
 class Config:
     local: LocalConfig
     zhihu: ZhihuConfig
     crawler: CrawlerConfig
     output: OutputConfig
     logging: LoggingConfig
-    globals: GlobalConfig = field(default_factory=GlobalConfig)
 
     @classmethod
     def from_dict(cls, raw: Dict[str, Any]) -> "Config":
@@ -156,19 +149,12 @@ def build_config_from_dict(raw: Dict[str, Any]) -> Config:
     output = OutputConfig(**{k: v for k, v in output_raw.items() if k != "directory"})
     logging_cfg = LoggingConfig(**raw.get("logging", {}))
 
-    global_raw = raw.get("global", {})
-    globals_cfg = GlobalConfig(
-        language=global_raw.get("language", "zh"),
-        language_configured=global_raw.get("language_configured", False),
-    )
-
     return Config(
         local=local,
         zhihu=zhihu,
         crawler=crawler,
         output=output,
         logging=logging_cfg,
-        globals=globals_cfg,
     )
 
 
@@ -179,5 +165,4 @@ def build_default_config() -> Config:
         crawler=CrawlerConfig(),
         output=OutputConfig(),
         logging=LoggingConfig(),
-        globals=GlobalConfig(),
     )
