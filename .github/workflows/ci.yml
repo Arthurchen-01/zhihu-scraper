@@ -2,42 +2,45 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
 
-jobs:
-  smoke:
-    strategy:
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
+permissions:
+  contents: read
 
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
-      - name: Checkout
+      - name: Check out repository
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
+          cache: pip
 
-      - name: Install dependencies
-        run: pip install -e .
+      - name: Upgrade packaging tools
+        run: python -m pip install --upgrade pip
 
-      - name: Compile Python modules
-        run: python -m compileall cli core zhihu_scraper
+      - name: Install project and development dependencies
+        run: python -m pip install -e ".[dev]"
 
-      - name: Run unit tests (unittest)
-        run: python -m unittest -q tests.test_cli_compat tests.test_docs_sync tests.test_command_surface tests.test_save_pipeline tests.test_save_contracts tests.test_config_view tests.test_scraper_payloads tests.test_scraper_contracts tests.test_config_schema tests.test_config_runtime tests.test_install_contract tests.test_workflow_service tests.test_db_contract tests.test_public_facade
+      - name: Compile package
+        run: python -m compileall -q zhihu_scraper
 
-      - name: CLI smoke check
-        run: |
-          python cli/app.py --help
-          python cli/app.py fetch --help
-          python cli/app.py query --help
-          python cli/app.py config --help
-          python cli/app.py check --help
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Check command-line entry point
+        run: zhihu --help
