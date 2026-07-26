@@ -213,9 +213,26 @@ def extract_article_payload(
 ) -> Mapping[str, object]:
     """Extract one full article entity from a Zhihu HTML initial state."""
 
+    return extract_entity_payload(
+        document,
+        collection="articles",
+        entity_id=article_id,
+    )
+
+
+def extract_entity_payload(
+    document: str,
+    *,
+    collection: str,
+    entity_id: str,
+) -> Mapping[str, object]:
+    """Extract one entity collection item from a Zhihu HTML initial state."""
+
     if not isinstance(document, str):
-        raise InvalidZhihuPayloadError("专栏文章 HTML 必须是文本。")
-    normalized_id = str(article_id)
+        raise InvalidZhihuPayloadError("知乎页面 HTML 必须是文本。")
+    if collection not in {"articles", "answers", "questions", "zvideos"}:
+        raise ValueError("unsupported initial-state entity collection")
+    normalized_id = str(entity_id)
     candidates: list[str] = []
 
     parser = _InitialDataScriptParser()
@@ -239,12 +256,12 @@ def extract_article_payload(
                 state = json.loads(serialized)
             except (json.JSONDecodeError, TypeError):
                 continue
-            article = _find_article_entity(state, normalized_id)
-            if article is not None:
-                return article
+            entity = _find_entity(state, collection, normalized_id)
+            if entity is not None:
+                return entity
 
     raise InvalidZhihuPayloadError(
-        f"文章 HTML 初始状态中未找到文章 {normalized_id}。"
+        f"知乎页面初始状态中未找到 {collection}:{normalized_id}。"
     )
 
 
@@ -410,33 +427,34 @@ def _balanced_json_object(document: str, start: int) -> str | None:
     return None
 
 
-def _find_article_entity(
+def _find_entity(
     value: object,
-    article_id: str,
+    collection_name: str,
+    entity_id: str,
 ) -> Mapping[str, object] | None:
     if isinstance(value, Mapping):
-        raw_articles = value.get("articles")
-        article = _article_from_collection(raw_articles, article_id)
-        if article is not None:
-            return article
+        raw_collection = value.get(collection_name)
+        entity = _entity_from_collection(raw_collection, entity_id)
+        if entity is not None:
+            return entity
         for nested in value.values():
-            article = _find_article_entity(nested, article_id)
-            if article is not None:
-                return article
+            entity = _find_entity(nested, collection_name, entity_id)
+            if entity is not None:
+                return entity
     elif isinstance(value, list):
         for nested in value:
-            article = _find_article_entity(nested, article_id)
-            if article is not None:
-                return article
+            entity = _find_entity(nested, collection_name, entity_id)
+            if entity is not None:
+                return entity
     return None
 
 
-def _article_from_collection(
+def _entity_from_collection(
     collection: object,
-    article_id: str,
+    entity_id: str,
 ) -> Mapping[str, object] | None:
     if isinstance(collection, Mapping):
-        direct = collection.get(article_id)
+        direct = collection.get(entity_id)
         if isinstance(direct, Mapping):
             return dict(direct)
         candidates = collection.values()
@@ -449,6 +467,6 @@ def _article_from_collection(
         if not isinstance(candidate, Mapping):
             continue
         candidate_id = candidate.get("id")
-        if str(candidate_id) == article_id:
+        if str(candidate_id) == entity_id:
             return dict(candidate)
     return None

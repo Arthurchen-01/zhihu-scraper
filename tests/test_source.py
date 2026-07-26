@@ -6,6 +6,7 @@ from zhihu_scraper.source import (
     PaginationLoopError,
     ZhihuSource,
     extract_article_payload,
+    extract_entity_payload,
 )
 from zhihu_scraper.urls import route_zhihu_url
 
@@ -146,6 +147,44 @@ class ArticleSourceTests(unittest.TestCase):
             ZhihuSource(client).fetch_article_payload("42")
 
         self.assertEqual([], client.html_calls)
+
+    def test_generic_initial_state_extractor_supports_answers_questions_and_video(self):
+        state = {
+            "initialState": {
+                "entities": {
+                    "answers": {"200": {"id": 200, "content": "<p>回答</p>"}},
+                    "questions": {"100": {"id": 100, "title": "问题"}},
+                    "zvideos": {"300": {"id": 300, "title": "视频"}},
+                }
+            }
+        }
+        page = (
+            '<script id="js-initialData" type="text/json">'
+            f"{json.dumps(state, ensure_ascii=False)}"
+            "</script>"
+        )
+
+        self.assertEqual(
+            200,
+            extract_entity_payload(page, collection="answers", entity_id="200")["id"],
+        )
+        self.assertEqual(
+            "问题",
+            extract_entity_payload(
+                page,
+                collection="questions",
+                entity_id="100",
+            )["title"],
+        )
+        self.assertEqual(
+            "视频",
+            extract_entity_payload(page, collection="zvideos", entity_id="300")["title"],
+        )
+
+        with self.assertRaises(InvalidZhihuPayloadError):
+            extract_entity_payload(page, collection="answers", entity_id="missing")
+        with self.assertRaises(ValueError):
+            extract_entity_payload(page, collection="columns", entity_id="missing")
 
 
 class SinglePayloadSourceTests(unittest.TestCase):
