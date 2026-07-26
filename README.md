@@ -148,7 +148,7 @@ result = await archive_url(
 
 - 终端帮助：`zhihu --help` 或 `zhihu [command] --help`
 - 配置检查：`zhihu check`
-- 维护者与代码代理：先阅读 [CONSTITUTION.md](CONSTITUTION.md) 与 [AGENTS.md](AGENTS.md)
+- 维护者与代码代理：先阅读 [AGENTS.md](AGENTS.md)
 
 <div align="center">
   <sub>Local-first archive tool by Yuchen Zhu Research.</sub>

@@ -17,13 +17,19 @@ class DocsSyncTests(unittest.TestCase):
         self.assertNotIn("Textual TUI", readme_cn)
         self.assertNotIn("Textual TUI", readme_en)
 
-    def test_governance_docs_reference_constitution(self):
+    def test_repository_uses_the_small_governance_set(self):
         agents_text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
-        self.assertTrue((REPO_ROOT / "CONSTITUTION.md").exists())
-        self.assertIn("CONSTITUTION.md", agents_text)
-        self.assertIn("tests.test_docs_sync", agents_text)
-        self.assertIn("tests.test_command_surface", agents_text)
+        self.assertTrue((REPO_ROOT / "AGENTS.md").exists())
+        self.assertTrue((REPO_ROOT / "docs" / "ARCHITECTURE.md").exists())
+        self.assertTrue((REPO_ROOT / "docs" / "FEATURE_TODO.md").exists())
+        self.assertFalse((REPO_ROOT / "CONSTITUTION.md").exists())
+        self.assertFalse((REPO_ROOT / "docs" / "TENCENT_QINGYUN_DEMO.md").exists())
+        self.assertFalse((REPO_ROOT / "docs" / "agent-skills").exists())
+        self.assertFalse((REPO_ROOT / "docs" / "PROJECT_CONVERGENCE_REPORT.md").exists())
+        self.assertIn("docs/ARCHITECTURE.md", agents_text)
+        self.assertIn("docs/FEATURE_TODO.md", agents_text)
+        self.assertNotIn("maintenance freeze", agents_text.lower())
 
 
 if __name__ == "__main__":

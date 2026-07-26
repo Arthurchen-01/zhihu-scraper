@@ -148,7 +148,7 @@ Multi-platform guidance:
 
 - Terminal help: `zhihu --help` or `zhihu [command] --help`
 - Runtime check: `zhihu check`
-- Maintainers and coding agents: read [CONSTITUTION.md](CONSTITUTION.md) and [AGENTS.md](AGENTS.md) first
+- Maintainers and coding agents: read [AGENTS.md](AGENTS.md) first
 
 <div align="center">
   <sub>Local-first archive tool by Yuchen Zhu Research.</sub>

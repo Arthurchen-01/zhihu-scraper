@@ -15,4 +15,4 @@ This directory documents example exports. Generated outputs are no longer commit
 - `examples/outputs/` 是本地临时展示区，不进入版本管理
 - 不要放真实 Cookie、数据库、监控状态或临时调试产物
 - 本地临时导出结果放回 `data/`
-- 仓库级目录约定以 [CONSTITUTION.md](../CONSTITUTION.md) 与 [AGENTS.md](../AGENTS.md) 为准
+- 仓库级目录约定以 [AGENTS.md](../AGENTS.md) 与 [目标架构](../docs/ARCHITECTURE.md) 为准
