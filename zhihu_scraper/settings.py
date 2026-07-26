@@ -49,6 +49,7 @@ class ArchiveSettings:
 
     browser_fallback: BrowserFallback = BrowserFallback.AUTO
     headless: bool = False
+    cdp_url: str | None = None
 
     def __post_init__(self) -> None:
         output_dir = _path_value(self.output_dir, "archive.output_dir")
@@ -59,11 +60,13 @@ class ArchiveSettings:
         )
         proxy = _optional_nonempty_string(self.proxy, "network.proxy")
         fallback = _browser_fallback(self.browser_fallback)
+        cdp_url = _optional_nonempty_string(self.cdp_url, "browser.cdp_url")
 
         object.__setattr__(self, "output_dir", output_dir)
         object.__setattr__(self, "cookie_file", cookie_file)
         object.__setattr__(self, "proxy", proxy)
         object.__setattr__(self, "browser_fallback", fallback)
+        object.__setattr__(self, "cdp_url", cdp_url)
         object.__setattr__(
             self,
             "timeout",
@@ -161,7 +164,7 @@ class ArchiveSettings:
         _reject_unknown_fields(
             browser,
             "browser",
-            {"fallback", "headless"},
+            {"fallback", "headless", "cdp_url"},
         )
 
         defaults = cls()
@@ -207,6 +210,7 @@ class ArchiveSettings:
                 defaults.browser_fallback,
             ),
             headless=_value(browser, "headless", defaults.headless),
+            cdp_url=_value(browser, "cdp_url", defaults.cdp_url),
         )
 
     def to_safe_summary(self) -> dict[str, object]:
@@ -234,6 +238,7 @@ class ArchiveSettings:
             "browser": {
                 "fallback": self.browser_fallback.value,
                 "headless": self.headless,
+                "cdp_configured": self.cdp_url is not None,
             },
         }
 
@@ -263,6 +268,7 @@ page_size = 20
 [browser]
 fallback = "auto"
 headless = false
+# cdp_url = "http://127.0.0.1:9222"
 """
 
 

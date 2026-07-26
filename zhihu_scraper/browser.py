@@ -19,7 +19,7 @@ class BrowserDependencyError(BrowserFallbackError):
 
 
 class BrowserLaunchError(BrowserFallbackError):
-    """Raised when a persistent browser context cannot be started."""
+    """Raised when a browser context cannot be started or connected."""
 
 
 class BrowserNavigationError(BrowserFallbackError):
@@ -57,6 +57,8 @@ class BrowserContext(Protocol):
 class BrowserExecutor(Protocol):
     """Adapter seam used by the fallback and its in-memory test fake."""
 
+    def connect_over_cdp(self, cdp_url: str) -> BrowserContext: ...
+
     def launch_persistent_context(
         self,
         profile_dir: Path,
@@ -77,6 +79,24 @@ class _PlaywrightExecutor:
 
     def __init__(self) -> None:
         self._playwright: Any | None = None
+        self._cdp_browser: Any | None = None
+
+    def connect_over_cdp(self, cdp_url: str) -> BrowserContext:
+        try:
+            playwright = self._start_playwright()
+            self._cdp_browser = playwright.chromium.connect_over_cdp(cdp_url)
+            contexts = self._cdp_browser.contexts
+            if not contexts:
+                raise RuntimeError("CDP browser has no default context")
+            return contexts[0]
+        except BrowserDependencyError:
+            raise
+        except Exception:
+            self.close()
+            raise BrowserLaunchError(
+                "The running Chrome browser could not be connected. Start Chrome "
+                "with a loopback remote-debugging port and try again."
+            ) from None
 
     def launch_persistent_context(
         self,
@@ -86,6 +106,27 @@ class _PlaywrightExecutor:
         executable_path: Path | None,
     ) -> BrowserContext:
         try:
+            playwright = self._start_playwright()
+            options: dict[str, object] = {"headless": headless}
+            if executable_path is not None:
+                options["executable_path"] = str(executable_path)
+            return playwright.chromium.launch_persistent_context(
+                str(profile_dir),
+                **options,
+            )
+        except BrowserDependencyError:
+            raise
+        except Exception:
+            self.close()
+            raise BrowserLaunchError(
+                "The persistent browser could not be started. Close any browser "
+                "using the same profile, or run `playwright install chromium`."
+            ) from None
+
+    def _start_playwright(self) -> Any:
+        if self._playwright is not None:
+            return self._playwright
+        try:
             from playwright.sync_api import sync_playwright
         except (ImportError, ModuleNotFoundError):
             raise BrowserDependencyError(
@@ -93,22 +134,8 @@ class _PlaywrightExecutor:
                 "Install `zhihu-scraper[full]`, then run "
                 "`playwright install chromium`."
             ) from None
-
-        try:
-            self._playwright = sync_playwright().start()
-            options: dict[str, object] = {"headless": headless}
-            if executable_path is not None:
-                options["executable_path"] = str(executable_path)
-            return self._playwright.chromium.launch_persistent_context(
-                str(profile_dir),
-                **options,
-            )
-        except Exception:
-            self.close()
-            raise BrowserLaunchError(
-                "The persistent browser could not be started. Close any browser "
-                "using the same profile, or run `playwright install chromium`."
-            ) from None
+        self._playwright = sync_playwright().start()
+        return self._playwright
 
     def close(self) -> None:
         if self._playwright is None:
@@ -117,14 +144,16 @@ class _PlaywrightExecutor:
             self._playwright.stop()
         finally:
             self._playwright = None
+            self._cdp_browser = None
 
 
 class BrowserFallback:
-    """Reuse one persistent browser profile for pages that HTTP cannot fetch."""
+    """Reuse a persistent profile or an already-running local Chrome session."""
 
     def __init__(
         self,
         *,
+        cdp_url: str | None = None,
         profile_dir: Path | None = None,
         headless: bool = False,
         timeout_ms: int = 30_000,
@@ -133,10 +162,13 @@ class BrowserFallback:
     ) -> None:
         if timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
+        if cdp_url is not None:
+            _validate_cdp_url(cdp_url)
         runtime = runtime_platform or RuntimePlatform.detect()
         self.profile_dir = profile_dir or (
             Path(str(runtime.user_data_directory)) / "browser-profile"
         )
+        self.cdp_url = cdp_url
         self.headless = headless
         self.timeout_ms = timeout_ms
         self._runtime = runtime
@@ -232,6 +264,16 @@ class BrowserFallback:
             raise BrowserFallbackError("Browser fallback is closed.")
         if self._context is not None:
             return self._context
+        if self.cdp_url is not None:
+            try:
+                self._context = self._executor.connect_over_cdp(self.cdp_url)
+            except BrowserFallbackError:
+                raise
+            except Exception:
+                raise BrowserLaunchError(
+                    "The running Chrome browser could not be connected."
+                ) from None
+            return self._context
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         try:
             self._context = self._executor.launch_persistent_context(
@@ -259,12 +301,13 @@ class BrowserFallback:
             return
         self._closed = True
         failed = False
-        if self._context is not None:
+        context = self._context
+        self._context = None
+        if context is not None and self.cdp_url is None:
             try:
-                self._context.close()
+                context.close()
             except Exception:
                 failed = True
-            self._context = None
         try:
             self._executor.close()
         except Exception:
@@ -302,4 +345,29 @@ def _validate_zhihu_url(url: str) -> None:
     ):
         raise BrowserNavigationError(
             "Browser fallback only opens trusted Zhihu HTTPS pages."
+        )
+
+
+def _validate_cdp_url(url: str) -> None:
+    """Keep the authenticated browser-control channel on this machine."""
+
+    try:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").casefold()
+        # Accessing ``port`` also rejects malformed and out-of-range values.
+        parsed.port
+    except ValueError:
+        raise BrowserLaunchError(
+            "CDP connection requires a valid loopback HTTP or WebSocket URL."
+        ) from None
+
+    if (
+        parsed.scheme not in {"http", "ws"}
+        or hostname not in {"127.0.0.1", "localhost", "::1"}
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise BrowserLaunchError(
+            "CDP connection requires a loopback HTTP or WebSocket URL "
+            "(127.0.0.1, localhost, or [::1])."
         )

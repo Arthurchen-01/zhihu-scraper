@@ -58,6 +58,7 @@ page_size = 30
 [browser]
 fallback = "never"
 headless = true
+cdp_url = "http://127.0.0.1:9222"
 """.strip(),
                 encoding="utf-8",
             )
@@ -83,6 +84,7 @@ headless = true
         self.assertEqual(settings.page_size, 30)
         self.assertEqual(settings.browser_fallback, BrowserFallback.NEVER)
         self.assertTrue(settings.headless)
+        self.assertEqual(settings.cdp_url, "http://127.0.0.1:9222")
 
     def test_invalid_types_and_ranges_have_readable_chinese_errors(self):
         invalid_documents = (
@@ -168,13 +170,18 @@ headless = true
     def test_safe_summary_discloses_only_whether_secrets_are_configured(self):
         proxy = "http://account:do-not-print@proxy.example:7890"
         cookie_file = Path("/private/do-not-print/cookies.json")
-        settings = ArchiveSettings(proxy=proxy, cookie_file=cookie_file)
+        settings = ArchiveSettings(
+            proxy=proxy,
+            cookie_file=cookie_file,
+            cdp_url="http://127.0.0.1:9222",
+        )
 
         summary = settings.to_safe_summary()
         rendered = repr(summary)
 
         self.assertTrue(summary["network"]["proxy_configured"])
         self.assertTrue(summary["network"]["cookie_file_configured"])
+        self.assertTrue(summary["browser"]["cdp_configured"])
         self.assertNotIn(proxy, rendered)
         self.assertNotIn(str(cookie_file), rendered)
         self.assertNotIn("do-not-print", rendered)
