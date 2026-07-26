@@ -184,7 +184,7 @@ class ArticleSourceTests(unittest.TestCase):
         with self.assertRaises(InvalidZhihuPayloadError):
             extract_entity_payload(page, collection="answers", entity_id="missing")
         with self.assertRaises(ValueError):
-            extract_entity_payload(page, collection="columns", entity_id="missing")
+            extract_entity_payload(page, collection="pins", entity_id="missing")
 
 
 class SinglePayloadSourceTests(unittest.TestCase):

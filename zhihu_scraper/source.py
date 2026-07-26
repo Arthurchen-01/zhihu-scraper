@@ -230,7 +230,7 @@ def extract_entity_payload(
 
     if not isinstance(document, str):
         raise InvalidZhihuPayloadError("知乎页面 HTML 必须是文本。")
-    if collection not in {"articles", "answers", "questions", "zvideos"}:
+    if collection not in {"articles", "answers", "questions", "columns", "zvideos"}:
         raise ValueError("unsupported initial-state entity collection")
     normalized_id = str(entity_id)
     candidates: list[str] = []
