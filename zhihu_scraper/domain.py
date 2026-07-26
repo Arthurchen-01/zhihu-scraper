@@ -174,3 +174,106 @@ class Article:
     cover_url: str | None = None
     columns: tuple[ColumnRef, ...] = ()
     comments: CommentThread | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionRef:
+    id: str
+    title: str
+    url: str
+
+
+@dataclass(frozen=True, slots=True)
+class Answer:
+    id: str
+    question: QuestionRef
+    source_url: str
+    author: Author
+    published_at: datetime | None
+    blocks: tuple[Block, ...]
+    updated_at: datetime | None = None
+    voteup_count: int = 0
+    comments: CommentThread | None = None
+
+    @property
+    def title(self) -> str:
+        return self.question.title
+
+
+@dataclass(frozen=True, slots=True)
+class Question:
+    id: str
+    title: str
+    source_url: str
+    detail: tuple[Block, ...] = ()
+    author: Author | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    answer_count: int = 0
+    follower_count: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class QuestionArchive:
+    question: Question
+    answers: tuple[Answer, ...]
+    archived_at: datetime
+
+    @property
+    def id(self) -> str:
+        return self.question.id
+
+    @property
+    def title(self) -> str:
+        return self.question.title
+
+    @property
+    def source_url(self) -> str:
+        return self.question.source_url
+
+
+@dataclass(frozen=True, slots=True)
+class Column:
+    token: str
+    title: str
+    source_url: str
+    description: str
+    author: Author | None
+    item_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ColumnArchive:
+    column: Column
+    articles: tuple[Article, ...]
+    archived_at: datetime
+
+    @property
+    def id(self) -> str:
+        return self.column.token
+
+    @property
+    def title(self) -> str:
+        return self.column.title
+
+    @property
+    def source_url(self) -> str:
+        return self.column.source_url
+
+
+@dataclass(frozen=True, slots=True)
+class Video:
+    id: str
+    title: str
+    source_url: str
+    author: Author
+    published_at: datetime | None
+    description: tuple[Block, ...]
+    asset: MediaAsset
+    updated_at: datetime | None = None
+    cover_url: str | None = None
+    voteup_count: int = 0
+    comments: CommentThread | None = None
+
+
+ArchiveTarget = Article | Answer | QuestionArchive | ColumnArchive | Video
