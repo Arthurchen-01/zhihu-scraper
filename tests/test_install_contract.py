@@ -13,6 +13,18 @@ class InstallContractTests(unittest.TestCase):
         scripts = pyproject["project"]["scripts"]
         self.assertEqual(scripts["zhihu"], "cli.app:main")
 
+    def test_pyproject_does_not_offer_removed_openai_translation(self):
+        pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        optional_dependencies = pyproject["project"]["optional-dependencies"]
+
+        self.assertNotIn("translate", optional_dependencies)
+        all_dependencies = [
+            dependency
+            for dependencies in optional_dependencies.values()
+            for dependency in dependencies
+        ]
+        self.assertFalse(any(dependency.startswith("openai") for dependency in all_dependencies))
+
     def test_install_script_keeps_editable_full_install_and_runtime_init(self):
         install_script = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         self.assertIn('pip install -e ".[full]"', install_script)

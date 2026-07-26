@@ -36,6 +36,10 @@ class ConfigSchemaTests(unittest.TestCase):
         self.assertTrue(config.zhihu.cookies_required)
         self.assertEqual(config.crawler.retry.max_attempts, 3)
 
+    def test_default_config_does_not_expose_removed_translation_settings(self):
+        config = build_default_config()
+        self.assertFalse(hasattr(config, "translation"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -166,7 +166,6 @@ def _filter_config_dict(data: dict) -> dict:
         "output": {"directory", "format", "images_subdir", "folder_format", "download_images"},
         "logging": {"level", "format", "file", "log_exceptions"},
         "global": {"language", "language_configured"},
-        "translation": {"enabled", "target_language", "engine", "base_url", "api_key", "model"},
     }
 
     def filter_node(current_data: Any, schema_node: Any) -> Any:

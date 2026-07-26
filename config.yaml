@@ -50,10 +50,3 @@ logging:
 global:
   language: zh
   language_configured: true
-translation:
-  enabled: false
-  target_language: en
-  engine: openai
-  base_url: https://api.openai.com/v1
-  api_key: ''
-  model: gpt-4o-mini
