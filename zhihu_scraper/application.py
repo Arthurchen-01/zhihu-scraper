@@ -17,7 +17,7 @@ from .domain import (
     ColumnRef,
     QuestionArchive,
 )
-from .http import TransportError, ZhihuHttpError
+from .http import InvalidResponseError, TransportError, ZhihuHttpError
 from .normalize import (
     normalize_answer,
     normalize_article,
@@ -223,7 +223,12 @@ class ArchiveWorkflow:
             return self._browser_payload(target, collection=collection)
         try:
             return direct()
-        except (InvalidZhihuPayloadError, ZhihuHttpError, TransportError):
+        except (
+            InvalidZhihuPayloadError,
+            InvalidResponseError,
+            ZhihuHttpError,
+            TransportError,
+        ):
             if mode is BrowserFallbackMode.NEVER:
                 raise
             return self._browser_payload(target, collection=collection)

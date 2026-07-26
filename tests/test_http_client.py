@@ -7,6 +7,7 @@ from zhihu_scraper.http import (
     AccessDeniedError,
     AuthenticationError,
     CookieFileError,
+    InvalidResponseError,
     RateLimitError,
     ServerError,
     TransportError,
@@ -32,6 +33,8 @@ class FakeResponse:
         self.headers = headers or {}
 
     def json(self):
+        if isinstance(self._json_data, BaseException):
+            raise self._json_data
         return self._json_data
 
 
@@ -126,6 +129,17 @@ class CookieLoadingTests(unittest.TestCase):
 
 
 class ZhihuHttpClientTests(unittest.TestCase):
+    def test_invalid_json_is_wrapped_without_copying_response_details(self):
+        session = FakeSession(
+            [FakeResponse(json_data=ValueError("secret response body"))]
+        )
+
+        with self.assertRaises(InvalidResponseError) as raised:
+            ZhihuHttpClient(session=session).get_json("/api/v4/me")
+
+        self.assertIn("not valid JSON", str(raised.exception))
+        self.assertNotIn("secret response body", str(raised.exception))
+
     def test_get_json_uses_the_zhihu_origin_and_authenticated_session(self):
         cookies = {"z_c0": "z-secret", "d_c0": "d-secret"}
         session = FakeSession(

@@ -76,6 +76,10 @@ class TransportError(RuntimeError):
     """The HTTP transport failed without exposing its potentially sensitive details."""
 
 
+class InvalidResponseError(RuntimeError):
+    """Zhihu returned a response that could not be decoded safely."""
+
+
 class CookieFileError(ValueError):
     """A Cookie file could not be loaded safely."""
 
@@ -106,7 +110,12 @@ class ZhihuHttpClient:
 
     def get_json(self, url_or_path: str) -> object:
         response = self._get(url_or_path, accept="application/json, text/plain, */*")
-        return response.json()
+        try:
+            return response.json()
+        except Exception:
+            raise InvalidResponseError(
+                "Zhihu returned a response that was not valid JSON."
+            ) from None
 
     def get_html(self, url_or_path: str) -> str:
         response = self._get(
