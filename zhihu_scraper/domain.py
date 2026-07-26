@@ -19,10 +19,20 @@ class Paragraph:
 
 
 @dataclass(frozen=True, slots=True)
+class RichText:
+    """A normalized, source-independent HTML fragment."""
+
+    html: str
+
+
+ContentBlock = Paragraph | RichText
+
+
+@dataclass(frozen=True, slots=True)
 class Article:
     id: str
     title: str
     source_url: str
     author: Author
     published_at: datetime | None
-    blocks: tuple[Paragraph, ...]
+    blocks: tuple[ContentBlock, ...]

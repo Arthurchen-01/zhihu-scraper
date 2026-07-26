@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import html
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
 from .domain import Article
+from .render import HtmlRenderer, MarkdownRenderer, content_plain_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,8 +32,14 @@ class LocalArchive:
         html_path = entry_directory / f"{article.title}.html"
         database_path = self._root / "zhihu.db"
 
-        markdown_path.write_text(self._render_markdown(article), encoding="utf-8")
-        html_path.write_text(self._render_html(article), encoding="utf-8")
+        markdown_renderer = MarkdownRenderer()
+        html_renderer = HtmlRenderer()
+        markdown_path.write_text(markdown_renderer.render(article), encoding="utf-8")
+        html_path.write_text(html_renderer.render(article), encoding="utf-8")
+        assets_directory = entry_directory / "assets"
+        assets_directory.mkdir(exist_ok=True)
+        for filename, content in html_renderer.assets().items():
+            (assets_directory / filename).write_text(content, encoding="utf-8")
         self._save_article(database_path, article)
 
         return ArchiveReceipt(
@@ -41,50 +47,6 @@ class LocalArchive:
             markdown_path=markdown_path,
             html_path=html_path,
             database_path=database_path,
-        )
-
-    @staticmethod
-    def _render_markdown(article: Article) -> str:
-        metadata = [
-            f"# {article.title}",
-            "",
-            f"> 作者：{article.author.name}",
-            f"> 知乎原文：[{article.source_url}]({article.source_url})",
-        ]
-        if article.published_at is not None:
-            metadata.append(f"> 发布时间：{article.published_at.date().isoformat()}")
-
-        paragraphs = [block.text for block in article.blocks]
-        return "\n".join([*metadata, "", *paragraphs, ""])
-
-    @staticmethod
-    def _render_html(article: Article) -> str:
-        title = html.escape(article.title)
-        author = html.escape(article.author.name)
-        source_url = html.escape(article.source_url, quote=True)
-        published_at = ""
-        if article.published_at is not None:
-            date = html.escape(article.published_at.date().isoformat())
-            published_at = f"\n      <p>发布时间：{date}</p>"
-        paragraphs = "\n".join(
-            f"      <p>{html.escape(block.text)}</p>" for block in article.blocks
-        )
-        return (
-            "<!doctype html>\n"
-            '<html lang="zh-CN">\n'
-            "  <head>\n"
-            '    <meta charset="utf-8">\n'
-            f"    <title>{title}</title>\n"
-            "  </head>\n"
-            "  <body>\n"
-            "    <article>\n"
-            f"      <h1>{title}</h1>\n"
-            f"      <p>作者：{author}</p>{published_at}\n"
-            f'      <p><a href="{source_url}">知乎原文</a></p>\n'
-            f"{paragraphs}\n"
-            "    </article>\n"
-            "  </body>\n"
-            "</html>\n"
         )
 
     @staticmethod
@@ -131,6 +93,6 @@ class LocalArchive:
                     article.author.id,
                     article.author.name,
                     article.published_at.isoformat() if article.published_at else None,
-                    "\n\n".join(block.text for block in article.blocks),
+                    content_plain_text(article.blocks),
                 ),
             )
