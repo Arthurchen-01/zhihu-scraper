@@ -49,6 +49,8 @@ class BrowserContext(Protocol):
 
     def cookies(self) -> list[dict[str, object]]: ...
 
+    def add_cookies(self, cookies: list[dict[str, object]]) -> object: ...
+
     def close(self) -> object: ...
 
 
@@ -196,6 +198,34 @@ class BrowserFallback:
             ):
                 result[name] = value
         return result
+
+    def set_cookie_dict(self, cookies: dict[str, str]) -> None:
+        """Import Zhihu cookies into the persistent context without logging values."""
+
+        records = [
+            {
+                "name": name,
+                "value": value,
+                "domain": ".zhihu.com",
+                "path": "/",
+                "secure": True,
+            }
+            for name, value in cookies.items()
+            if isinstance(name, str)
+            and name.strip()
+            and isinstance(value, str)
+            and value
+        ]
+        if not records:
+            return
+        try:
+            self._ensure_context().add_cookies(records)
+        except BrowserFallbackError:
+            raise
+        except Exception:
+            raise BrowserCookieError(
+                "The Zhihu cookies could not be imported into the browser session."
+            ) from None
 
     def _ensure_context(self) -> BrowserContext:
         if self._closed:

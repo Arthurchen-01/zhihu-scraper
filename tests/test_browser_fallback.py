@@ -44,12 +44,16 @@ class FakeContext:
         self.cookie_records = cookies or []
         self.closed = False
         self.close_count = 0
+        self.added_cookies: list[dict[str, object]] = []
 
     def new_page(self) -> FakePage:
         return self.page
 
     def cookies(self) -> list[dict[str, object]]:
         return self.cookie_records
+
+    def add_cookies(self, cookies: list[dict[str, object]]) -> None:
+        self.added_cookies.extend(cookies)
 
     def close(self) -> None:
         self.closed = True
@@ -157,6 +161,41 @@ def test_cookie_dict_contains_only_zhihu_cookies(tmp_path: Path) -> None:
         "d_c0": "secret-d",
         "theme": "dark",
     }
+
+
+def test_cookie_import_is_scoped_to_zhihu_and_never_requires_logging_values(
+    tmp_path: Path,
+) -> None:
+    context = FakeContext()
+    browser = BrowserFallback(
+        executor=FakeExecutor(context),
+        runtime_platform=runtime_for(tmp_path),
+    )
+
+    browser.set_cookie_dict(
+        {
+            "z_c0": "secret-z",
+            "d_c0": "secret-d",
+            "": "ignored",
+        }
+    )
+
+    assert context.added_cookies == [
+        {
+            "name": "z_c0",
+            "value": "secret-z",
+            "domain": ".zhihu.com",
+            "path": "/",
+            "secure": True,
+        },
+        {
+            "name": "d_c0",
+            "value": "secret-d",
+            "domain": ".zhihu.com",
+            "path": "/",
+            "secure": True,
+        },
+    ]
 
 
 def test_context_manager_closes_context_and_executor_once(tmp_path: Path) -> None:
