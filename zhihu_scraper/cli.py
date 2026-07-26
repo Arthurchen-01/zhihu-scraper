@@ -1,0 +1,157 @@
+"""Non-interactive command-line interface over the public archive workflow."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from dataclasses import replace
+from pathlib import Path
+from typing import Sequence
+
+from .facade import archive_url, check_session
+from .settings import (
+    ArchiveSettings,
+    BrowserFallback,
+    generate_default_settings,
+    load_settings,
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="zhihu",
+        description="把知乎文章、回答、问题、专栏和独立视频归档到本地。",
+    )
+    subcommands = parser.add_subparsers(dest="command", required=True)
+
+    fetch = subcommands.add_parser("fetch", help="抓取并归档一个知乎链接")
+    fetch.add_argument("url", help="知乎文章、回答、问题、专栏或 zvideo 链接")
+    _settings_argument(fetch)
+    fetch.add_argument("-o", "--output", type=Path, help="覆盖本次保存目录")
+    fetch.add_argument(
+        "--comments",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="本次开启/关闭 10×10 评论抓取",
+    )
+    fetch.add_argument(
+        "--media",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="本次开启/关闭图片、动图和视频下载",
+    )
+    fetch.add_argument(
+        "--browser",
+        choices=tuple(mode.value for mode in BrowserFallback),
+        help="覆盖浏览器回退策略：auto、never 或 always",
+    )
+    fetch.add_argument("--cdp", help="连接本机已登录 Chrome 的 CDP 地址")
+
+    check = subcommands.add_parser("check", help="检查 Cookie 是否存在且仍可登录")
+    _settings_argument(check)
+    check.add_argument("--cookie-file", type=Path, help="覆盖 Cookie 文件路径")
+
+    init = subcommands.add_parser("init", help="生成简洁的 settings.toml")
+    init.add_argument(
+        "path",
+        nargs="?",
+        type=Path,
+        default=Path("settings.toml"),
+        help="设置文件路径（默认 ./settings.toml）",
+    )
+
+    return parser
+
+
+def run_cli(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    arguments = parser.parse_args(argv)
+    try:
+        if arguments.command == "init":
+            created = generate_default_settings(arguments.path)
+            if created:
+                print(f"已生成设置文件：{arguments.path}")
+            else:
+                print(f"设置文件已存在，未覆盖：{arguments.path}")
+            return 0
+
+        settings = load_settings(arguments.settings)
+        if arguments.command == "check":
+            if arguments.cookie_file is not None:
+                settings = replace(settings, cookie_file=arguments.cookie_file)
+            return _run_check(settings)
+
+        if arguments.output is not None:
+            settings = replace(settings, output_dir=arguments.output)
+        if arguments.comments is not None:
+            settings = replace(settings, comments=arguments.comments)
+        if arguments.media is not None:
+            settings = replace(settings, media_download=arguments.media)
+        if arguments.browser is not None:
+            settings = replace(
+                settings,
+                browser_fallback=BrowserFallback(arguments.browser),
+            )
+        if arguments.cdp is not None:
+            settings = replace(settings, cdp_url=arguments.cdp)
+
+        report = archive_url(arguments.url, settings)
+        _print_archive_report(report)
+        return 0
+    except KeyboardInterrupt:
+        print("已取消。", file=sys.stderr)
+        return 130
+    except Exception as error:
+        print(f"错误：{error}", file=sys.stderr)
+        return 1
+
+
+def main() -> None:
+    raise SystemExit(run_cli())
+
+
+def _settings_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "-s",
+        "--settings",
+        type=Path,
+        help="settings.toml 路径；未提供时使用内置默认值",
+    )
+
+
+def _run_check(settings: ArchiveSettings) -> int:
+    report = check_session(settings)
+    missing = report.cookie_diagnostic.missing
+    if missing:
+        print(f"Cookie 字段缺少：{', '.join(missing)}")
+    else:
+        print("Cookie 字段 z_c0、d_c0 均已配置。")
+    if report.login_status is None:
+        print("未配置 Cookie 文件，未请求知乎登录状态。")
+        return 1
+    if report.login_status.authenticated:
+        print("知乎登录状态有效。")
+        return 0
+    print("知乎登录状态无效或已过期。")
+    return 1
+
+
+def _print_archive_report(report: object) -> None:
+    target = getattr(report, "target")
+    receipt = getattr(report, "receipt")
+    print(f"归档完成：{target.title}")
+    print(f"目录：{receipt.entry_directory}")
+    if receipt.markdown_path is not None:
+        print(f"Markdown：{receipt.markdown_path}")
+    if receipt.html_path is not None:
+        print(f"HTML：{receipt.html_path}")
+    if receipt.database_path is not None:
+        print(f"SQLite：{receipt.database_path}")
+    if getattr(report, "used_browser", False):
+        print("抓取路径：浏览器回退")
+    else:
+        print("抓取路径：HTTP/API")
+
+
+if __name__ == "__main__":
+    main()
