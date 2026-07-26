@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from zhihu_scraper.archive import LocalArchive
-from zhihu_scraper.domain import Article, Author, RichText
+from zhihu_scraper.content import parse_rich_text
+from zhihu_scraper.domain import Article, Author
 
 
 class RichContentRenderingTests(unittest.TestCase):
@@ -15,9 +16,8 @@ class RichContentRenderingTests(unittest.TestCase):
             source_url="https://zhuanlan.zhihu.com/p/11617075708",
             author=Author(id="author-2", name="公式作者"),
             published_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
-            blocks=(
-                RichText(
-                    """
+            blocks=parse_rich_text(
+                """
                     <script>window.shouldNotSurvive = true;</script>
                     <h2>推导</h2>
                     <p>行内公式：<span class="ztext-math" data-tex="E=mc^2"></span></p>
@@ -31,7 +31,6 @@ class RichContentRenderingTests(unittest.TestCase):
                       >
                     </figure>
                     """
-                ),
             ),
         )
 

@@ -1,15 +1,30 @@
-"""Markdown and static HTML renderers for normalized archive content."""
+"""Render normalized content to Markdown and dependency-free static HTML."""
 
 from __future__ import annotations
 
 import html
-import re
 from collections.abc import Mapping, Sequence
 
-from bs4 import BeautifulSoup, Tag
-from markdownify import markdownify
-
-from .domain import Article, ContentBlock, Paragraph, RichText
+from .domain import (
+    Article,
+    Block,
+    CodeBlock,
+    CodeSpan,
+    Divider,
+    FormulaBlock,
+    Heading,
+    Inline,
+    InlineFormula,
+    LineBreak,
+    Link,
+    ListBlock,
+    MediaAsset,
+    MediaBlock,
+    Paragraph,
+    Quote,
+    TableBlock,
+    Text,
+)
 
 
 ARCHIVE_CSS = """\
@@ -23,7 +38,8 @@ body {
   max-width: 860px;
   padding: 2rem 1.25rem 5rem;
 }
-article img {
+article img,
+article video {
   height: auto;
   max-width: 100%;
 }
@@ -44,6 +60,16 @@ pre {
   padding: 0.75rem;
   text-align: center;
 }
+table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+th,
+td {
+  border: 1px solid currentColor;
+  padding: 0.35rem 0.65rem;
+}
 """
 
 
@@ -63,10 +89,7 @@ class MarkdownRenderer:
         if article.published_at is not None:
             metadata.append(f"> 发布时间：{article.published_at.date().isoformat()}")
 
-        body = "\n\n".join(
-            _block_to_markdown(block, image_paths=image_paths or {})
-            for block in article.blocks
-        )
+        body = _blocks_to_markdown(article.blocks, paths=image_paths or {})
         return "\n".join([*metadata, "", body.strip(), ""])
 
 
@@ -85,10 +108,7 @@ class HtmlRenderer:
             date = html.escape(article.published_at.date().isoformat())
             published = f"\n        <p>发布时间：{date}</p>"
 
-        body = "\n".join(
-            _block_to_html(block, image_paths=image_paths or {})
-            for block in article.blocks
-        )
+        body = _blocks_to_html(article.blocks, paths=image_paths or {})
         return (
             "<!doctype html>\n"
             '<html lang="zh-CN">\n'
@@ -116,160 +136,235 @@ class HtmlRenderer:
         return {"archive.css": ARCHIVE_CSS}
 
 
-def content_plain_text(blocks: Sequence[ContentBlock]) -> str:
-    text_parts: list[str] = []
+def content_plain_text(blocks: Sequence[Block]) -> str:
+    """Return searchable text without reparsing output formats."""
+
+    parts: list[str] = []
     for block in blocks:
-        if isinstance(block, Paragraph):
-            text_parts.append(block.text)
-        else:
-            soup = BeautifulSoup(block.html, "html.parser")
-            text_parts.append(soup.get_text("\n", strip=True))
-    return "\n\n".join(part for part in text_parts if part)
+        if isinstance(block, (Paragraph, Heading)):
+            parts.append(_inlines_plain_text(block.inlines))
+        elif isinstance(block, Quote):
+            parts.append(content_plain_text(block.blocks))
+        elif isinstance(block, ListBlock):
+            parts.extend(content_plain_text(item) for item in block.items)
+        elif isinstance(block, CodeBlock):
+            parts.append(block.code)
+        elif isinstance(block, (FormulaBlock,)):
+            parts.append(block.tex)
+        elif isinstance(block, MediaBlock):
+            parts.extend(part for part in (block.asset.alt_text, block.caption) if part)
+        elif isinstance(block, TableBlock):
+            parts.extend(block.headers)
+            parts.extend(cell for row in block.rows for cell in row)
+    return "\n\n".join(part for part in parts if part)
 
 
-def _block_to_markdown(
-    block: ContentBlock,
+def _inlines_plain_text(inlines: Sequence[Inline]) -> str:
+    parts: list[str] = []
+    for inline in inlines:
+        if isinstance(inline, Text):
+            parts.append(inline.text)
+        elif isinstance(inline, Link):
+            parts.append(inline.label)
+        elif isinstance(inline, CodeSpan):
+            parts.append(inline.code)
+        elif isinstance(inline, InlineFormula):
+            parts.append(inline.tex)
+        elif isinstance(inline, LineBreak):
+            parts.append("\n")
+    return "".join(parts)
+
+
+def _blocks_to_markdown(
+    blocks: Sequence[Block],
     *,
-    image_paths: Mapping[str, str],
+    paths: Mapping[str, str],
 ) -> str:
+    rendered = [_block_to_markdown(block, paths=paths) for block in blocks]
+    return "\n\n".join(part for part in rendered if part)
+
+
+def _block_to_markdown(block: Block, *, paths: Mapping[str, str]) -> str:
     if isinstance(block, Paragraph):
-        return block.text
-
-    soup = _clean_fragment(block.html, image_paths=image_paths, formulas_as_html=False)
-
-    def code_language(element: Tag) -> str:
-        code = element.find("code") if element.name == "pre" else element
-        classes = code.get("class", []) if isinstance(code, Tag) else []
-        return next(
-            (
-                css_class.removeprefix("language-")
-                for css_class in classes
-                if css_class.startswith("language-")
-            ),
-            "",
+        return _inlines_to_markdown(block.inlines)
+    if isinstance(block, Heading):
+        level = max(1, min(6, block.level))
+        return f"{'#' * level} {_inlines_to_markdown(block.inlines)}"
+    if isinstance(block, Quote):
+        nested = _blocks_to_markdown(block.blocks, paths=paths)
+        return "\n".join(f"> {line}" if line else ">" for line in nested.splitlines())
+    if isinstance(block, ListBlock):
+        lines: list[str] = []
+        for index, item in enumerate(block.items, start=1):
+            marker = f"{index}." if block.ordered else "-"
+            nested = _blocks_to_markdown(item, paths=paths)
+            item_lines = nested.splitlines() or [""]
+            lines.append(f"{marker} {item_lines[0]}")
+            lines.extend(f"   {line}" for line in item_lines[1:])
+        return "\n".join(lines)
+    if isinstance(block, CodeBlock):
+        fence = "```"
+        return f"{fence}{block.language}\n{block.code}\n{fence}"
+    if isinstance(block, FormulaBlock):
+        return f"$$\n{block.tex}\n$$"
+    if isinstance(block, MediaBlock):
+        source = _media_source(block.asset, paths=paths)
+        return f"![{_escape_markdown_label(block.asset.alt_text)}]({source})"
+    if isinstance(block, TableBlock):
+        width = max(
+            len(block.headers),
+            max((len(row) for row in block.rows), default=0),
         )
+        if width == 0:
+            return ""
+        headers = list(block.headers) or [""] * width
+        headers.extend([""] * (width - len(headers)))
+        lines = [
+            "| " + " | ".join(_escape_table_cell(cell) for cell in headers) + " |",
+            "| " + " | ".join("---" for _ in range(width)) + " |",
+        ]
+        for row in block.rows:
+            cells = [*row, *([""] * (width - len(row)))]
+            lines.append("| " + " | ".join(_escape_table_cell(cell) for cell in cells) + " |")
+        return "\n".join(lines)
+    if isinstance(block, Divider):
+        return "---"
+    raise TypeError(f"Unsupported block type: {type(block).__name__}")
 
-    rendered = markdownify(
-        str(soup),
-        heading_style="ATX",
-        bullets="-",
-        code_language_callback=code_language,
+
+def _inlines_to_markdown(inlines: Sequence[Inline]) -> str:
+    rendered: list[str] = []
+    for inline in inlines:
+        if isinstance(inline, Text):
+            value = inline.text
+            if inline.bold:
+                value = f"**{value}**"
+            if inline.italic:
+                value = f"*{value}*"
+            rendered.append(value)
+        elif isinstance(inline, Link):
+            rendered.append(f"[{_escape_markdown_label(inline.label)}]({inline.url})")
+        elif isinstance(inline, CodeSpan):
+            fence = "``" if "`" in inline.code else "`"
+            rendered.append(f"{fence}{inline.code}{fence}")
+        elif isinstance(inline, InlineFormula):
+            rendered.append(f"${inline.tex}$")
+        elif isinstance(inline, LineBreak):
+            rendered.append("  \n")
+    return "".join(rendered)
+
+
+def _blocks_to_html(
+    blocks: Sequence[Block],
+    *,
+    paths: Mapping[str, str],
+    indent: str = "      ",
+) -> str:
+    return "\n".join(
+        _block_to_html(block, paths=paths, indent=indent)
+        for block in blocks
     )
-    formula_store = getattr(soup, "_zhihu_formula_store", {})
-    for placeholder, (formula, is_display) in formula_store.items():
-        replacement = (
-            f"\n\n$$\n{formula}\n$$\n\n"
-            if is_display
-            else f"${formula}$"
-        )
-        rendered = rendered.replace(placeholder, replacement)
-    rendered = re.sub(r"\n{3,}", "\n\n", rendered)
-    return rendered.strip()
 
 
 def _block_to_html(
-    block: ContentBlock,
+    block: Block,
     *,
-    image_paths: Mapping[str, str],
+    paths: Mapping[str, str],
+    indent: str,
 ) -> str:
     if isinstance(block, Paragraph):
-        return f"      <p>{html.escape(block.text)}</p>"
-    soup = _clean_fragment(block.html, image_paths=image_paths, formulas_as_html=True)
-    return "\n".join(f"      {line}" for line in str(soup).splitlines())
-
-
-def _clean_fragment(
-    fragment: str,
-    *,
-    image_paths: Mapping[str, str],
-    formulas_as_html: bool,
-) -> BeautifulSoup:
-    soup = BeautifulSoup(fragment, "html.parser")
-    formula_store: dict[str, tuple[str, bool]] = {}
-
-    for unwanted in soup.find_all(
-        ["script", "style", "noscript", "iframe", "object", "embed"]
-    ):
-        unwanted.decompose()
-
-    for tag in soup.find_all(True):
-        for attribute in tuple(tag.attrs):
-            if attribute.casefold().startswith("on") or attribute.casefold() == "style":
-                del tag.attrs[attribute]
-
-    formula_nodes = [
-        *soup.select("span.ztext-math"),
-        *soup.select("img.ztext-math"),
-    ]
-    for index, node in enumerate(formula_nodes):
-        formula = _extract_formula(node)
-        if not formula:
-            continue
-        is_display = _is_display_formula(node, formula)
-        formula = _normalize_formula(formula)
-        if formulas_as_html:
-            replacement_name = "div" if is_display else "span"
-            replacement = soup.new_tag(replacement_name)
-            replacement["class"] = "math-display" if is_display else "math-inline"
-            replacement["data-tex"] = formula
-            replacement.string = formula
+        return f"{indent}<p>{_inlines_to_html(block.inlines)}</p>"
+    if isinstance(block, Heading):
+        level = max(1, min(6, block.level))
+        return f"{indent}<h{level}>{_inlines_to_html(block.inlines)}</h{level}>"
+    if isinstance(block, Quote):
+        nested = _blocks_to_html(block.blocks, paths=paths, indent=f"{indent}  ")
+        return f"{indent}<blockquote>\n{nested}\n{indent}</blockquote>"
+    if isinstance(block, ListBlock):
+        tag = "ol" if block.ordered else "ul"
+        items = []
+        for item in block.items:
+            nested = _blocks_to_html(item, paths=paths, indent=f"{indent}    ")
+            items.append(f"{indent}  <li>\n{nested}\n{indent}  </li>")
+        return f"{indent}<{tag}>\n" + "\n".join(items) + f"\n{indent}</{tag}>"
+    if isinstance(block, CodeBlock):
+        language = (
+            f' class="language-{html.escape(block.language, quote=True)}"'
+            if block.language
+            else ""
+        )
+        return (
+            f"{indent}<pre><code{language}>"
+            f"{html.escape(block.code)}</code></pre>"
+        )
+    if isinstance(block, FormulaBlock):
+        tex = html.escape(block.tex)
+        return f'{indent}<div class="math-display" data-tex="{tex}">{tex}</div>'
+    if isinstance(block, MediaBlock):
+        source = html.escape(_media_source(block.asset, paths=paths), quote=True)
+        alt = html.escape(block.asset.alt_text, quote=True)
+        if block.asset.kind.value == "video":
+            media_html = f'<video controls src="{source}"></video>'
         else:
-            placeholder = f"ZHFORMULA{index}X"
-            formula_store[placeholder] = (formula, is_display)
-            replacement = soup.new_tag("var")
-            replacement.string = placeholder
-        node.replace_with(replacement)
-
-    for image in soup.find_all("img"):
-        source_url = _image_source(image)
-        if not source_url:
-            image.decompose()
-            continue
-        image["src"] = image_paths.get(source_url, source_url)
-        for attribute in (
-            "data-actualsrc",
-            "data-original",
-            "srcset",
-            "data-default-watermark-src",
-        ):
-            image.attrs.pop(attribute, None)
-
-    setattr(soup, "_zhihu_formula_store", formula_store)
-    return soup
-
-
-def _extract_formula(node: Tag) -> str:
-    for attribute in ("data-tex", "data-formula", "alt"):
-        value = node.get(attribute)
-        if value:
-            return str(value).strip()
-    return ""
+            media_html = f'<img src="{source}" alt="{alt}">'
+        if block.caption:
+            caption = html.escape(block.caption)
+            return (
+                f"{indent}<figure>{media_html}"
+                f"<figcaption>{caption}</figcaption></figure>"
+            )
+        return f"{indent}<figure>{media_html}</figure>"
+    if isinstance(block, TableBlock):
+        head = ""
+        if block.headers:
+            cells = "".join(f"<th>{html.escape(cell)}</th>" for cell in block.headers)
+            head = f"<thead><tr>{cells}</tr></thead>"
+        rows = "".join(
+            "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+            for row in block.rows
+        )
+        return f"{indent}<table>{head}<tbody>{rows}</tbody></table>"
+    if isinstance(block, Divider):
+        return f"{indent}<hr>"
+    raise TypeError(f"Unsupported block type: {type(block).__name__}")
 
 
-def _normalize_formula(formula: str) -> str:
-    normalized = formula.strip()
-    if normalized.startswith(r"\[") and normalized.endswith(r"\]"):
-        normalized = normalized[2:-2].strip()
-    return normalized
+def _inlines_to_html(inlines: Sequence[Inline]) -> str:
+    rendered: list[str] = []
+    for inline in inlines:
+        if isinstance(inline, Text):
+            value = html.escape(inline.text)
+            if inline.bold:
+                value = f"<strong>{value}</strong>"
+            if inline.italic:
+                value = f"<em>{value}</em>"
+            rendered.append(value)
+        elif isinstance(inline, Link):
+            label = html.escape(inline.label)
+            url = html.escape(inline.url, quote=True)
+            rendered.append(f'<a href="{url}">{label}</a>')
+        elif isinstance(inline, CodeSpan):
+            rendered.append(f"<code>{html.escape(inline.code)}</code>")
+        elif isinstance(inline, InlineFormula):
+            tex = html.escape(inline.tex)
+            rendered.append(f'<span class="math-inline" data-tex="{tex}">{tex}</span>')
+        elif isinstance(inline, LineBreak):
+            rendered.append("<br>")
+    return "".join(rendered)
 
 
-def _is_display_formula(node: Tag, formula: str) -> bool:
-    stripped = formula.strip()
-    if stripped.startswith(r"\[") and stripped.endswith(r"\]"):
-        return True
-    if re.search(r"\\begin\{[a-zA-Z*]+\}", stripped):
-        return True
-    parent = node.parent
-    return bool(
-        parent
-        and parent.name in {"p", "div", "figure"}
-        and not parent.get_text(" ", strip=True)
-    )
+def _media_source(asset: MediaAsset, *, paths: Mapping[str, str]) -> str:
+    if asset.archive_path:
+        return asset.archive_path
+    for rendition in asset.renditions:
+        if local := paths.get(rendition.source_url):
+            return local
+    return asset.renditions[0].source_url if asset.renditions else ""
 
 
-def _image_source(image: Tag) -> str:
-    for attribute in ("data-original", "data-actualsrc", "src"):
-        value = image.get(attribute)
-        if value and not str(value).startswith("data:"):
-            return str(value)
-    return ""
+def _escape_markdown_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def _escape_table_cell(value: str) -> str:
+    return value.replace("|", "\\|").replace("\n", "<br>")

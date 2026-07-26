@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from zhihu_scraper.archive import LocalArchive
-from zhihu_scraper.domain import Article, Author, Paragraph
+from zhihu_scraper.domain import Article, Author, Paragraph, Text
 
 
 class StandaloneArticleArchiveTests(unittest.TestCase):
@@ -15,7 +15,11 @@ class StandaloneArticleArchiveTests(unittest.TestCase):
             source_url="https://zhuanlan.zhihu.com/p/357892158",
             author=Author(id="author-1", name="泳鱼"),
             published_at=datetime(2021, 3, 17, tzinfo=timezone.utc),
-            blocks=(Paragraph("数据、算法、算力是人工智能发展的三要素。"),),
+            blocks=(
+                Paragraph(
+                    inlines=(Text("数据、算法、算力是人工智能发展的三要素。"),)
+                ),
+            ),
         )
 
         with tempfile.TemporaryDirectory() as temporary_directory:

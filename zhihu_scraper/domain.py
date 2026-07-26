@@ -1,31 +1,164 @@
-"""Normalized content contracts for the rebuilt archive core."""
+"""Normalized domain contracts for the rebuilt archive core."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 
 
 @dataclass(frozen=True, slots=True)
 class Author:
-    id: str
+    id: str | None
     name: str
     url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class Paragraph:
+class Text:
     text: str
+    bold: bool = False
+    italic: bool = False
 
 
 @dataclass(frozen=True, slots=True)
-class RichText:
-    """A normalized, source-independent HTML fragment."""
+class Link:
+    label: str
+    url: str
 
-    html: str
+
+@dataclass(frozen=True, slots=True)
+class CodeSpan:
+    code: str
 
 
-ContentBlock = Paragraph | RichText
+@dataclass(frozen=True, slots=True)
+class InlineFormula:
+    tex: str
+
+
+@dataclass(frozen=True, slots=True)
+class LineBreak:
+    pass
+
+
+Inline = Text | Link | CodeSpan | InlineFormula | LineBreak
+
+
+@dataclass(frozen=True, slots=True)
+class Paragraph:
+    inlines: tuple[Inline, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Heading:
+    level: int
+    inlines: tuple[Inline, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Quote:
+    blocks: tuple["Block", ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ListBlock:
+    ordered: bool
+    items: tuple[tuple["Block", ...], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CodeBlock:
+    code: str
+    language: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class FormulaBlock:
+    tex: str
+
+
+class MediaKind(StrEnum):
+    IMAGE = "image"
+    ANIMATION = "animation"
+    VIDEO = "video"
+
+
+@dataclass(frozen=True, slots=True)
+class MediaRendition:
+    source_url: str
+    mime_type: str | None = None
+    width: int | None = None
+    height: int | None = None
+    bitrate: int | None = None
+    size_bytes: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MediaAsset:
+    id: str
+    kind: MediaKind
+    renditions: tuple[MediaRendition, ...]
+    alt_text: str = ""
+    archive_path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MediaBlock:
+    asset: MediaAsset
+    caption: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class TableBlock:
+    headers: tuple[str, ...]
+    rows: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Divider:
+    pass
+
+
+Block = (
+    Paragraph
+    | Heading
+    | Quote
+    | ListBlock
+    | CodeBlock
+    | FormulaBlock
+    | MediaBlock
+    | TableBlock
+    | Divider
+)
+ContentBlock = Block
+
+
+@dataclass(frozen=True, slots=True)
+class ColumnRef:
+    token: str
+    title: str
+    url: str
+
+
+@dataclass(frozen=True, slots=True)
+class Comment:
+    id: str
+    author: Author | None
+    blocks: tuple[Block, ...]
+    created_at: datetime | None
+    like_count: int
+    replies: tuple["Comment", ...] = ()
+    replies_complete: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class CommentThread:
+    comments: tuple[Comment, ...]
+    order: str
+    roots_complete: bool = False
+    root_limit: int = 10
+    reply_limit: int = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,4 +168,9 @@ class Article:
     source_url: str
     author: Author
     published_at: datetime | None
-    blocks: tuple[ContentBlock, ...]
+    blocks: tuple[Block, ...]
+    updated_at: datetime | None = None
+    voteup_count: int = 0
+    cover_url: str | None = None
+    columns: tuple[ColumnRef, ...] = ()
+    comments: CommentThread | None = None
