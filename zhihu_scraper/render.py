@@ -151,6 +151,7 @@ class MarkdownRenderer:
         image_paths: Mapping[str, str] | None = None,
         media_paths: Mapping[str, str] | None = None,
         column_context: ColumnRenderContext | None = None,
+        directory_entries: Mapping[str, RenderNavigationItem] | None = None,
     ) -> str:
         paths = _combined_paths(image_paths, media_paths)
         if isinstance(target, Article):
@@ -160,7 +161,7 @@ class MarkdownRenderer:
         if isinstance(target, QuestionArchive):
             return _question_to_markdown(target, paths=paths)
         if isinstance(target, ColumnArchive):
-            return _column_to_markdown(target)
+            return _column_to_markdown(target, entries=directory_entries or {})
         if isinstance(target, Video):
             return _video_to_markdown(target, paths=paths)
         raise TypeError(f"Unsupported archive target: {type(target).__name__}")
@@ -174,6 +175,7 @@ class HtmlRenderer:
         image_paths: Mapping[str, str] | None = None,
         media_paths: Mapping[str, str] | None = None,
         column_context: ColumnRenderContext | None = None,
+        directory_entries: Mapping[str, RenderNavigationItem] | None = None,
     ) -> str:
         paths = _combined_paths(image_paths, media_paths)
         if isinstance(target, Article):
@@ -183,7 +185,7 @@ class HtmlRenderer:
         elif isinstance(target, QuestionArchive):
             body = _question_to_html(target, paths=paths)
         elif isinstance(target, ColumnArchive):
-            body = _column_to_html(target)
+            body = _column_to_html(target, entries=directory_entries or {})
         elif isinstance(target, Video):
             body = _video_to_html(target, paths=paths)
         else:
@@ -340,7 +342,11 @@ def _question_to_markdown(
     return "\n".join([*parts, ""])
 
 
-def _column_to_markdown(archive: ColumnArchive) -> str:
+def _column_to_markdown(
+    archive: ColumnArchive,
+    *,
+    entries: Mapping[str, RenderNavigationItem],
+) -> str:
     column = archive.column
     parts = [
         f"# {column.title}",
@@ -357,8 +363,17 @@ def _column_to_markdown(archive: ColumnArchive) -> str:
     for year, articles in groups:
         parts.extend(["", f"## {year}", ""])
         for article in articles:
-            md_path = f"内容/{article.title}.md"
-            html_path = f"内容/{article.title}.html"
+            entry = entries.get(article.id)
+            md_path = (
+                entry.markdown_href
+                if entry is not None
+                else f"内容/{article.title}.md"
+            )
+            html_path = (
+                entry.html_href
+                if entry is not None
+                else f"内容/{article.title}.html"
+            )
             date = article.published_at.date().isoformat() if article.published_at else "日期未知"
             parts.append(
                 f"- {date} · {article.title}（"
@@ -508,17 +523,30 @@ def _question_to_html(
     )
 
 
-def _column_to_html(archive: ColumnArchive) -> str:
+def _column_to_html(
+    archive: ColumnArchive,
+    *,
+    entries: Mapping[str, RenderNavigationItem],
+) -> str:
     column = archive.column
     source = _html_link("知乎专栏", column.source_url)
     groups: list[str] = []
     for year, articles in _articles_by_year(archive.articles):
-        entries: list[str] = []
+        entry_lines: list[str] = []
         for article in articles:
             date = article.published_at.date().isoformat() if article.published_at else "日期未知"
-            html_path = f"内容/{article.title}.html"
-            markdown_path = f"内容/{article.title}.md"
-            entries.append(
+            entry = entries.get(article.id)
+            html_path = (
+                entry.html_href
+                if entry is not None
+                else f"内容/{article.title}.html"
+            )
+            markdown_path = (
+                entry.markdown_href
+                if entry is not None
+                else f"内容/{article.title}.md"
+            )
+            entry_lines.append(
                 "          <li>"
                 f"<time>{html.escape(date)}</time> · "
                 f"{_html_link(article.title, html_path)} "
@@ -529,7 +557,7 @@ def _column_to_html(archive: ColumnArchive) -> str:
             '      <section class="year-group">\n'
             f"        <h2>{html.escape(year)}</h2>\n"
             "        <ul>\n"
-            f"{''.join(entries)}"
+            f"{''.join(entry_lines)}"
             "        </ul>\n"
             "      </section>\n"
         )

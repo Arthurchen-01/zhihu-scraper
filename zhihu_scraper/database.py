@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -115,22 +115,35 @@ class ArchiveDatabase:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
 
-    def save(self, target: ArchiveTarget) -> None:
+    def save(
+        self,
+        target: ArchiveTarget,
+        *,
+        media_paths: Mapping[str, str] | None = None,
+    ) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.path) as connection:
             connection.execute("PRAGMA foreign_keys = ON")
             connection.execute("PRAGMA busy_timeout = 5000")
             connection.executescript(_SCHEMA)
             if isinstance(target, Article):
-                self._save_article(connection, target)
+                self._save_article(connection, target, media_paths=media_paths or {})
             elif isinstance(target, Answer):
-                self._save_answer(connection, target)
+                self._save_answer(connection, target, media_paths=media_paths or {})
             elif isinstance(target, QuestionArchive):
-                self._save_question_archive(connection, target)
+                self._save_question_archive(
+                    connection,
+                    target,
+                    media_paths=media_paths or {},
+                )
             elif isinstance(target, ColumnArchive):
-                self._save_column_archive(connection, target)
+                self._save_column_archive(
+                    connection,
+                    target,
+                    media_paths=media_paths or {},
+                )
             elif isinstance(target, Video):
-                self._save_video(connection, target)
+                self._save_video(connection, target, media_paths=media_paths or {})
             else:
                 raise TypeError(f"unsupported archive target: {type(target).__name__}")
 
@@ -138,6 +151,8 @@ class ArchiveDatabase:
         self,
         connection: sqlite3.Connection,
         article: Article,
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
         key = f"article:{article.id}"
         self._save_content(
@@ -171,13 +186,21 @@ class ArchiveDatabase:
                 f"column:{column.token}",
                 article.source_url,
             )
-        self._replace_media(connection, key, article.source_url, article.blocks)
+        self._replace_media(
+            connection,
+            key,
+            article.source_url,
+            article.blocks,
+            media_paths=media_paths,
+        )
         self._replace_comments(connection, key, article.source_url, article.comments)
 
     def _save_answer(
         self,
         connection: sqlite3.Connection,
         answer: Answer,
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
         key = f"answer:{answer.id}"
         self._save_content(
@@ -199,23 +222,38 @@ class ArchiveDatabase:
             f"question:{answer.question.id}",
             answer.source_url,
         )
-        self._replace_media(connection, key, answer.source_url, answer.blocks)
+        self._replace_media(
+            connection,
+            key,
+            answer.source_url,
+            answer.blocks,
+            media_paths=media_paths,
+        )
         self._replace_comments(connection, key, answer.source_url, answer.comments)
 
     def _save_question_archive(
         self,
         connection: sqlite3.Connection,
         archive: QuestionArchive,
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
-        self._save_question(connection, archive.question, archive.archived_at)
+        self._save_question(
+            connection,
+            archive.question,
+            archive.archived_at,
+            media_paths=media_paths,
+        )
         for answer in archive.answers:
-            self._save_answer(connection, answer)
+            self._save_answer(connection, answer, media_paths=media_paths)
 
     def _save_question(
         self,
         connection: sqlite3.Connection,
         question: Question,
         archived_at: datetime | None = None,
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
         self._save_content(
             connection,
@@ -235,17 +273,20 @@ class ArchiveDatabase:
             f"question:{question.id}",
             question.source_url,
             question.detail,
+            media_paths=media_paths,
         )
 
     def _save_column_archive(
         self,
         connection: sqlite3.Connection,
         archive: ColumnArchive,
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
         column = archive.column
         self._save_column(connection, column)
         for article in archive.articles:
-            self._save_article(connection, article)
+            self._save_article(connection, article, media_paths=media_paths)
             self._save_relation(
                 connection,
                 f"article:{article.id}",
@@ -286,6 +327,8 @@ class ArchiveDatabase:
         self,
         connection: sqlite3.Connection,
         video: Video,
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
         key = f"video:{video.id}"
         self._save_content(
@@ -305,6 +348,7 @@ class ArchiveDatabase:
             key,
             video.source_url,
             (video.asset,),
+            media_paths=media_paths,
         )
         self._replace_comments(connection, key, video.source_url, video.comments)
 
@@ -406,12 +450,15 @@ class ArchiveDatabase:
         content_key: str,
         source_url: str,
         blocks: Sequence[Block],
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
         self._replace_media_assets(
             connection,
             content_key,
             source_url,
             tuple(_walk_media(blocks)),
+            media_paths=media_paths,
         )
 
     def _replace_media_assets(
@@ -420,6 +467,8 @@ class ArchiveDatabase:
         content_key: str,
         source_url: str,
         assets: Sequence[MediaAsset],
+        *,
+        media_paths: Mapping[str, str],
     ) -> None:
         connection.execute("DELETE FROM media WHERE content_key = ?", (content_key,))
         for ordinal, asset in enumerate(assets):
@@ -437,7 +486,11 @@ class ArchiveDatabase:
                         asset.kind.value,
                         ordinal,
                         rendition.source_url,
-                        asset.archive_path,
+                        (
+                            asset.archive_path
+                            or media_paths.get(rendition.source_url)
+                            or media_paths.get(asset.id)
+                        ),
                         rendition.mime_type,
                         rendition.width,
                         rendition.height,

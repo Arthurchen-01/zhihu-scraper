@@ -35,7 +35,10 @@ class RichContentRenderingTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as temporary_directory:
-            receipt = LocalArchive(Path(temporary_directory)).archive(article)
+            receipt = LocalArchive(
+                Path(temporary_directory),
+                media_download=False,
+            ).archive(article)
 
             markdown = receipt.markdown_path.read_text(encoding="utf-8")
             html = receipt.html_path.read_text(encoding="utf-8")

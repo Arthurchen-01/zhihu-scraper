@@ -217,18 +217,32 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
             archived_at=datetime(2025, 2, 1, tzinfo=UTC),
         )
 
-        markdown = MarkdownRenderer().render(archive)
-        rendered_html = HtmlRenderer().render(archive)
+        directory_entries = {
+            "1": RenderNavigationItem(
+                title="新文章",
+                markdown_href="内容/新文章-safe.md",
+                html_href="内容/新文章-safe.html",
+            )
+        }
+        markdown = MarkdownRenderer().render(
+            archive,
+            directory_entries=directory_entries,
+        )
+        rendered_html = HtmlRenderer().render(
+            archive,
+            directory_entries=directory_entries,
+        )
 
         self.assertIn("本栏目共 81 篇", markdown)
         self.assertIn("## 2025 年", markdown)
         self.assertIn("## 2023 年", markdown)
-        self.assertIn("[Markdown](内容/新文章.md)", markdown)
-        self.assertIn("[HTML](内容/新文章.html)", markdown)
+        self.assertIn("[Markdown](内容/新文章-safe.md)", markdown)
+        self.assertIn("[HTML](内容/新文章-safe.html)", markdown)
         self.assertNotIn("不应出现在专栏目录的正文", markdown)
         self.assertIn("本栏目共 81 篇", rendered_html)
         self.assertIn('href="内容/旧文章.html"', rendered_html)
         self.assertIn('href="内容/旧文章.md"', rendered_html)
+        self.assertIn('href="内容/新文章-safe.html"', rendered_html)
         self.assertNotIn("不应出现在专栏目录的正文", rendered_html)
 
     def test_video_uses_local_media_and_retains_original_link(self):
