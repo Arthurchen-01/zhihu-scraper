@@ -1,150 +1,251 @@
-"""
-test_browser_fallback.py - Tests for browser fallback mechanism
-"""
+from __future__ import annotations
+
+import builtins
+from pathlib import Path, PurePosixPath
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from core.config_schema import BrowserConfig
+
+from zhihu_scraper.browser import (
+    BrowserCookieError,
+    BrowserDependencyError,
+    BrowserFallback,
+    BrowserNavigationError,
+)
+from zhihu_scraper.platform import OperatingSystem, RuntimePlatform
 
 
-class TestBrowserFallback:
-    """Test cases for browser fallback mechanism"""
+class FakePage:
+    def __init__(self, html: str = "<html><body>ready</body></html>") -> None:
+        self.html = html
+        self.goto_calls: list[tuple[str, str, int]] = []
+        self.wait_calls: list[tuple[str, int]] = []
+        self.closed = False
 
-    @patch("core.browser_fallback.get_config")
-    def test_browser_config_loading(self, mock_get_config):
-        """Browser config is loaded correctly"""
-        from core import browser_fallback
+    def goto(self, url: str, *, wait_until: str, timeout: int) -> None:
+        self.goto_calls.append((url, wait_until, timeout))
 
-        # Set up mock config
-        mock_cfg = MagicMock()
-        mock_browser_cfg = BrowserConfig(
-            headless=True,
-            timeout=30000,
-            channel="chrome",
-            args=["--no-sandbox"],
-            viewport={"width": 1920, "height": 1080},
-        )
-        mock_cfg.zhihu.browser = mock_browser_cfg
-        mock_get_config.return_value = mock_cfg
+    def wait_for_load_state(self, state: str, *, timeout: int) -> None:
+        self.wait_calls.append((state, timeout))
 
-        from core.browser_fallback import get_logger
+    def content(self) -> str:
+        return self.html
 
-        logger = get_logger()
-        assert logger is not None
+    def close(self) -> None:
+        self.closed = True
 
-    def test_launch_args_can_be_customized(self):
-        """Browser launch arguments can be customized"""
-        from core.config_schema import BrowserConfig
 
-        cfg = BrowserConfig(args=["--custom-arg", "--no-sandbox"])
-        assert "--custom-arg" in cfg.args
-        assert "--no-sandbox" in cfg.args
+class FakeContext:
+    def __init__(
+        self,
+        page: FakePage | None = None,
+        cookies: list[dict[str, object]] | None = None,
+    ) -> None:
+        self.page = page or FakePage()
+        self.cookie_records = cookies or []
+        self.closed = False
+        self.close_count = 0
 
-    @patch("core.browser_fallback.get_config")
-    @patch("core.browser_fallback.get_logger")
-    def test_extract_zhuanlan_url_construction(self, mock_log, mock_get_config):
-        """Verify column URL is constructed correctly"""
-        from core import browser_fallback
+    def new_page(self) -> FakePage:
+        return self.page
 
-        mock_cfg = MagicMock()
-        mock_browser_cfg = BrowserConfig()
-        mock_cfg.zhihu.browser = mock_browser_cfg
-        mock_get_config.return_value = mock_cfg
-        mock_log.return_value = MagicMock()
+    def cookies(self) -> list[dict[str, object]]:
+        return self.cookie_records
 
-        # Just verify URL pattern is correct
-        article_id = "123456"
-        expected_url = f"https://zhuanlan.zhihu.com/p/{article_id}"
-        assert expected_url == "https://zhuanlan.zhihu.com/p/123456"
+    def close(self) -> None:
+        self.closed = True
+        self.close_count += 1
 
-    @patch("core.browser_fallback.get_config")
-    @patch("core.browser_fallback.get_logger")
-    def test_cookie_mapping_structure(self, mock_log, mock_get_config):
-        """Verify cookie mapping creates correct structure"""
-        from core import browser_fallback
 
-        mock_cfg = MagicMock()
-        mock_browser_cfg = BrowserConfig()
-        mock_cfg.zhihu.browser = mock_browser_cfg
-        mock_get_config.return_value = mock_cfg
-        mock_log.return_value = MagicMock()
+class FakeExecutor:
+    def __init__(self, context: FakeContext | None = None) -> None:
+        self.context = context or FakeContext()
+        self.launches: list[tuple[Path, bool, Path | None]] = []
+        self.closed = False
+        self.close_count = 0
 
-        session_cookies = {"z_c0": "test_token", "d_c0": "test_d"}
+    def launch_persistent_context(
+        self,
+        profile_dir: Path,
+        *,
+        headless: bool,
+        executable_path: Path | None,
+    ) -> FakeContext:
+        self.launches.append((profile_dir, headless, executable_path))
+        return self.context
 
-        mapped_cookies = []
-        for k, v in session_cookies.items():
-            mapped_cookies.append({
-                "name": k,
-                "value": v,
-                "domain": ".zhihu.com",
-                "path": "/",
-                "secure": True,
-                "httpOnly": False,
-                "sameSite": "Lax"
-            })
+    def close(self) -> None:
+        self.closed = True
+        self.close_count += 1
 
-        assert len(mapped_cookies) == 2
-        assert mapped_cookies[0]["domain"] == ".zhihu.com"
-        assert mapped_cookies[0]["sameSite"] == "Lax"
 
-    @patch("core.browser_fallback.get_config")
-    @patch("core.browser_fallback.get_logger")
-    def test_login_redirect_detection(self, mock_log, mock_get_config):
-        """Login redirect URLs are detected correctly"""
-        from core import browser_fallback
+def runtime_for(tmp_path: Path) -> RuntimePlatform:
+    return RuntimePlatform(
+        operating_system=OperatingSystem.LINUX,
+        user_data_directory=PurePosixPath(tmp_path / "app-data"),
+        browser_candidates=(),
+    )
 
-        mock_cfg = MagicMock()
-        mock_browser_cfg = BrowserConfig()
-        mock_cfg.zhihu.browser = mock_browser_cfg
-        mock_get_config.return_value = mock_cfg
-        mock_log.return_value = MagicMock()
 
-        def is_login_redirect(url):
-            return url == "https://www.zhihu.com/" or "signin" in url
+def test_fetch_html_uses_a_persistent_headed_profile_and_waits_for_dom(tmp_path: Path) -> None:
+    executor = FakeExecutor()
+    browser = BrowserFallback(
+        executor=executor,
+        runtime_platform=runtime_for(tmp_path),
+    )
 
-        # These should trigger login redirect detection
-        redirect_urls = [
-            "https://www.zhihu.com/",
-            "https://www.zhihu.com/signin",
+    html = browser.fetch_html("https://www.zhihu.com/question/1")
+
+    assert html == "<html><body>ready</body></html>"
+    assert executor.launches == [
+        (tmp_path / "app-data" / "browser-profile", False, None)
+    ]
+    assert (tmp_path / "app-data" / "browser-profile").is_dir()
+    assert executor.context.page.goto_calls == [
+        ("https://www.zhihu.com/question/1", "domcontentloaded", 30_000)
+    ]
+    assert executor.context.page.wait_calls == [("domcontentloaded", 30_000)]
+    assert executor.context.page.closed is True
+
+
+def test_explicit_profile_headless_mode_and_browser_context_are_reused(tmp_path: Path) -> None:
+    installed_browser = tmp_path / "chromium"
+    installed_browser.touch()
+    runtime = RuntimePlatform(
+        operating_system=OperatingSystem.LINUX,
+        user_data_directory=PurePosixPath(tmp_path / "ignored"),
+        browser_candidates=(
+            PurePosixPath(tmp_path / "missing-browser"),
+            PurePosixPath(installed_browser),
+        ),
+    )
+    executor = FakeExecutor()
+    explicit_profile = tmp_path / "my-profile"
+    browser = BrowserFallback(
+        profile_dir=explicit_profile,
+        headless=True,
+        executor=executor,
+        runtime_platform=runtime,
+    )
+
+    browser.fetch_html("https://www.zhihu.com/question/1")
+    browser.fetch_html("https://www.zhihu.com/question/2")
+
+    assert executor.launches == [(explicit_profile, True, installed_browser)]
+    assert explicit_profile.is_dir()
+
+
+def test_cookie_dict_contains_only_zhihu_cookies(tmp_path: Path) -> None:
+    context = FakeContext(
+        cookies=[
+            {"name": "z_c0", "value": "secret-z", "domain": ".zhihu.com"},
+            {"name": "d_c0", "value": "secret-d", "domain": "www.zhihu.com"},
+            {"name": "theme", "value": "dark", "domain": "zhuanlan.zhihu.com"},
+            {"name": "foreign", "value": "nope", "domain": ".example.com"},
+            {"name": "", "value": "invalid", "domain": ".zhihu.com"},
+            {"name": "missing-value", "domain": ".zhihu.com"},
         ]
-        for url in redirect_urls:
-            assert is_login_redirect(url) is True
+    )
+    browser = BrowserFallback(
+        executor=FakeExecutor(context),
+        runtime_platform=runtime_for(tmp_path),
+    )
 
-        # These should NOT trigger redirect
-        normal_urls = [
-            "https://zhuanlan.zhihu.com/p/123456",
-            "https://www.zhihu.com/question/123",
-        ]
-        for url in normal_urls:
-            assert is_login_redirect(url) is False
+    cookies = browser.cookie_dict()
+
+    assert cookies == {
+        "z_c0": "secret-z",
+        "d_c0": "secret-d",
+        "theme": "dark",
+    }
 
 
-class TestBrowserConfig:
-    """Test BrowserConfig dataclass"""
+def test_context_manager_closes_context_and_executor_once(tmp_path: Path) -> None:
+    executor = FakeExecutor()
 
-    def test_browser_config_defaults(self):
-        """Default browser config values are sensible"""
-        from core.config_schema import BrowserConfig
+    with BrowserFallback(
+        executor=executor,
+        runtime_platform=runtime_for(tmp_path),
+    ) as browser:
+        browser.fetch_html("https://www.zhihu.com/question/1")
 
-        cfg = BrowserConfig()
-        assert cfg.headless is True
-        assert cfg.timeout == 30000
-        assert cfg.channel == "chrome"
-        assert cfg.viewport == {"width": 1920, "height": 1080}
+    browser.close()
 
-    def test_browser_config_custom(self):
-        """Custom browser config values are stored correctly"""
-        from core.config_schema import BrowserConfig
+    assert executor.context.closed is True
+    assert executor.closed is True
+    assert executor.context.close_count == 1
+    assert executor.close_count == 1
 
-        cfg = BrowserConfig(
-            headless=False,
-            timeout=60000,
-            channel="msedge",
-            args=["--custom-arg"],
-            viewport={"width": 1280, "height": 720},
-        )
-        assert cfg.headless is False
-        assert cfg.timeout == 60000
-        assert cfg.channel == "msedge"
-        assert cfg.args == ["--custom-arg"]
-        assert cfg.viewport == {"width": 1280, "height": 720}
+
+def test_missing_playwright_has_an_actionable_secret_free_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_import = builtins.__import__
+
+    def import_without_playwright(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name.startswith("playwright"):
+            raise ModuleNotFoundError("z_c0=must-not-leak")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", import_without_playwright)
+    browser = BrowserFallback(runtime_platform=runtime_for(tmp_path))
+
+    with pytest.raises(BrowserDependencyError) as caught:
+        browser.fetch_html("https://www.zhihu.com/question/1")
+
+    message = str(caught.value)
+    assert "zhihu-scraper[full]" in message
+    assert "playwright install chromium" in message
+    assert "must-not-leak" not in message
+
+
+def test_browser_failures_never_copy_cookie_values_into_exceptions(tmp_path: Path) -> None:
+    class FailingPage(FakePage):
+        def goto(self, url: str, *, wait_until: str, timeout: int) -> None:
+            raise RuntimeError("request failed with z_c0=navigation-secret")
+
+    class FailingCookieContext(FakeContext):
+        def cookies(self) -> list[dict[str, object]]:
+            raise RuntimeError("d_c0=cookie-secret")
+
+    navigation_browser = BrowserFallback(
+        executor=FakeExecutor(FakeContext(page=FailingPage())),
+        runtime_platform=runtime_for(tmp_path),
+    )
+    with pytest.raises(BrowserNavigationError) as navigation_error:
+        navigation_browser.fetch_html("https://www.zhihu.com/question/1")
+
+    cookie_browser = BrowserFallback(
+        executor=FakeExecutor(FailingCookieContext()),
+        runtime_platform=runtime_for(tmp_path),
+    )
+    with pytest.raises(BrowserCookieError) as cookie_error:
+        cookie_browser.cookie_dict()
+
+    assert "navigation-secret" not in str(navigation_error.value)
+    assert "cookie-secret" not in str(cookie_error.value)
+
+
+def test_browser_refuses_external_or_credential_bearing_urls(tmp_path: Path) -> None:
+    executor = FakeExecutor()
+    browser = BrowserFallback(
+        executor=executor,
+        runtime_platform=runtime_for(tmp_path),
+    )
+
+    for url in (
+        "https://example.com/",
+        "http://www.zhihu.com/question/1",
+        "https://user:password@www.zhihu.com/question/1",
+        "https://www.zhihu.com.example.org/question/1",
+    ):
+        with pytest.raises(BrowserNavigationError):
+            browser.fetch_html(url)
+
+    assert executor.launches == []
