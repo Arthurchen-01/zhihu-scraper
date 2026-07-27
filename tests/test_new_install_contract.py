@@ -30,6 +30,14 @@ class NewInstallContractTests(unittest.TestCase):
         self.assertIn("zhihu init --help", workflow)
         self.assertIn("playwright install --with-deps chromium", workflow)
         self.assertIn("fail-fast: false", workflow)
+        self.assertRegex(
+            workflow,
+            r"uses: actions/checkout@[0-9a-f]{40}",
+        )
+        self.assertRegex(
+            workflow,
+            r"uses: actions/setup-python@[0-9a-f]{40}",
+        )
 
     def test_ci_does_not_keep_obsolete_package_or_unittest_commands(self) -> None:
         workflow = self._read(".github/workflows/ci.yml")
