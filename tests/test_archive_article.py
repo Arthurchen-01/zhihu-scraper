@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from zhihu_scraper.archive import LocalArchive
@@ -14,12 +14,8 @@ class StandaloneArticleArchiveTests(unittest.TestCase):
             title="一文归纳AI数据增强之法",
             source_url="https://zhuanlan.zhihu.com/p/357892158",
             author=Author(id="author-1", name="泳鱼"),
-            published_at=datetime(2021, 3, 17, tzinfo=timezone.utc),
-            blocks=(
-                Paragraph(
-                    inlines=(Text("数据、算法、算力是人工智能发展的三要素。"),)
-                ),
-            ),
+            published_at=datetime(2021, 3, 17, tzinfo=UTC),
+            blocks=(Paragraph(inlines=(Text("数据、算法、算力是人工智能发展的三要素。"),)),),
         )
 
         with tempfile.TemporaryDirectory() as temporary_directory:

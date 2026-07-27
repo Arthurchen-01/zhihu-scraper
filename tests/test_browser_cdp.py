@@ -234,8 +234,7 @@ def test_cdp_connection_errors_are_actionable_and_secret_free(tmp_path: Path) ->
     class FailingExecutor(FakeExecutor):
         def connect_over_cdp(self, cdp_url: str) -> FakeContext:
             raise RuntimeError(
-                "failed endpoint="
-                f"{cdp_url} z_c0=connection-secret d_c0=another-secret"
+                f"failed endpoint={cdp_url} z_c0=connection-secret d_c0=another-secret"
             )
 
     browser = BrowserFallback(

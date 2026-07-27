@@ -58,13 +58,13 @@ class Heading:
 
 @dataclass(frozen=True, slots=True)
 class Quote:
-    blocks: tuple["Block", ...]
+    blocks: tuple[Block, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class ListBlock:
     ordered: bool
-    items: tuple[tuple["Block", ...], ...]
+    items: tuple[tuple[Block, ...], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +148,7 @@ class Comment:
     blocks: tuple[Block, ...]
     created_at: datetime | None
     like_count: int
-    replies: tuple["Comment", ...] = ()
+    replies: tuple[Comment, ...] = ()
     replies_complete: bool = False
 
 

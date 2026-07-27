@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from zhihu_scraper.archive import LocalArchive
@@ -15,7 +15,7 @@ class RichContentRenderingTests(unittest.TestCase):
             title="包含公式的测试文章",
             source_url="https://zhuanlan.zhihu.com/p/11617075708",
             author=Author(id="author-2", name="公式作者"),
-            published_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            published_at=datetime(2025, 1, 1, tzinfo=UTC),
             blocks=parse_rich_text(
                 """
                     <script>window.shouldNotSurvive = true;</script>
@@ -56,9 +56,7 @@ class RichContentRenderingTests(unittest.TestCase):
             self.assertIn('class="language-python"', html)
             self.assertIn("https://pic.example/formula-demo.gif", html)
             self.assertNotIn("shouldNotSurvive", html)
-            self.assertTrue(
-                (receipt.entry_directory / "assets" / "archive.css").is_file()
-            )
+            self.assertTrue((receipt.entry_directory / "assets" / "archive.css").is_file())
 
 
 if __name__ == "__main__":

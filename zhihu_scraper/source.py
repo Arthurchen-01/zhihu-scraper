@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from html import unescape
 from html.parser import HTMLParser
 from typing import Protocol
@@ -82,10 +82,7 @@ class ZhihuSource:
         endpoint = f"/api/v4/questions/{question_id}/answers"
 
         def page_url(offset: int) -> str:
-            return (
-                f"{endpoint}?limit={page_size}&offset={offset}"
-                "&platform=desktop&sort_by=default"
-            )
+            return f"{endpoint}?limit={page_size}&offset={offset}&platform=desktop&sort_by=default"
 
         yield from self._iter_payloads(
             endpoint=endpoint,
@@ -161,40 +158,28 @@ class ZhihuSource:
             )
             raw_data = page.get("data")
             if not isinstance(raw_data, list):
-                raise InvalidZhihuPayloadError(
-                    f"{payload_label}的 data 字段必须是列表。"
-                )
+                raise InvalidZhihuPayloadError(f"{payload_label}的 data 字段必须是列表。")
             for index, item in enumerate(raw_data):
                 if not isinstance(item, Mapping):
-                    raise InvalidZhihuPayloadError(
-                        f"{payload_label}第 {index + 1} 项必须是对象。"
-                    )
+                    raise InvalidZhihuPayloadError(f"{payload_label}第 {index + 1} 项必须是对象。")
                 yield dict(item)
 
             raw_paging = page.get("paging", {})
             if not isinstance(raw_paging, Mapping):
-                raise InvalidZhihuPayloadError(
-                    f"{payload_label}的 paging 字段必须是对象。"
-                )
+                raise InvalidZhihuPayloadError(f"{payload_label}的 paging 字段必须是对象。")
             raw_is_end = raw_paging.get("is_end")
             if raw_is_end is not None and not isinstance(raw_is_end, bool):
                 raise InvalidZhihuPayloadError(
                     f"{payload_label}的 paging.is_end 字段必须是布尔值。"
                 )
-            is_end = (
-                raw_is_end
-                if isinstance(raw_is_end, bool)
-                else len(raw_data) < page_size
-            )
+            is_end = raw_is_end if isinstance(raw_is_end, bool) else len(raw_data) < page_size
             if is_end:
                 return
 
             offset += len(raw_data)
             raw_next = raw_paging.get("next")
             if raw_next is not None and not isinstance(raw_next, str):
-                raise InvalidZhihuPayloadError(
-                    f"{payload_label}的 paging.next 字段必须是链接。"
-                )
+                raise InvalidZhihuPayloadError(f"{payload_label}的 paging.next 字段必须是链接。")
             next_url = raw_next.strip() if isinstance(raw_next, str) else ""
             if next_url:
                 current_url = _validate_next_url(next_url, endpoint)
@@ -260,9 +245,7 @@ def extract_entity_payload(
             if entity is not None:
                 return entity
 
-    raise InvalidZhihuPayloadError(
-        f"知乎页面初始状态中未找到 {collection}:{normalized_id}。"
-    )
+    raise InvalidZhihuPayloadError(f"知乎页面初始状态中未找到 {collection}:{normalized_id}。")
 
 
 def _resolve_reference(
@@ -283,8 +266,7 @@ def _resolve_reference(
 
     if target.kind is not expected_kind:
         raise ValueError(
-            f"需要{_KIND_LABELS[expected_kind]}链接，"
-            f"收到的是{_KIND_LABELS[target.kind]}链接。"
+            f"需要{_KIND_LABELS[expected_kind]}链接，收到的是{_KIND_LABELS[target.kind]}链接。"
         )
     return _validate_bare_identifier(target.content_id, expected_kind)
 
@@ -325,9 +307,7 @@ def _is_article_parameter_error(payload: object) -> bool:
     code = error.get("code")
     message = error.get("message")
     return code == 10003 or (
-        isinstance(message, str)
-        and "请求参数异常" in message
-        and "升级客户端" in message
+        isinstance(message, str) and "请求参数异常" in message and "升级客户端" in message
     )
 
 
@@ -340,13 +320,9 @@ def _validate_next_url(next_url: str, endpoint: str) -> str:
             or not (host == "zhihu.com" or host.endswith(".zhihu.com"))
             or parsed.path != endpoint
         ):
-            raise InvalidZhihuPayloadError(
-                "分页 next 地址不是预期的知乎 API 端点。"
-            )
+            raise InvalidZhihuPayloadError("分页 next 地址不是预期的知乎 API 端点。")
     elif parsed.path not in {"", endpoint}:
-        raise InvalidZhihuPayloadError(
-            "分页 next 地址不是预期的知乎 API 端点。"
-        )
+        raise InvalidZhihuPayloadError("分页 next 地址不是预期的知乎 API 端点。")
     elif not parsed.path:
         suffix = f"?{parsed.query}" if parsed.query else ""
         return f"{endpoint}{suffix}"
@@ -457,7 +433,7 @@ def _entity_from_collection(
         direct = collection.get(entity_id)
         if isinstance(direct, Mapping):
             return dict(direct)
-        candidates = collection.values()
+        candidates: Iterable[object] = collection.values()
     elif isinstance(collection, list):
         candidates = collection
     else:

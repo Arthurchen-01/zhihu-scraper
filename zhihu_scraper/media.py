@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ContextManager, Protocol
+from typing import Protocol
 from urllib.request import Request, urlopen
 
 
@@ -45,7 +46,7 @@ class _HttpResponse(Protocol):
     def read(self, size: int = -1) -> bytes: ...
 
 
-HttpTransport = Callable[[Request], ContextManager[_HttpResponse]]
+HttpTransport = Callable[[Request], AbstractContextManager[_HttpResponse]]
 
 
 def select_highest_resolution(candidates: Iterable[MediaCandidate]) -> MediaCandidate:

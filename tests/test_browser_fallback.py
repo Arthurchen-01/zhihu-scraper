@@ -100,9 +100,7 @@ def test_fetch_html_uses_a_persistent_headed_profile_and_waits_for_dom(tmp_path:
     html = browser.fetch_html("https://www.zhihu.com/question/1")
 
     assert html == "<html><body>ready</body></html>"
-    assert executor.launches == [
-        (tmp_path / "app-data" / "browser-profile", False, None)
-    ]
+    assert executor.launches == [(tmp_path / "app-data" / "browser-profile", False, None)]
     assert (tmp_path / "app-data" / "browser-profile").is_dir()
     assert executor.context.page.goto_calls == [
         ("https://www.zhihu.com/question/1", "domcontentloaded", 30_000)

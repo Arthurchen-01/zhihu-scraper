@@ -7,7 +7,6 @@ import re
 import unicodedata
 from pathlib import PurePath
 
-
 _INVALID = re.compile(r'[\x00-\x1f<>:"/\\|?*]+')
 _RESERVED = {
     "CON",

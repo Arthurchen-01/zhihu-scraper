@@ -130,9 +130,7 @@ class CookieLoadingTests(unittest.TestCase):
 
 class ZhihuHttpClientTests(unittest.TestCase):
     def test_invalid_json_is_wrapped_without_copying_response_details(self):
-        session = FakeSession(
-            [FakeResponse(json_data=ValueError("secret response body"))]
-        )
+        session = FakeSession([FakeResponse(json_data=ValueError("secret response body"))])
 
         with self.assertRaises(InvalidResponseError) as raised:
             ZhihuHttpClient(session=session).get_json("/api/v4/me")
@@ -142,9 +140,7 @@ class ZhihuHttpClientTests(unittest.TestCase):
 
     def test_get_json_uses_the_zhihu_origin_and_authenticated_session(self):
         cookies = {"z_c0": "z-secret", "d_c0": "d-secret"}
-        session = FakeSession(
-            [FakeResponse(json_data={"id": "member-id", "name": "归档用户"})]
-        )
+        session = FakeSession([FakeResponse(json_data={"id": "member-id", "name": "归档用户"})])
         client = ZhihuHttpClient(cookies=cookies, session=session)
 
         payload = client.get_json("/api/v4/me")

@@ -29,7 +29,6 @@ from .domain import (
 )
 from .media import MediaDownloadReceipt, download_media
 
-
 AssetDownloader = Callable[[str, Path], MediaDownloadReceipt]
 
 
@@ -173,9 +172,7 @@ def _unique_assets(assets: Iterable[MediaAsset]) -> Iterator[MediaAsset]:
 
 
 def _select_rendition(asset: MediaAsset) -> MediaRendition | None:
-    available = tuple(
-        rendition for rendition in asset.renditions if rendition.source_url.strip()
-    )
+    available = tuple(rendition for rendition in asset.renditions if rendition.source_url.strip())
     if not available:
         return None
     if asset.kind is not MediaKind.VIDEO:
@@ -238,12 +235,10 @@ def _extension(kind: MediaKind, rendition: MediaRendition) -> str:
     allowed = _allowed_extensions(kind)
     mime_type = (rendition.mime_type or "").partition(";")[0].strip().casefold()
     mime_extension = _MIME_EXTENSIONS.get(mime_type)
-    if mime_extension in allowed:
+    if mime_extension is not None and mime_extension in allowed:
         return mime_extension
 
-    path_suffix = PurePosixPath(
-        unquote(urlsplit(rendition.source_url).path)
-    ).suffix.casefold()
+    path_suffix = PurePosixPath(unquote(urlsplit(rendition.source_url).path)).suffix.casefold()
     if path_suffix == ".jpeg":
         path_suffix = ".jpg"
     if path_suffix in allowed:

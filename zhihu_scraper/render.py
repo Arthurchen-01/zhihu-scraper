@@ -37,7 +37,6 @@ from .domain import (
     Video,
 )
 
-
 ARCHIVE_CSS = """\
 :root {
   color-scheme: light dark;
@@ -364,16 +363,8 @@ def _column_to_markdown(
         parts.extend(["", f"## {year}", ""])
         for article in articles:
             entry = entries.get(article.id)
-            md_path = (
-                entry.markdown_href
-                if entry is not None
-                else f"内容/{article.title}.md"
-            )
-            html_path = (
-                entry.html_href
-                if entry is not None
-                else f"内容/{article.title}.html"
-            )
+            md_path = entry.markdown_href if entry is not None else f"内容/{article.title}.md"
+            html_path = entry.html_href if entry is not None else f"内容/{article.title}.html"
             date = article.published_at.date().isoformat() if article.published_at else "日期未知"
             parts.append(
                 f"- {date} · {article.title}（"
@@ -457,9 +448,7 @@ def _answer_to_html(answer: Answer, *, paths: Mapping[str, str]) -> str:
         voteup_count=answer.voteup_count,
     )
     comments = (
-        _comments_to_html(answer.comments, heading_level=2, paths=paths)
-        if answer.comments
-        else ""
+        _comments_to_html(answer.comments, heading_level=2, paths=paths) if answer.comments else ""
     )
     return (
         '    <article class="standalone-answer">\n'
@@ -536,16 +525,8 @@ def _column_to_html(
         for article in articles:
             date = article.published_at.date().isoformat() if article.published_at else "日期未知"
             entry = entries.get(article.id)
-            html_path = (
-                entry.html_href
-                if entry is not None
-                else f"内容/{article.title}.html"
-            )
-            markdown_path = (
-                entry.markdown_href
-                if entry is not None
-                else f"内容/{article.title}.md"
-            )
+            html_path = entry.html_href if entry is not None else f"内容/{article.title}.html"
+            markdown_path = entry.markdown_href if entry is not None else f"内容/{article.title}.md"
             entry_lines.append(
                 "          <li>"
                 f"<time>{html.escape(date)}</time> · "
@@ -561,11 +542,7 @@ def _column_to_html(
             "        </ul>\n"
             "      </section>\n"
         )
-    description = (
-        f"      <p>{html.escape(column.description)}</p>\n"
-        if column.description
-        else ""
-    )
+    description = f"      <p>{html.escape(column.description)}</p>\n" if column.description else ""
     author = html.escape(column.author.name if column.author else "未知作者")
     return (
         '    <article class="column-directory">\n'
@@ -599,15 +576,9 @@ def _video_to_html(video: Video, *, paths: Mapping[str, str]) -> str:
         if safe_source
         else "      <p>视频文件不可用。</p>\n"
     )
-    original_link = (
-        f"      <p>{_html_link('原始视频链接', original)}</p>\n"
-        if original
-        else ""
-    )
+    original_link = f"      <p>{_html_link('原始视频链接', original)}</p>\n" if original else ""
     comments = (
-        _comments_to_html(video.comments, heading_level=2, paths=paths)
-        if video.comments
-        else ""
+        _comments_to_html(video.comments, heading_level=2, paths=paths) if video.comments else ""
     )
     return (
         '    <article class="video-archive">\n'
@@ -654,9 +625,7 @@ def _html_metadata(
         lines.append(f"        <p>作者：{html.escape(author)}</p>\n")
     lines.append(f"        <p>{_html_link('知乎原文', source_url)}</p>\n")
     if published_at is not None:
-        lines.append(
-            f"        <p>发布时间：{html.escape(published_at.date().isoformat())}</p>\n"
-        )
+        lines.append(f"        <p>发布时间：{html.escape(published_at.date().isoformat())}</p>\n")
     if voteup_count:
         lines.append(f"        <p>{voteup_count} 赞同</p>\n")
     lines.append("      </section>\n")
@@ -690,17 +659,13 @@ def _article_context_html(
 ) -> str:
     lines: list[str] = []
     if article.columns:
-        memberships = " · ".join(
-            _html_link(column.title, column.url) for column in article.columns
-        )
+        memberships = " · ".join(_html_link(column.title, column.url) for column in article.columns)
         lines.append(f"        <p>收录专栏：{memberships}</p>\n")
     if context is not None:
         origin = _html_link(context.column.title, context.column.url)
         directory = _html_link("查看完整目录", context.directory.html_href)
         lines.append(f"        <p>本次归档自：{origin} · {directory}</p>\n")
-        lines.append(
-            f"        <p>专栏导航：{_article_navigation_links_html(context)}</p>\n"
-        )
+        lines.append(f"        <p>专栏导航：{_article_navigation_links_html(context)}</p>\n")
     if not lines:
         return ""
     return '      <aside class="archive-context">\n' + "".join(lines) + "      </aside>\n"
@@ -890,8 +855,7 @@ def _articles_by_year(
         reverse=True,
     )
     return [
-        (f"{year} 年" if year is not None else "日期未知", grouped[year])
-        for year in ordered_years
+        (f"{year} 年" if year is not None else "日期未知", grouped[year]) for year in ordered_years
     ]
 
 
@@ -979,10 +943,7 @@ def _block_to_markdown(block: Block, *, paths: Mapping[str, str]) -> str:
             if original and original != source:
                 rendered += f"\n\n{_markdown_link('原始视频链接', original)}"
             return rendered
-        rendered = (
-            f"![{_escape_markdown_label(block.asset.alt_text)}]"
-            f"({_markdown_href(source)})"
-        )
+        rendered = f"![{_escape_markdown_label(block.asset.alt_text)}]({_markdown_href(source)})"
         return f"{rendered}\n\n{block.caption}" if block.caption else rendered
     if isinstance(block, TableBlock):
         width = max(
@@ -1034,10 +995,7 @@ def _blocks_to_html(
     paths: Mapping[str, str],
     indent: str = "      ",
 ) -> str:
-    return "\n".join(
-        _block_to_html(block, paths=paths, indent=indent)
-        for block in blocks
-    )
+    return "\n".join(_block_to_html(block, paths=paths, indent=indent) for block in blocks)
 
 
 def _block_to_html(
@@ -1063,9 +1021,7 @@ def _block_to_html(
         return f"{indent}<{tag}>\n" + "\n".join(items) + f"\n{indent}</{tag}>"
     if isinstance(block, CodeBlock):
         language = (
-            f' class="language-{html.escape(block.language, quote=True)}"'
-            if block.language
-            else ""
+            f' class="language-{html.escape(block.language, quote=True)}"' if block.language else ""
         )
         return f"{indent}<pre><code{language}>{html.escape(block.code)}</code></pre>"
     if isinstance(block, FormulaBlock):
@@ -1078,17 +1034,12 @@ def _block_to_html(
         escaped_source = html.escape(source, quote=True)
         alt = html.escape(block.asset.alt_text, quote=True)
         if block.asset.kind is MediaKind.VIDEO:
-            media_html = (
-                f'<video controls preload="metadata" src="{escaped_source}"></video>'
-            )
+            media_html = f'<video controls preload="metadata" src="{escaped_source}"></video>'
         else:
             media_html = f'<img src="{escaped_source}" alt="{alt}">'
         if block.caption:
             caption = html.escape(block.caption)
-            return (
-                f"{indent}<figure>{media_html}"
-                f"<figcaption>{caption}</figcaption></figure>"
-            )
+            return f"{indent}<figure>{media_html}<figcaption>{caption}</figcaption></figure>"
         return f"{indent}<figure>{media_html}</figure>"
     if isinstance(block, TableBlock):
         head = ""

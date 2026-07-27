@@ -27,14 +27,10 @@ class RuntimePlatformTests(unittest.TestCase):
         )
         self.assertEqual(
             (
-                PureWindowsPath(
-                    "C:/Users/Ada/AppData/Local/Google/Chrome/Application/chrome.exe"
-                ),
+                PureWindowsPath("C:/Users/Ada/AppData/Local/Google/Chrome/Application/chrome.exe"),
                 PureWindowsPath("C:/Program Files/Google/Chrome/Application/chrome.exe"),
                 PureWindowsPath("C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"),
-                PureWindowsPath(
-                    "C:/Users/Ada/AppData/Local/Chromium/Application/chrome.exe"
-                ),
+                PureWindowsPath("C:/Users/Ada/AppData/Local/Chromium/Application/chrome.exe"),
             ),
             runtime.browser_candidates,
         )
@@ -53,9 +49,7 @@ class RuntimePlatformTests(unittest.TestCase):
         )
         self.assertEqual(
             (
-                PurePosixPath(
-                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-                ),
+                PurePosixPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
                 PurePosixPath(
                     "/Users/ada/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
                 ),

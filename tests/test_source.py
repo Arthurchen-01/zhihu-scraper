@@ -55,7 +55,7 @@ class ArticleSourceTests(unittest.TestCase):
         article_payload = {
             "id": 11617075708,
             "title": "含数学公式的文章",
-            "content": "<p><img eeimg=\"1\"/></p>",
+            "content": '<p><img eeimg="1"/></p>',
         }
         initial_state = {
             "initialState": {
@@ -84,9 +84,7 @@ class ArticleSourceTests(unittest.TestCase):
         )
         source = ZhihuSource(client)
 
-        result = source.fetch_article_payload(
-            "https://zhuanlan.zhihu.com/p/11617075708"
-        )
+        result = source.fetch_article_payload("https://zhuanlan.zhihu.com/p/11617075708")
 
         self.assertEqual(article_payload, result)
         self.assertEqual(
@@ -135,9 +133,7 @@ class ArticleSourceTests(unittest.TestCase):
 
     def test_unrelated_api_error_is_not_silently_treated_as_an_html_failure(self):
         client = FakeClient(
-            json_responses=[
-                {"error": {"code": 40362, "message": "内容不存在或无权访问"}}
-            ]
+            json_responses=[{"error": {"code": 40362, "message": "内容不存在或无权访问"}}]
         )
 
         with self.assertRaisesRegex(
@@ -276,10 +272,7 @@ class PaginationSourceTests(unittest.TestCase):
         self.assertEqual([{"id": 1}, {"id": 2}, {"id": 3}], answers)
         self.assertEqual(
             [
-                (
-                    "/api/v4/questions/100/answers"
-                    "?limit=2&offset=0&platform=desktop&sort_by=default"
-                ),
+                ("/api/v4/questions/100/answers?limit=2&offset=0&platform=desktop&sort_by=default"),
                 next_url,
             ],
             client.json_calls,

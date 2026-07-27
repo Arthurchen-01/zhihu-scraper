@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Sequence
 
 from .facade import archive_url, check_session
 from .settings import (

@@ -88,12 +88,12 @@ cdp_url = "http://127.0.0.1:9222"
 
     def test_invalid_types_and_ranges_have_readable_chinese_errors(self):
         invalid_documents = (
-            ("[archive]\ncomments = \"yes\"", "archive.comments", "布尔值"),
+            ('[archive]\ncomments = "yes"', "archive.comments", "布尔值"),
             ("[archive]\ncomment_roots = 0", "archive.comment_roots", "1"),
             ("[network]\ntimeout = -1", "network.timeout", "大于 0"),
             ("[network]\nretries = 11", "network.retries", "0 到 10"),
             ("[network]\npage_size = 101", "network.page_size", "1 到 100"),
-            ("[browser]\nfallback = \"sometimes\"", "browser.fallback", "auto"),
+            ('[browser]\nfallback = "sometimes"', "browser.fallback", "auto"),
         )
 
         for document, field_name, expected_detail in invalid_documents:
@@ -135,7 +135,7 @@ cdp_url = "http://127.0.0.1:9222"
     def test_unknown_sections_and_fields_are_rejected(self):
         invalid_documents = (
             ("[archive]\nhtlm = true", "archive.htlm"),
-            ("[network]\nz_c0 = \"secret\"", "network.cookie_file"),
+            ('[network]\nz_c0 = "secret"', "network.cookie_file"),
             ("[experimental]\nenabled = true", "experimental"),
         )
 

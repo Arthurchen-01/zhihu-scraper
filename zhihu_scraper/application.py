@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import TracebackType
-from typing import Any, Protocol, Self
+from typing import Protocol, Self
 
 from .comments import CommentClient, fetch_comment_thread
 from .domain import (
@@ -25,7 +25,8 @@ from .normalize import (
     normalize_question,
     normalize_video,
 )
-from .settings import ArchiveSettings, BrowserFallback as BrowserFallbackMode
+from .settings import ArchiveSettings
+from .settings import BrowserFallback as BrowserFallbackMode
 from .source import InvalidZhihuPayloadError, extract_entity_payload
 from .urls import TargetKind, ZhihuTarget, route_zhihu_url
 
@@ -75,7 +76,7 @@ class BrowserReader(Protocol):
     ) -> object: ...
 
 
-class BrowserFallbackUnavailable(RuntimeError):
+class BrowserFallbackUnavailableError(RuntimeError):
     """HTTP failed and no configured browser fallback can continue."""
 
 
@@ -98,7 +99,7 @@ class ArchiveWorkflow:
         comment_client: CommentClient | None = None,
         browser_factory: Callable[[], BrowserReader] | None = None,
         browser_cookies: Mapping[str, str] | None = None,
-        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._source = source
         self._sink = sink
@@ -240,9 +241,7 @@ class ArchiveWorkflow:
         collection: str,
     ) -> Mapping[str, object]:
         if self._browser_factory is None:
-            raise BrowserFallbackUnavailable(
-                "HTTP 抓取失败，但当前没有配置浏览器回退。"
-            )
+            raise BrowserFallbackUnavailableError("HTTP 抓取失败，但当前没有配置浏览器回退。")
         with self._browser_factory() as browser:
             if self._browser_cookies:
                 browser.set_cookie_dict(self._browser_cookies)

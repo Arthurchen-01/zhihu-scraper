@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from zhihu_scraper.assets import archive_assets
@@ -27,8 +27,7 @@ from zhihu_scraper.domain import (
 )
 from zhihu_scraper.media import MediaDownloadReceipt
 
-
-NOW = datetime(2026, 7, 27, tzinfo=timezone.utc)
+NOW = datetime(2026, 7, 27, tzinfo=UTC)
 AUTHOR = Author(id="writer", name="作者")
 
 
@@ -133,9 +132,7 @@ class AssetPipelineTests(unittest.TestCase):
             self.assertNotIn("https://pic.example/duplicate.jpg", result.source_paths)
             self.assertTrue(
                 all(
-                    relative.startswith("media/")
-                    and "\\" not in relative
-                    and ".." not in relative
+                    relative.startswith("media/") and "\\" not in relative and ".." not in relative
                     for relative in result.source_paths.values()
                 )
             )
@@ -158,9 +155,7 @@ class AssetPipelineTests(unittest.TestCase):
             source_url="https://www.zhihu.com/zvideo/1666569497233207296",
             author=AUTHOR,
             published_at=NOW,
-            description=(
-                MediaBlock(image("description", "https://pic.example/description.jpg")),
-            ),
+            description=(MediaBlock(image("description", "https://pic.example/description.jpg")),),
             asset=MediaAsset(
                 id="zvideo-1666569497233207296",
                 kind=MediaKind.VIDEO,

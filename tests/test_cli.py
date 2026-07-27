@@ -104,9 +104,7 @@ class NewCommandLineTests(unittest.TestCase):
             side_effect=RuntimeError("抓取失败"),
         ):
             with redirect_stderr(error_output):
-                exit_code = run_cli(
-                    ["fetch", "https://zhuanlan.zhihu.com/p/1"]
-                )
+                exit_code = run_cli(["fetch", "https://zhuanlan.zhihu.com/p/1"])
 
         self.assertEqual(1, exit_code)
         self.assertIn("错误：抓取失败", error_output.getvalue())

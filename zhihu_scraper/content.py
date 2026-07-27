@@ -35,7 +35,6 @@ from .domain import (
     Text,
 )
 
-
 _REMOVED_TAGS = {
     "script",
     "style",
@@ -116,9 +115,7 @@ def _parse_block_children(
                 blocks.extend(_parse_block_children(node.children, base_url=base_url))
         elif name in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             flush_loose_text()
-            inlines = _trim_inline_edges(
-                _parse_inline_children(node.children, base_url=base_url)
-            )
+            inlines = _trim_inline_edges(_parse_inline_children(node.children, base_url=base_url))
             if _has_visible_inline(inlines):
                 blocks.append(Heading(level=int(name[1]), inlines=tuple(inlines)))
         elif name == "pre":
@@ -140,10 +137,7 @@ def _parse_block_children(
         elif name == "figure":
             flush_loose_text()
             figure_blocks = _parse_figure(node)
-            blocks.extend(
-                figure_blocks
-                or _parse_block_children(node.children, base_url=base_url)
-            )
+            blocks.extend(figure_blocks or _parse_block_children(node.children, base_url=base_url))
         elif name == "hr":
             flush_loose_text()
             blocks.append(Divider())
@@ -280,7 +274,7 @@ def _parse_code_block(node: Tag) -> CodeBlock:
         language = next(
             (
                 str(css_class).removeprefix("language-")
-                for css_class in code_node.get("class", [])
+                for css_class in _css_classes(code_node)
                 if str(css_class).startswith("language-")
             ),
             "",
@@ -293,9 +287,7 @@ def _parse_list(node: Tag, *, base_url: str) -> ListBlock:
     for item in node.find_all("li", recursive=False):
         item_blocks = tuple(_parse_block_children(item.children, base_url=base_url))
         if not item_blocks:
-            inlines = _trim_inline_edges(
-                _parse_inline_children(item.children, base_url=base_url)
-            )
+            inlines = _trim_inline_edges(_parse_inline_children(item.children, base_url=base_url))
             item_blocks = (Paragraph(tuple(inlines)),) if _has_visible_inline(inlines) else ()
         items.append(item_blocks)
     return ListBlock(ordered=node.name == "ol", items=tuple(items))
@@ -332,7 +324,7 @@ def _parse_figure(node: Tag) -> list[Block]:
 
 
 def _formula_from_node(node: Tag) -> str:
-    classes = {str(css_class) for css_class in node.get("class", [])}
+    classes = set(_css_classes(node))
     if "ztext-math" in classes:
         for attribute in ("data-tex", "data-formula", "alt"):
             value = node.get(attribute)
@@ -347,6 +339,15 @@ def _formula_from_node(node: Tag) -> str:
             if values:
                 return values[0].strip()
     return ""
+
+
+def _css_classes(node: Tag) -> tuple[str, ...]:
+    value = node.get("class")
+    if isinstance(value, str):
+        return tuple(value.split())
+    if isinstance(value, (list, tuple)):
+        return tuple(str(item) for item in value)
+    return ()
 
 
 def _first_formula(node: Tag) -> str:
@@ -373,11 +374,7 @@ def _media_from_image(image: Tag) -> MediaAsset | None:
     urls: list[str] = []
     for attribute in ("data-original", "data-actualsrc", "src"):
         candidate = str(image.get(attribute) or "").strip()
-        if (
-            candidate
-            and not candidate.casefold().startswith("data:")
-            and candidate not in urls
-        ):
+        if candidate and not candidate.casefold().startswith("data:") and candidate not in urls:
             urls.append(candidate)
     if not urls:
         return None
@@ -393,11 +390,7 @@ def _media_from_image(image: Tag) -> MediaAsset | None:
         for index, url in enumerate(urls)
     )
     original_path = urlparse(urls[0]).path.casefold()
-    kind = (
-        MediaKind.ANIMATION
-        if original_path.endswith((".gif", ".webp"))
-        else MediaKind.IMAGE
-    )
+    kind = MediaKind.ANIMATION if original_path.endswith((".gif", ".webp")) else MediaKind.IMAGE
     asset_id = hashlib.sha256(urls[0].encode("utf-8")).hexdigest()[:20]
     return MediaAsset(
         id=asset_id,

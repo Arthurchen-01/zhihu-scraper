@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import os
 import platform as system_platform
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import cache
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
-from typing import Mapping
 
 
 class UnsupportedPlatformError(RuntimeError):
@@ -50,14 +50,9 @@ class RuntimePlatform:
             home = PurePosixPath(home_directory)
             return cls(
                 operating_system=OperatingSystem.MACOS,
-                user_data_directory=home
-                / "Library"
-                / "Application Support"
-                / "zhihu-scraper",
+                user_data_directory=home / "Library" / "Application Support" / "zhihu-scraper",
                 browser_candidates=(
-                    PurePosixPath(
-                        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-                    ),
+                    PurePosixPath("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
                     home
                     / "Applications"
                     / "Google Chrome.app"
@@ -89,9 +84,9 @@ class RuntimePlatform:
                 "supported systems are Windows, macOS, and Linux"
             )
 
-        home = PureWindowsPath(home_directory)
+        windows_home = PureWindowsPath(home_directory)
         local_app_data = PureWindowsPath(
-            environment.get("LOCALAPPDATA", str(home / "AppData" / "Local"))
+            environment.get("LOCALAPPDATA", str(windows_home / "AppData" / "Local"))
         )
         program_files = PureWindowsPath(environment.get("PROGRAMFILES", "C:/Program Files"))
         program_files_x86 = PureWindowsPath(

@@ -1,6 +1,6 @@
 import json
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from zhihu_scraper.application import ArchiveWorkflow
 from zhihu_scraper.domain import (
@@ -13,8 +13,7 @@ from zhihu_scraper.domain import (
 from zhihu_scraper.settings import ArchiveSettings, BrowserFallback
 from zhihu_scraper.source import InvalidZhihuPayloadError
 
-
-NOW = datetime(2026, 7, 26, tzinfo=timezone.utc)
+NOW = datetime(2026, 7, 26, tzinfo=UTC)
 
 
 class FakeSource:
@@ -205,9 +204,7 @@ class ArchiveWorkflowTests(unittest.TestCase):
             }
         }
         browser = FakeBrowser(
-            '<script id="js-initialData">'
-            f"{json.dumps(state, ensure_ascii=False)}"
-            "</script>"
+            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>'
         )
         workflow = ArchiveWorkflow(
             source=source,

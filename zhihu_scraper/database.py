@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .domain import (
@@ -26,7 +26,6 @@ from .domain import (
     Video,
 )
 from .render import content_plain_text
-
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS contents (
@@ -396,7 +395,7 @@ class ArchiveDatabase:
                 _isoformat(published_at),
                 _isoformat(updated_at),
                 content_plain_text(blocks),
-                _isoformat(archived_at or datetime.now(timezone.utc)),
+                _isoformat(archived_at or datetime.now(UTC)),
             ),
         )
         if author and author.id:

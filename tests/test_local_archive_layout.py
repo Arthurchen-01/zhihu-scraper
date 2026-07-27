@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from zhihu_scraper.archive import LocalArchive
@@ -19,8 +19,7 @@ from zhihu_scraper.domain import (
 )
 from zhihu_scraper.media import MediaDownloadReceipt
 
-
-NOW = datetime(2026, 7, 26, tzinfo=timezone.utc)
+NOW = datetime(2026, 7, 26, tzinfo=UTC)
 AUTHOR = Author(id="author", name="作者")
 
 
@@ -52,7 +51,7 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             title="同名:文章",
             source_url="https://zhuanlan.zhihu.com/p/1",
             author=AUTHOR,
-            published_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            published_at=datetime(2025, 1, 1, tzinfo=UTC),
             blocks=(Paragraph((Text("第一篇正文"),)),),
             columns=(column_ref,),
         )
@@ -61,7 +60,7 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             title="同名/文章",
             source_url="https://zhuanlan.zhihu.com/p/2",
             author=AUTHOR,
-            published_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            published_at=datetime(2024, 1, 1, tzinfo=UTC),
             blocks=(Paragraph((Text("第二篇正文"),)),),
             columns=(column_ref,),
         )
@@ -88,7 +87,9 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             self.assertEqual(root / "zhihu.db", receipt.database_path)
             self.assertEqual(2, len(receipt.child_markdown_paths))
             self.assertEqual(2, len(receipt.child_html_paths))
-            self.assertTrue(all(path.parent.name == "内容" for path in receipt.child_markdown_paths))
+            self.assertTrue(
+                all(path.parent.name == "内容" for path in receipt.child_markdown_paths)
+            )
             self.assertEqual(
                 len({path.name.casefold() for path in receipt.child_markdown_paths}),
                 2,

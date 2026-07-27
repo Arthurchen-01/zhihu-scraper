@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from zhihu_scraper.comments import fetch_comment_thread
 
@@ -16,14 +16,8 @@ class FakeClient:
 
 class CommentFetchingTests(unittest.TestCase):
     def test_article_comments_preserve_api_order_and_normalize_replies(self):
-        root_url = (
-            "/api/v4/comment_v5/articles/123/root_comment"
-            "?limit=10&offset="
-        )
-        reply_url = (
-            "/api/v4/comment_v5/comment/900/child_comment"
-            "?limit=10&offset="
-        )
+        root_url = "/api/v4/comment_v5/articles/123/root_comment?limit=10&offset="
+        reply_url = "/api/v4/comment_v5/comment/900/child_comment?limit=10&offset="
         client = FakeClient(
             {
                 root_url: {
@@ -77,7 +71,7 @@ class CommentFetchingTests(unittest.TestCase):
         )
         self.assertEqual(
             root.created_at,
-            datetime.fromtimestamp(1_700_000_000, tz=timezone.utc),
+            datetime.fromtimestamp(1_700_000_000, tz=UTC),
         )
         self.assertEqual(root.like_count, 7)
         self.assertEqual(root.replies[0].id, "901")
@@ -85,19 +79,13 @@ class CommentFetchingTests(unittest.TestCase):
         self.assertTrue(root.replies_complete)
 
     def test_root_pagination_stops_at_the_injected_limit_and_marks_truncation(self):
-        first_page = (
-            "/api/v4/comment_v5/answers/456/root_comment"
-            "?limit=3&offset="
-        )
+        first_page = "/api/v4/comment_v5/answers/456/root_comment?limit=3&offset="
         second_page = (
             "https://www.zhihu.com/api/v4/comment_v5/answers/456/root_comment"
             "?offset=cursor-2&limit=3"
         )
         empty_replies = {
-            (
-                f"/api/v4/comment_v5/comment/{comment_id}/child_comment"
-                "?limit=10&offset="
-            ): {
+            (f"/api/v4/comment_v5/comment/{comment_id}/child_comment?limit=10&offset="): {
                 "data": [],
                 "paging": {"is_end": True, "next": ""},
             }
@@ -139,14 +127,8 @@ class CommentFetchingTests(unittest.TestCase):
         )
 
     def test_reply_pagination_is_bounded_independently_for_zvideo(self):
-        root_url = (
-            "/api/v4/comment_v5/zvideos/789/root_comment"
-            "?limit=10&offset="
-        )
-        first_replies = (
-            "/api/v4/comment_v5/comment/20/child_comment"
-            "?limit=3&offset="
-        )
+        root_url = "/api/v4/comment_v5/zvideos/789/root_comment?limit=10&offset="
+        first_replies = "/api/v4/comment_v5/comment/20/child_comment?limit=3&offset="
         second_replies = (
             "https://www.zhihu.com/api/v4/comment_v5/comment/20/child_comment"
             "?offset=cursor-2&limit=3"
@@ -215,10 +197,7 @@ class CommentFetchingTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
 
     def test_explicit_zero_child_count_needs_no_second_request(self):
-        root_url = (
-            "/api/v4/comment_v5/articles/321/root_comment"
-            "?limit=10&offset="
-        )
+        root_url = "/api/v4/comment_v5/articles/321/root_comment?limit=10&offset="
         root = _comment_payload(30, "没有回复")
         root["child_comment_count"] = 0
         client = FakeClient(
@@ -241,10 +220,7 @@ class CommentFetchingTests(unittest.TestCase):
         self.assertTrue(thread.comments[0].replies_complete)
 
     def test_anonymous_and_deleted_authors_are_normalized_without_fake_identity(self):
-        root_url = (
-            "/api/v4/comment_v5/answers/654/root_comment"
-            "?limit=10&offset="
-        )
+        root_url = "/api/v4/comment_v5/answers/654/root_comment?limit=10&offset="
         anonymous = _comment_payload(40, "匿名评论")
         anonymous["author"] = {
             "id": "",
@@ -281,10 +257,7 @@ class CommentFetchingTests(unittest.TestCase):
         self.assertIsNone(thread.comments[1].author)
 
     def test_malformed_comment_scalars_are_rejected_instead_of_guessed(self):
-        root_url = (
-            "/api/v4/comment_v5/articles/987/root_comment"
-            "?limit=10&offset="
-        )
+        root_url = "/api/v4/comment_v5/articles/987/root_comment?limit=10&offset="
         for field, invalid_value in (
             ("created_time", "昨天"),
             ("like_count", "很多"),

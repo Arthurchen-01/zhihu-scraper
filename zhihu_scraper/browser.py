@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Protocol, Self
+from typing import Any, Protocol, Self, cast
 from urllib.parse import urlparse
 
 from .platform import RuntimePlatform
@@ -88,7 +88,7 @@ class _PlaywrightExecutor:
             contexts = self._cdp_browser.contexts
             if not contexts:
                 raise RuntimeError("CDP browser has no default context")
-            return contexts[0]
+            return cast(BrowserContext, contexts[0])
         except BrowserDependencyError:
             raise
         except Exception:
@@ -110,9 +110,12 @@ class _PlaywrightExecutor:
             options: dict[str, object] = {"headless": headless}
             if executable_path is not None:
                 options["executable_path"] = str(executable_path)
-            return playwright.chromium.launch_persistent_context(
-                str(profile_dir),
-                **options,
+            return cast(
+                BrowserContext,
+                playwright.chromium.launch_persistent_context(
+                    str(profile_dir),
+                    **options,
+                ),
             )
         except BrowserDependencyError:
             raise
@@ -210,9 +213,7 @@ class BrowserFallback:
         except BrowserFallbackError:
             raise
         except Exception:
-            raise BrowserCookieError(
-                "The browser session cookies could not be read."
-            ) from None
+            raise BrowserCookieError("The browser session cookies could not be read.") from None
 
         result: dict[str, str] = {}
         for cookie in cookie_records:
@@ -224,10 +225,7 @@ class BrowserFallback:
             if not isinstance(value, str) or not isinstance(domain, str):
                 continue
             normalized_domain = domain.casefold().lstrip(".")
-            if (
-                normalized_domain == "zhihu.com"
-                or normalized_domain.endswith(".zhihu.com")
-            ):
+            if normalized_domain == "zhihu.com" or normalized_domain.endswith(".zhihu.com"):
                 result[name] = value
         return result
 
@@ -243,10 +241,7 @@ class BrowserFallback:
                 "secure": True,
             }
             for name, value in cookies.items()
-            if isinstance(name, str)
-            and name.strip()
-            and isinstance(value, str)
-            and value
+            if isinstance(name, str) and name.strip() and isinstance(value, str) and value
         ]
         if not records:
             return
@@ -284,9 +279,7 @@ class BrowserFallback:
         except BrowserFallbackError:
             raise
         except Exception:
-            raise BrowserLaunchError(
-                "The persistent browser could not be started."
-            ) from None
+            raise BrowserLaunchError("The persistent browser could not be started.") from None
         return self._context
 
     def _installed_browser(self) -> Path | None:
@@ -313,9 +306,7 @@ class BrowserFallback:
         except Exception:
             failed = True
         if failed:
-            raise BrowserCloseError(
-                "The browser resources could not be closed cleanly."
-            ) from None
+            raise BrowserCloseError("The browser resources could not be closed cleanly.") from None
 
     def __enter__(self) -> Self:
         return self
@@ -343,9 +334,7 @@ def _validate_zhihu_url(url: str) -> None:
         or parsed.username is not None
         or parsed.password is not None
     ):
-        raise BrowserNavigationError(
-            "Browser fallback only opens trusted Zhihu HTTPS pages."
-        )
+        raise BrowserNavigationError("Browser fallback only opens trusted Zhihu HTTPS pages.")
 
 
 def _validate_cdp_url(url: str) -> None:

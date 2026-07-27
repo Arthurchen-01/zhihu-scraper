@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 from urllib.parse import urljoin, urlparse
 
 from curl_cffi import requests
@@ -45,7 +45,7 @@ class _HttpResponse(Protocol):
 
 
 class _HttpSession(Protocol):
-    def get(self, url: str, **kwargs: object) -> _HttpResponse: ...
+    def get(self, url: str, **kwargs: Any) -> _HttpResponse: ...
 
 
 class ZhihuHttpError(RuntimeError):
@@ -103,7 +103,10 @@ class ZhihuHttpClient:
     ) -> None:
         self._cookies = dict(cookies or {})
         self._proxy = proxy
-        self._session = session or requests.Session(impersonate="chrome")
+        self._session = session or cast(
+            _HttpSession,
+            requests.Session(impersonate="chrome"),
+        )
         self._max_retries = max_retries
         self._timeout = timeout
         self._sleep = sleep
@@ -212,18 +215,15 @@ def load_cookies(path: Path) -> dict[str, str]:
     try:
         payload = json.loads(cookie_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
-        raise CookieFileError(
-            f"Could not safely load Cookie file {cookie_path.name}."
-        ) from None
+        raise CookieFileError(f"Could not safely load Cookie file {cookie_path.name}.") from None
 
     cookies: dict[str, str] = {}
+    pairs: Iterable[tuple[object, object]]
     if isinstance(payload, dict):
         pairs = payload.items()
     elif isinstance(payload, list):
         pairs = (
-            (item.get("name"), item.get("value"))
-            for item in payload
-            if isinstance(item, dict)
+            (item.get("name"), item.get("value")) for item in payload if isinstance(item, dict)
         )
     else:
         raise CookieFileError(

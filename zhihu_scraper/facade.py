@@ -15,7 +15,8 @@ from .http import (
     diagnose_cookies,
     load_cookies,
 )
-from .settings import ArchiveSettings, BrowserFallback as BrowserFallbackMode
+from .settings import ArchiveSettings
+from .settings import BrowserFallback as BrowserFallbackMode
 from .source import ZhihuSource
 
 
@@ -45,11 +46,7 @@ def build_workflow(
 ) -> ArchiveWorkflow:
     """Compose the public workflow while keeping every boundary injectable."""
 
-    configured_cookies = (
-        dict(cookies)
-        if cookies is not None
-        else _configured_cookies(settings)
-    )
+    configured_cookies = dict(cookies) if cookies is not None else _configured_cookies(settings)
     http_client = client or ZhihuHttpClient(
         cookies=configured_cookies,
         proxy=settings.proxy,
@@ -58,11 +55,15 @@ def build_workflow(
     )
     archive_sink = sink or LocalArchive.from_settings(settings)
     if browser_factory is None and settings.browser_fallback is not BrowserFallbackMode.NEVER:
-        browser_factory = lambda: BrowserFallback(
-            cdp_url=settings.cdp_url,
-            headless=settings.headless,
-            timeout_ms=max(1, int(settings.timeout * 1000)),
-        )
+
+        def configured_browser() -> BrowserFallback:
+            return BrowserFallback(
+                cdp_url=settings.cdp_url,
+                headless=settings.headless,
+                timeout_ms=max(1, int(settings.timeout * 1000)),
+            )
+
+        browser_factory = configured_browser
     return ArchiveWorkflow(
         source=ZhihuSource(http_client),
         sink=archive_sink,

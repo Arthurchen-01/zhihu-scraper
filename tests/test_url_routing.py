@@ -45,9 +45,7 @@ class ZhihuUrlRoutingTests(unittest.TestCase):
                 self.assertEqual(canonical_url, target.canonical_url)
 
     def test_routes_a_question_as_the_multiple_answer_target(self):
-        target = route_zhihu_url(
-            "https://www.zhihu.com/question/28696373?utm_source=share#answers"
-        )
+        target = route_zhihu_url("https://www.zhihu.com/question/28696373?utm_source=share#answers")
 
         self.assertEqual(TargetKind.QUESTION, target.kind)
         self.assertEqual("28696373", target.content_id)
@@ -71,9 +69,7 @@ class ZhihuUrlRoutingTests(unittest.TestCase):
         )
 
     def test_routes_a_standalone_zvideo(self):
-        target = route_zhihu_url(
-            "https://www.zhihu.com/zvideo/1666569497233207296/#player"
-        )
+        target = route_zhihu_url("https://www.zhihu.com/zvideo/1666569497233207296/#player")
 
         self.assertEqual(TargetKind.VIDEO, target.kind)
         self.assertEqual("1666569497233207296", target.content_id)

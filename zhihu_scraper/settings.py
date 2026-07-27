@@ -397,9 +397,7 @@ def _integer_in_range(
     if type(value) is not int:
         raise SettingsError(f"配置项 {field_name} 必须是整数")
     if not minimum <= value <= maximum:
-        raise SettingsError(
-            f"配置项 {field_name} 必须在 {minimum} 到 {maximum} 之间"
-        )
+        raise SettingsError(f"配置项 {field_name} 必须在 {minimum} 到 {maximum} 之间")
     return value
 
 
@@ -423,15 +421,11 @@ def _browser_fallback(value: object) -> BrowserFallback:
     if isinstance(value, BrowserFallback):
         return value
     if not isinstance(value, str):
-        raise SettingsError(
-            "配置项 browser.fallback 必须是 auto、never 或 always 之一"
-        )
+        raise SettingsError("配置项 browser.fallback 必须是 auto、never 或 always 之一")
     try:
         return BrowserFallback(value)
     except ValueError as error:
-        raise SettingsError(
-            "配置项 browser.fallback 必须是 auto、never 或 always 之一"
-        ) from error
+        raise SettingsError("配置项 browser.fallback 必须是 auto、never 或 always 之一") from error
 
 
 __all__ = [

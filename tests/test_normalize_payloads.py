@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from zhihu_scraper.domain import MediaKind
 from zhihu_scraper.normalize import (
@@ -54,11 +54,11 @@ class ZhihuPayloadNormalizationTests(unittest.TestCase):
         )
         self.assertEqual("https://www.zhihu.com/people/yong-yu", article.author.url)
         self.assertEqual(
-            datetime.fromtimestamp(1615950180, tz=timezone.utc),
+            datetime.fromtimestamp(1615950180, tz=UTC),
             article.published_at,
         )
         self.assertEqual(
-            datetime.fromtimestamp(1617090407, tz=timezone.utc),
+            datetime.fromtimestamp(1617090407, tz=UTC),
             article.updated_at,
         )
         self.assertEqual(7, article.voteup_count)

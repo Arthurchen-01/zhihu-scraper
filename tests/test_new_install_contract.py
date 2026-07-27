@@ -4,7 +4,6 @@ import re
 import unittest
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -57,9 +56,7 @@ class NewInstallContractTests(unittest.TestCase):
 
     def _assert_browser_download_is_instruction_only(self, script: str) -> None:
         install_lines = [
-            line.strip()
-            for line in script.splitlines()
-            if "playwright install chromium" in line
+            line.strip() for line in script.splitlines() if "playwright install chromium" in line
         ]
         self.assertEqual(len(install_lines), 1)
         self.assertRegex(install_lines[0], r"^(?:\"|Write-Host)")

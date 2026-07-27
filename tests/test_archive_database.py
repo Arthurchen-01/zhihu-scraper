@@ -1,7 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from zhihu_scraper.database import ArchiveDatabase
@@ -23,8 +23,7 @@ from zhihu_scraper.domain import (
     Text,
 )
 
-
-NOW = datetime(2026, 7, 26, tzinfo=timezone.utc)
+NOW = datetime(2026, 7, 26, tzinfo=UTC)
 
 
 class ArchiveDatabaseTests(unittest.TestCase):
@@ -145,9 +144,7 @@ class ArchiveDatabaseTests(unittest.TestCase):
                 title=question.title,
                 url=question.source_url,
             ),
-            source_url=(
-                "https://www.zhihu.com/question/28696373/answer/2835848212"
-            ),
+            source_url=("https://www.zhihu.com/question/28696373/answer/2835848212"),
             author=Author(id="answerer", name="回答者"),
             published_at=NOW,
             blocks=(Paragraph((Text("回答正文"),)),),

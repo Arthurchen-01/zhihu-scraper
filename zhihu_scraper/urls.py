@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from urllib.parse import urlsplit
 
 
@@ -12,7 +12,7 @@ class UnsupportedZhihuUrlError(ValueError):
     """Raised when a URL is not one of the archive targets supported in phase one."""
 
 
-class TargetKind(str, Enum):
+class TargetKind(StrEnum):
     ARTICLE = "article"
     ANSWER = "answer"
     QUESTION = "question"
@@ -37,13 +37,9 @@ def route_zhihu_url(raw_url: str) -> ZhihuTarget:
     try:
         parsed = urlsplit(value)
     except ValueError as error:
-        raise UnsupportedZhihuUrlError(
-            f"无法解析知乎链接：{raw_url}"
-        ) from error
+        raise UnsupportedZhihuUrlError(f"无法解析知乎链接：{raw_url}") from error
     if parsed.scheme.lower() not in {"http", "https"}:
-        raise UnsupportedZhihuUrlError(
-            "请输入包含 http:// 或 https:// 的完整知乎链接。"
-        )
+        raise UnsupportedZhihuUrlError("请输入包含 http:// 或 https:// 的完整知乎链接。")
     host = parsed.hostname
     official_hosts = {
         "zhihu.com",
@@ -53,9 +49,7 @@ def route_zhihu_url(raw_url: str) -> ZhihuTarget:
     }
     if host not in official_hosts:
         received_host = host or "缺少域名"
-        raise UnsupportedZhihuUrlError(
-            f"仅支持知乎官方域名，当前域名为 {received_host}。"
-        )
+        raise UnsupportedZhihuUrlError(f"仅支持知乎官方域名，当前域名为 {received_host}。")
     article_match = re.fullmatch(r"/p/(\d+)/?", parsed.path)
     if host in {"zhuanlan.zhihu.com", "www.zhuanlan.zhihu.com"} and article_match:
         article_id = article_match.group(1)
@@ -75,9 +69,7 @@ def route_zhihu_url(raw_url: str) -> ZhihuTarget:
                 kind=TargetKind.ANSWER,
                 content_id=answer_id,
                 question_id=question_id,
-                canonical_url=(
-                    f"https://www.zhihu.com/question/{question_id}/answer/{answer_id}"
-                ),
+                canonical_url=(f"https://www.zhihu.com/question/{question_id}/answer/{answer_id}"),
             )
         short_answer_match = re.fullmatch(r"/answer/(\d+)/?", parsed.path)
         if short_answer_match:
@@ -129,6 +121,5 @@ def route_zhihu_url(raw_url: str) -> ZhihuTarget:
             if parsed.path.startswith(prefix):
                 raise UnsupportedZhihuUrlError(f"{label}暂不支持：{raw_url}")
     raise UnsupportedZhihuUrlError(
-        "当前阶段仅支持知乎文章、回答、问题、专栏和独立视频链接："
-        f"{raw_url}"
+        f"当前阶段仅支持知乎文章、回答、问题、专栏和独立视频链接：{raw_url}"
     )

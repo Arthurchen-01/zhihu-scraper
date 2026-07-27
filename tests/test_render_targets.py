@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from zhihu_scraper.domain import (
     Answer,
@@ -29,8 +29,7 @@ from zhihu_scraper.render import (
     RenderNavigationItem,
 )
 
-
-UTC = timezone.utc
+UTC = UTC
 
 
 def paragraph(value: str) -> Paragraph:

@@ -79,9 +79,7 @@ class PublicApiTests(unittest.TestCase):
                 "zhihu_scraper.facade.ZhihuHttpClient",
                 return_value=fake_client,
             ):
-                report = check_session(
-                    ArchiveSettings(cookie_file=cookie_path)
-                )
+                report = check_session(ArchiveSettings(cookie_file=cookie_path))
 
         self.assertTrue(report.cookie_diagnostic.is_complete)
         self.assertTrue(report.login_status.authenticated)

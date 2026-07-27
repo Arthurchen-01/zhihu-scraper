@@ -28,7 +28,6 @@ from .render import (
 )
 from .settings import ArchiveSettings
 
-
 MediaDownloader = Callable[[str, Path], MediaDownloadReceipt]
 
 
@@ -101,9 +100,7 @@ class LocalArchive:
         entry_directory.mkdir(parents=True, exist_ok=True)
 
         assets = self._archive_media(target, entry_directory)
-        markdown_path = (
-            entry_directory / f"{filename}.md" if self._markdown else None
-        )
+        markdown_path = entry_directory / f"{filename}.md" if self._markdown else None
         html_path = entry_directory / f"{filename}.html" if self._html else None
 
         if markdown_path is not None:
@@ -157,12 +154,8 @@ class LocalArchive:
             )
             for article, name in zip(archive.articles, article_names, strict=True)
         }
-        markdown_path = (
-            entry_directory / f"{column_filename}.md" if self._markdown else None
-        )
-        html_path = (
-            entry_directory / f"{column_filename}.html" if self._html else None
-        )
+        markdown_path = entry_directory / f"{column_filename}.md" if self._markdown else None
+        html_path = entry_directory / f"{column_filename}.html" if self._html else None
         markdown_renderer = MarkdownRenderer()
         html_renderer = HtmlRenderer()
         if markdown_path is not None:

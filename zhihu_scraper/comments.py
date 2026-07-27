@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 
 from .content import parse_rich_text
@@ -36,12 +36,9 @@ def fetch_comment_thread(
     try:
         collection = collections[target_kind]
     except KeyError:
-        raise ValueError(
-            "target_kind must be article, answer, or zvideo."
-        ) from None
+        raise ValueError("target_kind must be article, answer, or zvideo.") from None
     root_url = (
-        f"/api/v4/comment_v5/{collection}/{target_id}/root_comment"
-        f"?limit={root_limit}&offset="
+        f"/api/v4/comment_v5/{collection}/{target_id}/root_comment?limit={root_limit}&offset="
     )
     root_items, roots_complete = _fetch_bounded_pages(
         client,
@@ -51,13 +48,13 @@ def fetch_comment_thread(
     roots: list[Comment] = []
     for item in root_items:
         root = _normalize_comment(item)
+        replies: tuple[Comment, ...]
         if isinstance(item, Mapping) and item.get("child_comment_count") == 0:
             replies = ()
             replies_complete = True
         else:
             reply_url = (
-                f"/api/v4/comment_v5/comment/{root.id}/child_comment"
-                f"?limit={reply_limit}&offset="
+                f"/api/v4/comment_v5/comment/{root.id}/child_comment?limit={reply_limit}&offset="
             )
             reply_items, replies_complete = _fetch_bounded_pages(
                 client,
@@ -145,7 +142,7 @@ def _normalize_comment(payload: object) -> Comment:
         created_at = None
     elif isinstance(raw_created, (int, float)) and not isinstance(raw_created, bool):
         try:
-            created_at = datetime.fromtimestamp(raw_created, tz=timezone.utc)
+            created_at = datetime.fromtimestamp(raw_created, tz=UTC)
         except (OSError, OverflowError, ValueError):
             raise ValueError("Zhihu comment has an invalid created_time.") from None
     else:
