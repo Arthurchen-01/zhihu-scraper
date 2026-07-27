@@ -64,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_cli(argv: Sequence[str] | None = None) -> int:
+    _configure_standard_streams()
     parser = build_parser()
     arguments = parser.parse_args(argv)
     try:
@@ -108,6 +109,19 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
 
 def main() -> None:
     raise SystemExit(run_cli())
+
+
+def _configure_standard_streams() -> None:
+    """Keep Chinese CLI output usable when Windows redirects legacy streams."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
+            continue
 
 
 def _settings_argument(parser: argparse.ArgumentParser) -> None:

@@ -1,4 +1,5 @@
 import io
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -11,6 +12,39 @@ from zhihu_scraper.http import CookieDiagnostic, LoginStatus
 
 
 class NewCommandLineTests(unittest.TestCase):
+    def test_chinese_output_survives_windows_legacy_redirect_encoding(self):
+        stdout_bytes = io.BytesIO()
+        stderr_bytes = io.BytesIO()
+        stdout = io.TextIOWrapper(stdout_bytes, encoding="cp1252", errors="strict")
+        stderr = io.TextIOWrapper(stderr_bytes, encoding="cp1252", errors="strict")
+
+        try:
+            with (
+                patch.object(sys, "stdout", stdout),
+                patch.object(
+                    sys,
+                    "stderr",
+                    stderr,
+                ),
+            ):
+                with self.assertRaises(SystemExit) as raised:
+                    run_cli(["--help"])
+                with patch(
+                    "zhihu_scraper.cli.archive_url",
+                    side_effect=RuntimeError("抓取失败"),
+                ):
+                    exit_code = run_cli(["fetch", "https://zhuanlan.zhihu.com/p/1"])
+                stdout.flush()
+                stderr.flush()
+
+            self.assertEqual(0, raised.exception.code)
+            self.assertEqual(1, exit_code)
+            self.assertIn("把知乎文章", stdout_bytes.getvalue().decode("utf-8"))
+            self.assertIn("错误：抓取失败", stderr_bytes.getvalue().decode("utf-8"))
+        finally:
+            stdout.detach()
+            stderr.detach()
+
     def test_help_exposes_only_the_small_supported_command_surface(self):
         output = io.StringIO()
 
