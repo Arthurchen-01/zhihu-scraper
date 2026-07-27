@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -123,9 +124,9 @@ cdp_url = "http://127.0.0.1:9222"
             settings_path.write_text(
                 (
                     "[archive]\n"
-                    f'output_dir = "{output_dir}"\n'
+                    f"output_dir = {json.dumps(str(output_dir))}\n"
                     "[network]\n"
-                    f'cookie_file = "{cookie_file}"\n'
+                    f"cookie_file = {json.dumps(str(cookie_file))}\n"
                 ),
                 encoding="utf-8",
             )
