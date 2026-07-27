@@ -1,9 +1,5 @@
 [CmdletBinding()]
-param(
-    [Parameter(Position = 0)]
-    [ValidateSet("default", "full")]
-    [string]$Profile = "default"
-)
+param()
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
@@ -25,29 +21,21 @@ try {
         throw "Failed to upgrade pip."
     }
 
-    if ($Profile -eq "full") {
-        & $VenvPython -m pip install -e ".[full]"
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install the full profile."
-        }
-
-        Write-Host "Browser fallback support is installed."
-        Write-Host "Browser binaries are not downloaded automatically."
-        Write-Host "If you need browser fallback, run:"
-        Write-Host "  $VenvPython -m playwright install chromium"
+    & $VenvPython -m pip install -e .
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install the crawler."
     }
-    else {
-        & $VenvPython -m pip install -e .
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install the default profile."
-        }
+
+    & $VenvPython -m playwright install chromium
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install the managed Chromium browser."
     }
 }
 finally {
     Pop-Location
 }
 
-Write-Host "Installation complete."
+Write-Host "Installation complete, including managed browser fallback."
 Write-Host "Activate the environment with:"
 Write-Host "  .\.venv\Scripts\Activate.ps1"
 Write-Host "Then check the command with:"

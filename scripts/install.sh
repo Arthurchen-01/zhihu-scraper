@@ -3,19 +3,14 @@ set -eu
 
 usage() {
     cat <<'EOF'
-Usage: ./scripts/install.sh [full]
+Usage: ./scripts/install.sh
 
-  no argument  Install the normal local-first crawler.
-  full         Also install the optional browser-fallback dependency.
+  Install the complete crawler and its managed Chromium browser.
 EOF
 }
 
-install_profile="${1:-default}"
-case "$install_profile" in
-    default)
-        ;;
-    full|--full)
-        install_profile="full"
+case "${1:-}" in
+    "")
         ;;
     -h|--help)
         usage
@@ -37,20 +32,18 @@ cd "$project_root"
 
 venv_python="$venv_dir/bin/python"
 "$venv_python" -m pip install --upgrade pip
-
-if [ "$install_profile" = "full" ]; then
-    "$venv_python" -m pip install -e ".[full]"
-    printf '%s\n' \
-        "Browser fallback support is installed." \
-        "Browser binaries are not downloaded automatically." \
-        "If you need browser fallback, run:" \
-        "  $venv_python -m playwright install chromium"
-else
-    "$venv_python" -m pip install -e .
-fi
+"$venv_python" -m pip install -e .
+case "$(uname -s)" in
+    Linux)
+        "$venv_python" -m playwright install --with-deps chromium
+        ;;
+    *)
+        "$venv_python" -m playwright install chromium
+        ;;
+esac
 
 printf '%s\n' \
-    "Installation complete." \
+    "Installation complete, including managed browser fallback." \
     "Activate the environment with:" \
     "  . \"$venv_dir/bin/activate\"" \
     "Then check the command with:" \

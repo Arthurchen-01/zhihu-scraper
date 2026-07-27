@@ -37,7 +37,7 @@
 - 不新增 `helper.py`、`misc.py`、`temp.py` 等无明确职责的模块。
 - `pyproject.toml` 是主项目依赖的唯一声明来源；不新增根目录 `requirements*.txt`。
 - 不修改 `references/external/` 中的参考仓库。
-- README 暂不重写；只有在当前任务明确要求或需要修复断链时才做最小同步。
+- 对外行为变化时同步更新中英文 README，避免命令、默认值与实现漂移。
 
 ## 文档职责
 
@@ -53,6 +53,7 @@
 - 每次改动至少运行最相关的单元测试。
 - 修改命令面时运行相应 `--help` smoke。
 - 修改安装或平台逻辑时覆盖 Windows、macOS、Linux 的可验证行为。
+- 完整质量门禁包含 `pytest`、Ruff、mypy、`compileall`、锁文件检查和命令 smoke。
 - 不把失败测试归因于“只是 CI”；记录并解决或明确报告。
 - 当前重建阶段按用户授权直接提交到 `main`。
 - 只暂存当前闭环涉及的文件，使用简短、可解释的 commit message，并在完成后推送。

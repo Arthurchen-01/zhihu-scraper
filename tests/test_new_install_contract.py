@@ -20,7 +20,15 @@ class NewInstallContractTests(unittest.TestCase):
 
         self.assertIn('python -m pip install -e ".[dev]"', workflow)
         self.assertIn("python -m pytest", workflow)
+        self.assertIn("python -m ruff check", workflow)
+        self.assertIn("python -m ruff format --check", workflow)
+        self.assertIn("python -m mypy zhihu_scraper", workflow)
+        self.assertIn("uv lock --check", workflow)
         self.assertIn("zhihu --help", workflow)
+        self.assertIn("zhihu fetch --help", workflow)
+        self.assertIn("zhihu check --help", workflow)
+        self.assertIn("zhihu init --help", workflow)
+        self.assertIn("playwright install --with-deps chromium", workflow)
         self.assertIn("fail-fast: false", workflow)
 
     def test_ci_does_not_keep_obsolete_package_or_unittest_commands(self) -> None:
@@ -39,8 +47,10 @@ class NewInstallContractTests(unittest.TestCase):
         self.assertIn('"$python_command" -m venv "$venv_dir"', script)
         self.assertIn('"$venv_python" -m pip install --upgrade pip', script)
         self.assertIn('"$venv_python" -m pip install -e .', script)
-        self.assertIn('"$venv_python" -m pip install -e ".[full]"', script)
-        self._assert_browser_download_is_instruction_only(script)
+        self.assertIn('"$venv_python" -m playwright install chromium', script)
+        self.assertIn('"$venv_python" -m playwright install --with-deps chromium', script)
+        self.assertIn('case "$(uname -s)"', script)
+        self.assertNotIn("[full]", script)
 
     def test_powershell_installer_is_relocatable_and_fails_fast(self) -> None:
         script = self._read("scripts/install.ps1")
@@ -50,16 +60,21 @@ class NewInstallContractTests(unittest.TestCase):
         self.assertIn("$PSScriptRoot", script)
         self.assertIn("-m venv $VenvDir", script)
         self.assertIn("-m pip install --upgrade pip", script)
-        self.assertIn('-m pip install -e ".[full]"', script)
         self.assertRegex(script, re.compile(r"-m pip install -e \.\s*$", re.MULTILINE))
-        self._assert_browser_download_is_instruction_only(script)
+        self.assertRegex(
+            script,
+            re.compile(r"& \$VenvPython -m playwright install chromium\s*$", re.MULTILINE),
+        )
+        self.assertNotIn("[full]", script)
 
-    def _assert_browser_download_is_instruction_only(self, script: str) -> None:
-        install_lines = [
-            line.strip() for line in script.splitlines() if "playwright install chromium" in line
-        ]
-        self.assertEqual(len(install_lines), 1)
-        self.assertRegex(install_lines[0], r"^(?:\"|Write-Host)")
+    def test_default_dependencies_include_the_browser_fallback_runtime(self) -> None:
+        project = self._read("pyproject.toml")
+        browser = self._read("zhihu_scraper/browser.py")
+        runtime = project.split("[project.optional-dependencies]", 1)[0]
+
+        self.assertRegex(runtime, r'"playwright>=.*"')
+        self.assertNotRegex(project, r"(?m)^full\s*=")
+        self.assertNotIn("zhihu-scraper[full]", browser)
 
     def _read(self, relative_path: str) -> str:
         return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
