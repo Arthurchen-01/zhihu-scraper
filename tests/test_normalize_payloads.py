@@ -69,6 +69,61 @@ class ZhihuPayloadNormalizationTests(unittest.TestCase):
         )
         self.assertIsNone(article.comments)
 
+    def test_browser_initial_state_camel_case_and_nested_contributions_are_normalized(self):
+        article = normalize_article(
+            {
+                "id": "357892158",
+                "title": "浏览器实体",
+                "content": "<p>完整正文</p>",
+                "createdTime": 1615950180,
+                "updatedTime": 1617090407,
+                "voteupCount": 251,
+                "imageUrl": "https://pic.example/browser-cover.jpg",
+                "author": {
+                    "id": "author-id",
+                    "name": "泳鱼",
+                    "urlToken": "yong-yu",
+                },
+                "column": {
+                    "id": "hsmyy",
+                    "title": "无痛的机器学习",
+                    "url": "https://www.zhihu.com/column/hsmyy",
+                },
+                "contributions": [
+                    {
+                        "id": 29782535,
+                        "type": "column",
+                        "column": {
+                            "id": "machinelearningpku",
+                            "title": "机器学习",
+                            "url": "https://www.zhihu.com/column/machinelearningpku",
+                        },
+                    },
+                    {
+                        "id": 43000725,
+                        "type": "column",
+                        "column": {
+                            "id": "deeplearning",
+                            "title": "深度学习",
+                            "url": "https://www.zhihu.com/column/deeplearning",
+                        },
+                    },
+                ],
+            }
+        )
+
+        self.assertEqual(251, article.voteup_count)
+        self.assertEqual("https://pic.example/browser-cover.jpg", article.cover_url)
+        self.assertEqual("https://www.zhihu.com/people/yong-yu", article.author.url)
+        self.assertEqual(
+            ("hsmyy", "machinelearningpku", "deeplearning"),
+            tuple(column.token for column in article.columns),
+        )
+        self.assertNotIn(
+            "29782535",
+            tuple(column.token for column in article.columns),
+        )
+
     def test_answer_payload_keeps_its_question_relationship(self):
         answer = normalize_answer(
             {

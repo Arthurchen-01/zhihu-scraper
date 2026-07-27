@@ -1,23 +1,33 @@
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from zhihu_scraper.archive import LocalArchive
 from zhihu_scraper.domain import (
+    Answer,
     Article,
     Author,
     Column,
     ColumnArchive,
     ColumnRef,
+    Comment,
+    CommentThread,
     MediaAsset,
     MediaBlock,
     MediaKind,
     MediaRendition,
     Paragraph,
+    Question,
+    QuestionArchive,
+    QuestionRef,
     Text,
 )
 from zhihu_scraper.media import MediaDownloadReceipt
+from zhihu_scraper.settings import ArchiveSettings
 
 NOW = datetime(2026, 7, 26, tzinfo=UTC)
 AUTHOR = Author(id="author", name="作者")
@@ -102,6 +112,7 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             self.assertIn("本栏目共 81 篇", catalog)
             self.assertIn("内容/同名_文章.md", catalog)
             self.assertIn("本次归档自", first_page)
+            self.assertIn("本栏目共 81 篇", first_page)
             self.assertIn("查看完整目录", first_page)
             self.assertIn("下一篇", first_page)
             self.assertNotIn("第一篇正文", catalog)
@@ -137,6 +148,109 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             markdown = receipt.markdown_path.read_text(encoding="utf-8")
             self.assertIn("](media/", markdown)
             self.assertNotIn(source_url, markdown.split("##", 1)[-1])
+            with closing(sqlite3.connect(receipt.database_path)) as connection:
+                archive_path = connection.execute(
+                    """
+                    SELECT archive_path
+                    FROM media
+                    WHERE content_key = 'article:3'
+                    """
+                ).fetchone()[0]
+            self.assertTrue(archive_path.startswith("单篇文章/media/"))
+            self.assertTrue((receipt.database_path.parent / archive_path).is_file())
+
+    def test_column_links_percent_encode_url_significant_filename_characters(self):
+        column_ref = ColumnRef(
+            token="safe-links",
+            title="链接测试",
+            url="https://www.zhihu.com/column/safe-links",
+        )
+        article = Article(
+            id="special",
+            title="C# 100% (入门)",
+            source_url="https://zhuanlan.zhihu.com/p/100",
+            author=AUTHOR,
+            published_at=NOW,
+            blocks=(Paragraph((Text("正文"),)),),
+            columns=(column_ref,),
+        )
+        archive = ColumnArchive(
+            column=Column(
+                token=column_ref.token,
+                title=column_ref.title,
+                source_url=column_ref.url,
+                description="",
+                author=AUTHOR,
+                item_count=1,
+            ),
+            articles=(article,),
+            archived_at=NOW,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt = LocalArchive(Path(temporary_directory), media_download=False).archive(archive)
+            markdown = receipt.markdown_path.read_text(encoding="utf-8")
+            rendered_html = receipt.html_path.read_text(encoding="utf-8")
+            child_markdown = receipt.child_markdown_paths[0]
+            child_html = receipt.child_html_paths[0]
+
+        expected_stem = "C%23%20100%25%20%28入门%29"
+        self.assertEqual(child_markdown.name, "C# 100% (入门).md")
+        self.assertEqual(child_html.name, "C# 100% (入门).html")
+        self.assertIn(f"内容/{expected_stem}.md", markdown)
+        self.assertIn(f'内容/{expected_stem}.html"', rendered_html)
+
+    def test_settings_proxy_is_used_for_media_downloads(self):
+        source_url = "https://pic.example/proxied.png"
+        article = Article(
+            id="proxied",
+            title="代理媒体",
+            source_url="https://zhuanlan.zhihu.com/p/5",
+            author=AUTHOR,
+            published_at=NOW,
+            blocks=(
+                MediaBlock(
+                    MediaAsset(
+                        id="proxied-image",
+                        kind=MediaKind.IMAGE,
+                        renditions=(MediaRendition(source_url),),
+                    )
+                ),
+            ),
+        )
+        proxy = "http://127.0.0.1:7890"
+
+        def fake_download(
+            source,
+            destination,
+            *,
+            proxy=None,
+            timeout=30.0,
+            max_retries=0,
+        ):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"media")
+            return MediaDownloadReceipt(source, destination, 0, 5)
+
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            patch("zhihu_scraper.archive.download_media", side_effect=fake_download) as download,
+        ):
+            settings = ArchiveSettings(
+                output_dir=Path(temporary_directory),
+                proxy=proxy,
+            )
+            LocalArchive.from_settings(settings).archive(article)
+
+        self.assertEqual(download.call_count, 1)
+        self.assertEqual(
+            download.call_args.kwargs,
+            {
+                "proxy": proxy,
+                "timeout": 30.0,
+                "max_retries": 3,
+            },
+        )
 
     def test_disabled_outputs_do_not_create_empty_media_or_assets_directories(self):
         article = Article(
@@ -163,6 +277,127 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             self.assertFalse((receipt.entry_directory / "assets").exists())
             self.assertFalse((receipt.entry_directory / "media").exists())
             self.assertFalse((receipt.entry_directory / "内容").exists())
+
+    def test_default_rearchive_preserves_previous_comments_and_local_media_references(self):
+        source_url = "https://pic.example/preserved.png"
+        initial = Article(
+            id="preserved",
+            title="保留本地归档",
+            source_url="https://zhuanlan.zhihu.com/p/preserved",
+            author=AUTHOR,
+            published_at=NOW,
+            blocks=(
+                MediaBlock(
+                    MediaAsset(
+                        id="preserved-image",
+                        kind=MediaKind.IMAGE,
+                        renditions=(MediaRendition(source_url),),
+                        alt_text="已下载图片",
+                    )
+                ),
+            ),
+            comments=CommentThread(
+                comments=(
+                    Comment(
+                        id="preserved-comment",
+                        author=AUTHOR,
+                        blocks=(Paragraph((Text("已抓评论不能丢"),)),),
+                        created_at=NOW,
+                        like_count=1,
+                    ),
+                ),
+                order="api",
+                roots_complete=True,
+            ),
+        )
+        refreshed = Article(
+            id=initial.id,
+            title=initial.title,
+            source_url=initial.source_url,
+            author=initial.author,
+            published_at=initial.published_at,
+            blocks=initial.blocks,
+            comments=None,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            first = LocalArchive(root, downloader=FakeDownloader()).archive(initial)
+            second = LocalArchive(root, media_download=False).archive(refreshed)
+            markdown = second.markdown_path.read_text(encoding="utf-8")
+            rendered_html = second.html_path.read_text(encoding="utf-8")
+            with closing(sqlite3.connect(second.database_path)) as connection:
+                comment_count = connection.execute(
+                    """
+                    SELECT COUNT(*) FROM comments
+                    WHERE content_key = 'article:preserved'
+                    """
+                ).fetchone()
+                archive_path = connection.execute(
+                    """
+                    SELECT archive_path FROM media
+                    WHERE content_key = 'article:preserved'
+                      AND asset_id = 'preserved-image'
+                    """
+                ).fetchone()[0]
+
+        self.assertEqual((1,), comment_count)
+        self.assertIn("已抓评论不能丢", markdown)
+        self.assertIn("已抓评论不能丢", rendered_html)
+        self.assertIn("](media/", markdown)
+        self.assertIn('src="media/', rendered_html)
+        self.assertEqual(first.media_downloads[0].destination.name, Path(archive_path).name)
+
+    def test_answer_and_its_question_with_the_same_title_do_not_overwrite_each_other(self):
+        title = "数据挖掘、机器学习、深度学习这些概念有区别吗？"
+        question_url = "https://www.zhihu.com/question/30557267"
+        answer = Answer(
+            id="48623150",
+            question=QuestionRef(
+                id="30557267",
+                title=title,
+                url=question_url,
+            ),
+            source_url=f"{question_url}/answer/48623150",
+            author=AUTHOR,
+            published_at=NOW,
+            blocks=(Paragraph((Text("单个回答正文"),)),),
+        )
+        question = QuestionArchive(
+            question=Question(
+                id="30557267",
+                title=title,
+                source_url=question_url,
+                detail=(Paragraph((Text("问题详情"),)),),
+                answer_count=1,
+            ),
+            answers=(answer,),
+            archived_at=NOW,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            local_archive = LocalArchive(root, media_download=False)
+            answer_receipt = local_archive.archive(answer)
+            question_receipt = local_archive.archive(question)
+
+            self.assertNotEqual(
+                answer_receipt.entry_directory,
+                question_receipt.entry_directory,
+            )
+            self.assertEqual(root / title, answer_receipt.entry_directory)
+            self.assertEqual(
+                root / f"{title}--question-30557267",
+                question_receipt.entry_directory,
+            )
+            self.assertIn(
+                "单个回答正文",
+                answer_receipt.markdown_path.read_text(encoding="utf-8"),
+            )
+            self.assertIn(
+                "问题详情",
+                question_receipt.markdown_path.read_text(encoding="utf-8"),
+            )
 
 
 if __name__ == "__main__":

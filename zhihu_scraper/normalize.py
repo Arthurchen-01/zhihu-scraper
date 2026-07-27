@@ -46,15 +46,39 @@ def normalize_article(
         source_url=canonical_url,
         author=_normalize_author(payload.get("author")),
         published_at=_utc_datetime(
-            payload.get("created") or payload.get("created_time") or payload.get("created_at")
+            _field(
+                payload,
+                "created",
+                "created_time",
+                "createdTime",
+                "created_at",
+                "createdAt",
+            )
         ),
         updated_at=_utc_datetime(
-            payload.get("updated") or payload.get("updated_time") or payload.get("updated_at")
+            _field(
+                payload,
+                "updated",
+                "updated_time",
+                "updatedTime",
+                "updated_at",
+                "updatedAt",
+            )
         ),
         blocks=parse_rich_text(content, base_url=canonical_url),
-        voteup_count=_nonnegative_int(payload.get("voteup_count") or payload.get("vote_count")),
+        voteup_count=_nonnegative_int(
+            _field(payload, "voteup_count", "voteupCount", "vote_count", "voteCount")
+        ),
         cover_url=_optional_text(
-            payload.get("image_url") or payload.get("title_image") or payload.get("cover_url")
+            _field(
+                payload,
+                "image_url",
+                "imageUrl",
+                "title_image",
+                "titleImage",
+                "cover_url",
+                "coverUrl",
+            )
         ),
         columns=_normalize_columns(payload),
         comments=None,
@@ -91,13 +115,29 @@ def normalize_answer(
         source_url=canonical_url,
         author=_normalize_author(payload.get("author")),
         published_at=_utc_datetime(
-            payload.get("created_time") or payload.get("created") or payload.get("created_at")
+            _field(
+                payload,
+                "created_time",
+                "createdTime",
+                "created",
+                "created_at",
+                "createdAt",
+            )
         ),
         updated_at=_utc_datetime(
-            payload.get("updated_time") or payload.get("updated") or payload.get("updated_at")
+            _field(
+                payload,
+                "updated_time",
+                "updatedTime",
+                "updated",
+                "updated_at",
+                "updatedAt",
+            )
         ),
         blocks=parse_rich_text(content, base_url=canonical_url),
-        voteup_count=_nonnegative_int(payload.get("voteup_count") or payload.get("vote_count")),
+        voteup_count=_nonnegative_int(
+            _field(payload, "voteup_count", "voteupCount", "vote_count", "voteCount")
+        ),
         comments=None,
     )
 
@@ -119,13 +159,27 @@ def normalize_question(
         detail=parse_rich_text(detail, base_url=canonical_url),
         author=(_normalize_author(raw_author) if isinstance(raw_author, Mapping) else None),
         created_at=_utc_datetime(
-            payload.get("created") or payload.get("created_time") or payload.get("created_at")
+            _field(
+                payload,
+                "created",
+                "created_time",
+                "createdTime",
+                "created_at",
+                "createdAt",
+            )
         ),
         updated_at=_utc_datetime(
-            payload.get("updated_time") or payload.get("updated") or payload.get("updated_at")
+            _field(
+                payload,
+                "updated_time",
+                "updatedTime",
+                "updated",
+                "updated_at",
+                "updatedAt",
+            )
         ),
-        answer_count=_nonnegative_int(payload.get("answer_count")),
-        follower_count=_nonnegative_int(payload.get("follower_count")),
+        answer_count=_nonnegative_int(_field(payload, "answer_count", "answerCount")),
+        follower_count=_nonnegative_int(_field(payload, "follower_count", "followerCount")),
     )
 
 
@@ -149,7 +203,15 @@ def normalize_column(
         description=_optional_text(payload.get("description")) or "",
         author=(_normalize_author(raw_author) if isinstance(raw_author, Mapping) else None),
         item_count=_nonnegative_int(
-            payload.get("items_count") or payload.get("articles_count") or payload.get("item_count")
+            _field(
+                payload,
+                "items_count",
+                "itemsCount",
+                "articles_count",
+                "articlesCount",
+                "item_count",
+                "itemCount",
+            )
         ),
     )
 
@@ -173,9 +235,16 @@ def normalize_video(
         source_url=canonical_url,
         author=_normalize_author(payload.get("author")),
         published_at=_utc_datetime(
-            payload.get("published_at") or payload.get("created_at") or payload.get("created")
+            _field(
+                payload,
+                "published_at",
+                "publishedAt",
+                "created_at",
+                "createdAt",
+                "created",
+            )
         ),
-        updated_at=_utc_datetime(payload.get("updated_at") or payload.get("updated")),
+        updated_at=_utc_datetime(_field(payload, "updated_at", "updatedAt", "updated")),
         description=parse_rich_text(description, base_url=canonical_url),
         asset=MediaAsset(
             id=f"zvideo-{video_id}",
@@ -184,9 +253,18 @@ def normalize_video(
             alt_text=_required_text(payload.get("title"), label="video title"),
         ),
         cover_url=_optional_text(
-            payload.get("thumbnail") or payload.get("cover_url") or payload.get("image_url")
+            _field(
+                payload,
+                "thumbnail",
+                "cover_url",
+                "coverUrl",
+                "image_url",
+                "imageUrl",
+            )
         ),
-        voteup_count=_nonnegative_int(payload.get("voteup_count") or payload.get("vote_count")),
+        voteup_count=_nonnegative_int(
+            _field(payload, "voteup_count", "voteupCount", "vote_count", "voteCount")
+        ),
         comments=None,
     )
 
@@ -197,7 +275,7 @@ def _normalize_author(value: object) -> Author:
     name = (
         _optional_text(payload.get("name")) or _optional_text(payload.get("headline")) or "匿名用户"
     )
-    url_token = _optional_text(payload.get("url_token"))
+    url_token = _optional_text(_field(payload, "url_token", "urlToken"))
     raw_url = _optional_text(payload.get("url"))
     url: str | None = None
     if url_token:
@@ -209,7 +287,7 @@ def _normalize_author(value: object) -> Author:
 
 def _video_renditions(payload: Mapping[str, Any]) -> tuple[MediaRendition, ...]:
     containers: list[Mapping[str, Any]] = []
-    for key in ("playlist", "playlist_v2", "playlists"):
+    for key in ("playlist", "playlist_v2", "playlistV2", "playlists"):
         candidate = payload.get(key)
         if isinstance(candidate, Mapping):
             containers.append(candidate)
@@ -229,7 +307,14 @@ def _video_renditions(payload: Mapping[str, Any]) -> tuple[MediaRendition, ...]:
                 if not isinstance(variant, Mapping):
                     continue
                 url = _optional_text(
-                    variant.get("play_url") or variant.get("play_url_https") or variant.get("url")
+                    _field(
+                        variant,
+                        "play_url",
+                        "playUrl",
+                        "play_url_https",
+                        "playUrlHttps",
+                        "url",
+                    )
                 )
                 if not url or url in seen_urls:
                     continue
@@ -248,11 +333,16 @@ def _video_renditions(payload: Mapping[str, Any]) -> tuple[MediaRendition, ...]:
                         mime_type=mime_type,
                         width=_optional_int(variant.get("width")),
                         height=_optional_int(variant.get("height")),
-                        bitrate=_optional_int(variant.get("bitrate") or variant.get("bit_rate")),
+                        bitrate=_optional_int(_field(variant, "bitrate", "bit_rate", "bitRate")),
                         size_bytes=_optional_int(
-                            variant.get("size")
-                            or variant.get("file_size")
-                            or variant.get("play_size")
+                            _field(
+                                variant,
+                                "size",
+                                "file_size",
+                                "fileSize",
+                                "play_size",
+                                "playSize",
+                            )
                         ),
                     )
                 )
@@ -273,6 +363,9 @@ def _normalize_columns(payload: Mapping[str, Any]) -> tuple[ColumnRef, ...]:
     for candidate in candidates:
         if not isinstance(candidate, Mapping):
             continue
+        nested_column = candidate.get("column")
+        if isinstance(nested_column, Mapping):
+            candidate = nested_column
         token = (
             _optional_text(candidate.get("id"))
             or _optional_text(candidate.get("slug"))
@@ -291,6 +384,14 @@ def _normalize_columns(payload: Mapping[str, Any]) -> tuple[ColumnRef, ...]:
             )
         )
     return tuple(columns)
+
+
+def _field(payload: Mapping[str, Any], *keys: str) -> object:
+    for key in keys:
+        value = payload.get(key)
+        if value is not None:
+            return value
+    return None
 
 
 def _column_token_from_url(url: str | None) -> str | None:

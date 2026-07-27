@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import html
+import re
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from urllib.parse import urlsplit
+
+from latex2mathml import converter as latex2mathml_converter
 
 from .domain import (
     Answer,
@@ -36,6 +40,9 @@ from .domain import (
     Text,
     Video,
 )
+
+_MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML"
+ET.register_namespace("", _MATHML_NAMESPACE)
 
 ARCHIVE_CSS = """\
 :root {
@@ -138,6 +145,7 @@ class ColumnRenderContext:
 
     column: ColumnRef
     directory: RenderNavigationItem
+    item_count: int = 0
     previous: RenderNavigationItem | None = None
     next: RenderNavigationItem | None = None
 
@@ -219,8 +227,8 @@ def content_plain_text(blocks: Sequence[Block]) -> str:
         elif isinstance(block, MediaBlock):
             parts.extend(part for part in (block.asset.alt_text, block.caption) if part)
         elif isinstance(block, TableBlock):
-            parts.extend(block.headers)
-            parts.extend(cell for row in block.rows for cell in row)
+            parts.extend(_inlines_plain_text(cell) for cell in block.headers)
+            parts.extend(_inlines_plain_text(cell) for row in block.rows for cell in row)
     return "\n\n".join(part for part in parts if part)
 
 
@@ -231,7 +239,7 @@ def _article_to_markdown(
     context: ColumnRenderContext | None,
 ) -> str:
     parts = [
-        f"# {article.title}",
+        f"# {_markdown_single_line(article.title)}",
         "",
         *_markdown_metadata(
             author=article.author.name,
@@ -243,6 +251,9 @@ def _article_to_markdown(
     context_lines = _article_context_markdown(article, context)
     if context_lines:
         parts.extend(["", *context_lines])
+    cover = _cover_to_markdown(article.cover_url, article.title, paths=paths)
+    if cover:
+        parts.extend(["", cover])
     body = _blocks_to_markdown(article.blocks, paths=paths).strip()
     if body:
         parts.extend(["", body])
@@ -262,7 +273,7 @@ def _article_to_markdown(
 
 def _answer_to_markdown(answer: Answer, *, paths: Mapping[str, str]) -> str:
     parts = [
-        f"# {answer.title}",
+        f"# {_markdown_single_line(answer.title)}",
         "",
         "> 内容类型：回答",
         f"> 问题：{_markdown_link(answer.question.title, answer.question.url)}",
@@ -297,7 +308,7 @@ def _question_to_markdown(
 ) -> str:
     question = archive.question
     parts = [
-        f"# {question.title}",
+        f"# {_markdown_single_line(question.title)}",
         "",
         f"> 知乎原问题：{_markdown_link(question.source_url, question.source_url)}",
         f"> 共归档 {len(archive.answers)} 个回答",
@@ -313,7 +324,7 @@ def _question_to_markdown(
                 "",
                 "---",
                 "",
-                f"## 回答 {index} · {answer.author.name}",
+                f"## 回答 {index} · {_markdown_single_line(answer.author.name)}",
                 "",
                 *_markdown_metadata(
                     author=None,
@@ -348,16 +359,19 @@ def _column_to_markdown(
 ) -> str:
     column = archive.column
     parts = [
-        f"# {column.title}",
+        f"# {_markdown_single_line(column.title)}",
         "",
-        f"> 专栏作者：{column.author.name if column.author else '未知作者'}",
+        (
+            f"> 专栏作者："
+            f"{_markdown_single_line(column.author.name) if column.author else '未知作者'}"
+        ),
         f"> 知乎专栏：{_markdown_link(column.source_url, column.source_url)}",
         f"> 本栏目共 {column.item_count} 篇",
         f"> 本次归档 {len(archive.articles)} 篇",
         f"> 归档时间：{archive.archived_at.date().isoformat()}",
     ]
     if column.description:
-        parts.extend(["", column.description])
+        parts.extend(["", _escape_markdown_text(column.description)])
     groups = _articles_by_year(archive.articles)
     for year, articles in groups:
         parts.extend(["", f"## {year}", ""])
@@ -367,7 +381,7 @@ def _column_to_markdown(
             html_path = entry.html_href if entry is not None else f"内容/{article.title}.html"
             date = article.published_at.date().isoformat() if article.published_at else "日期未知"
             parts.append(
-                f"- {date} · {article.title}（"
+                f"- {date} · {_markdown_single_line(article.title)}（"
                 f"{_markdown_link('Markdown', md_path)} · "
                 f"{_markdown_link('HTML', html_path)}）"
             )
@@ -376,7 +390,7 @@ def _column_to_markdown(
 
 def _video_to_markdown(video: Video, *, paths: Mapping[str, str]) -> str:
     parts = [
-        f"# {video.title}",
+        f"# {_markdown_single_line(video.title)}",
         "",
         "> 内容类型：知乎视频",
         *_markdown_metadata(
@@ -386,6 +400,9 @@ def _video_to_markdown(video: Video, *, paths: Mapping[str, str]) -> str:
             voteup_count=video.voteup_count,
         ),
     ]
+    cover = _cover_to_markdown(video.cover_url, video.title, paths=paths)
+    if cover:
+        parts.extend(["", cover])
     description = _blocks_to_markdown(video.description, paths=paths).strip()
     if description:
         parts.extend(["", description])
@@ -423,6 +440,7 @@ def _article_to_html(
         voteup_count=article.voteup_count,
     )
     archive_context = _article_context_html(article, context)
+    cover = _cover_to_html(article.cover_url, article.title, paths=paths)
     comments = (
         _comments_to_html(article.comments, heading_level=2, paths=paths)
         if article.comments
@@ -433,6 +451,7 @@ def _article_to_html(
         f"      <h1>{html.escape(article.title)}</h1>\n"
         f"{metadata}"
         f"{archive_context}"
+        f"{cover}"
         f"{_blocks_to_html(article.blocks, paths=paths)}\n"
         f"{comments}"
         "    </article>\n"
@@ -570,11 +589,16 @@ def _video_to_html(video: Video, *, paths: Mapping[str, str]) -> str:
     source = _media_source(video.asset, paths=paths)
     original = _media_original_source(video.asset)
     safe_source = _safe_url(source)
+    safe_cover = paths.get(video.cover_url) if video.cover_url else None
+    if safe_cover is not None and not _is_local_media_reference(safe_cover):
+        safe_cover = None
+    poster = f' poster="{html.escape(safe_cover, quote=True)}"' if safe_cover else ""
     video_element = (
-        f'      <video controls preload="metadata" src="{html.escape(safe_source, quote=True)}">'
+        f'      <video controls preload="metadata"{poster} '
+        f'src="{html.escape(safe_source, quote=True)}">'
         "你的浏览器不支持 HTML5 视频。</video>\n"
-        if safe_source
-        else "      <p>视频文件不可用。</p>\n"
+        if safe_source and _is_local_media_reference(safe_source)
+        else f"      <p>{_html_link('远程视频未下载', safe_source or original)}</p>\n"
     )
     original_link = f"      <p>{_html_link('原始视频链接', original)}</p>\n" if original else ""
     comments = (
@@ -604,7 +628,7 @@ def _markdown_metadata(
 ) -> list[str]:
     lines: list[str] = []
     if author is not None:
-        lines.append(f"> 作者：{author}")
+        lines.append(f"> 作者：{_markdown_single_line(author)}")
     lines.append(f"> {source_label}：{_markdown_link(source_url, source_url)}")
     if published_at is not None:
         lines.append(f"> 发布时间：{published_at.date().isoformat()}")
@@ -648,7 +672,8 @@ def _article_context_markdown(
             "查看完整目录",
             context.directory.markdown_href,
         )
-        lines.append(f"> 本次归档自：{origin} · {directory}")
+        count = f" · 本栏目共 {context.item_count} 篇" if context.item_count else ""
+        lines.append(f"> 本次归档自：{origin}{count} · {directory}")
         lines.append(f"> 专栏导航：{_article_navigation_markdown(context)}")
     return lines
 
@@ -664,7 +689,8 @@ def _article_context_html(
     if context is not None:
         origin = _html_link(context.column.title, context.column.url)
         directory = _html_link("查看完整目录", context.directory.html_href)
-        lines.append(f"        <p>本次归档自：{origin} · {directory}</p>\n")
+        count = f" · 本栏目共 {context.item_count} 篇" if context.item_count else ""
+        lines.append(f"        <p>本次归档自：{origin}{count} · {directory}</p>\n")
         lines.append(f"        <p>专栏导航：{_article_navigation_links_html(context)}</p>\n")
     if not lines:
         return ""
@@ -751,7 +777,7 @@ def _comment_to_markdown(
 ) -> list[str]:
     heading_level = min(6, heading_level)
     author = comment.author.name if comment.author is not None else "匿名或已删除用户"
-    lines = [f"{'#' * heading_level} {author} · {comment.like_count} 赞"]
+    lines = [f"{'#' * heading_level} {_markdown_single_line(author)} · {comment.like_count} 赞"]
     if comment.created_at is not None:
         lines.extend(["", f"> {comment.created_at.date().isoformat()}"])
     body = _blocks_to_markdown(comment.blocks, paths=paths).strip()
@@ -926,10 +952,11 @@ def _block_to_markdown(block: Block, *, paths: Mapping[str, str]) -> str:
             lines.extend(f"   {line}" for line in item_lines[1:])
         return "\n".join(lines)
     if isinstance(block, CodeBlock):
-        fence = "```"
-        return f"{fence}{block.language}\n{block.code}\n{fence}"
+        fence = _backtick_fence(block.code, minimum=3)
+        language = block.language if re.fullmatch(r"[A-Za-z0-9_+.-]*", block.language) else ""
+        return f"{fence}{language}\n{block.code}\n{fence}"
     if isinstance(block, FormulaBlock):
-        return f"$$\n{block.tex}\n$$"
+        return f"$$\n{_markdown_formula_tex(block.tex)}\n$$"
     if isinstance(block, MediaBlock):
         source = _media_source(block.asset, paths=paths)
         if not source:
@@ -943,8 +970,16 @@ def _block_to_markdown(block: Block, *, paths: Mapping[str, str]) -> str:
             if original and original != source:
                 rendered += f"\n\n{_markdown_link('原始视频链接', original)}"
             return rendered
-        rendered = f"![{_escape_markdown_label(block.asset.alt_text)}]({_markdown_href(source)})"
-        return f"{rendered}\n\n{block.caption}" if block.caption else rendered
+        if _is_local_media_reference(source):
+            rendered = (
+                f"![{_escape_markdown_label(block.asset.alt_text)}]({_markdown_href(source)})"
+            )
+        else:
+            label = block.asset.alt_text or block.caption or "媒体"
+            rendered = _markdown_link(f"远程媒体未下载：{label}", source)
+        return (
+            f"{rendered}\n\n{_escape_markdown_text(block.caption)}" if block.caption else rendered
+        )
     if isinstance(block, TableBlock):
         width = max(
             len(block.headers),
@@ -952,15 +987,21 @@ def _block_to_markdown(block: Block, *, paths: Mapping[str, str]) -> str:
         )
         if width == 0:
             return ""
-        headers = list(block.headers) or [""] * width
-        headers.extend([""] * (width - len(headers)))
+        headers = list(block.headers) or [()] * width
+        headers.extend([()] * (width - len(headers)))
         lines = [
-            "| " + " | ".join(_escape_table_cell(cell) for cell in headers) + " |",
+            "| "
+            + " | ".join(_escape_table_cell(_inlines_to_markdown(cell)) for cell in headers)
+            + " |",
             "| " + " | ".join("---" for _ in range(width)) + " |",
         ]
         for row in block.rows:
-            cells = [*row, *([""] * (width - len(row)))]
-            lines.append("| " + " | ".join(_escape_table_cell(cell) for cell in cells) + " |")
+            cells = [*row, *([()] * (width - len(row)))]
+            lines.append(
+                "| "
+                + " | ".join(_escape_table_cell(_inlines_to_markdown(cell)) for cell in cells)
+                + " |"
+            )
         return "\n".join(lines)
     if isinstance(block, Divider):
         return "---"
@@ -971,7 +1012,7 @@ def _inlines_to_markdown(inlines: Sequence[Inline]) -> str:
     rendered: list[str] = []
     for inline in inlines:
         if isinstance(inline, Text):
-            value = inline.text
+            value = _escape_markdown_text(inline.text)
             if inline.bold:
                 value = f"**{value}**"
             if inline.italic:
@@ -980,10 +1021,15 @@ def _inlines_to_markdown(inlines: Sequence[Inline]) -> str:
         elif isinstance(inline, Link):
             rendered.append(_markdown_link(inline.label, inline.url))
         elif isinstance(inline, CodeSpan):
-            fence = "``" if "`" in inline.code else "`"
-            rendered.append(f"{fence}{inline.code}{fence}")
+            fence = _backtick_fence(inline.code)
+            padding = (
+                " "
+                if inline.code.startswith(("`", " ")) or inline.code.endswith(("`", " "))
+                else ""
+            )
+            rendered.append(f"{fence}{padding}{inline.code}{padding}{fence}")
         elif isinstance(inline, InlineFormula):
-            rendered.append(f"${inline.tex}$")
+            rendered.append(f"${_markdown_formula_tex(inline.tex)}$")
         elif isinstance(inline, LineBreak):
             rendered.append("  \n")
     return "".join(rendered)
@@ -1025,12 +1071,17 @@ def _block_to_html(
         )
         return f"{indent}<pre><code{language}>{html.escape(block.code)}</code></pre>"
     if isinstance(block, FormulaBlock):
-        tex = html.escape(block.tex, quote=True)
-        return f'{indent}<div class="math-display" data-tex="{tex}">{tex}</div>'
+        tex = html.escape(_safe_formula_trace(block.tex), quote=True)
+        mathml = _formula_to_html(block.tex, display="block")
+        return f'{indent}<div class="math-display" data-tex="{tex}">{mathml}</div>'
     if isinstance(block, MediaBlock):
         source = _safe_url(_media_source(block.asset, paths=paths))
         if not source:
             return f"{indent}<p>{html.escape(block.asset.alt_text or block.caption)}</p>"
+        if not _is_local_media_reference(source):
+            label = block.asset.alt_text or block.caption or "媒体"
+            remote = _html_link(f"远程媒体未下载：{label}", source)
+            return f'{indent}<p class="remote-media">{remote}</p>'
         escaped_source = html.escape(source, quote=True)
         alt = html.escape(block.asset.alt_text, quote=True)
         if block.asset.kind is MediaKind.VIDEO:
@@ -1044,10 +1095,10 @@ def _block_to_html(
     if isinstance(block, TableBlock):
         head = ""
         if block.headers:
-            cells = "".join(f"<th>{html.escape(cell)}</th>" for cell in block.headers)
+            cells = "".join(f"<th>{_inlines_to_html(cell)}</th>" for cell in block.headers)
             head = f"<thead><tr>{cells}</tr></thead>"
         rows = "".join(
-            "<tr>" + "".join(f"<td>{html.escape(cell)}</td>" for cell in row) + "</tr>"
+            "<tr>" + "".join(f"<td>{_inlines_to_html(cell)}</td>" for cell in row) + "</tr>"
             for row in block.rows
         )
         return f"{indent}<table>{head}<tbody>{rows}</tbody></table>"
@@ -1071,11 +1122,44 @@ def _inlines_to_html(inlines: Sequence[Inline]) -> str:
         elif isinstance(inline, CodeSpan):
             rendered.append(f"<code>{html.escape(inline.code)}</code>")
         elif isinstance(inline, InlineFormula):
-            tex = html.escape(inline.tex, quote=True)
-            rendered.append(f'<span class="math-inline" data-tex="{tex}">{tex}</span>')
+            tex = html.escape(_safe_formula_trace(inline.tex), quote=True)
+            mathml = _formula_to_html(inline.tex, display="inline")
+            rendered.append(f'<span class="math-inline" data-tex="{tex}">{mathml}</span>')
         elif isinstance(inline, LineBreak):
             rendered.append("<br>")
     return "".join(rendered)
+
+
+def _formula_to_html(tex: str, *, display: str) -> str:
+    """Convert trusted text to MathML, preserving readable TeX on malformed input."""
+
+    try:
+        converted = latex2mathml_converter.convert(tex, display=display)
+        return _sanitize_mathml(converted)
+    except Exception:
+        return html.escape(_safe_formula_trace(tex))
+
+
+def _sanitize_mathml(markup: str) -> str:
+    root = ET.fromstring(markup)
+    for element in root.iter():
+        for attribute in tuple(element.attrib):
+            local_name = attribute.rsplit("}", maxsplit=1)[-1].split(":")[-1].casefold()
+            if local_name in {"href", "src", "style"} or local_name.startswith("on"):
+                del element.attrib[attribute]
+    return ET.tostring(root, encoding="unicode", short_empty_elements=True)
+
+
+def _safe_formula_trace(tex: str) -> str:
+    return re.sub(
+        r"(?i)\b(?:javascript|vbscript|data)\s*:",
+        "blocked:",
+        tex,
+    )
+
+
+def _markdown_formula_tex(tex: str) -> str:
+    return _safe_formula_trace(tex).replace("<", r"\lt ").replace(">", r"\gt ")
 
 
 def _combined_paths(
@@ -1092,16 +1176,66 @@ def _combined_paths(
 def _media_source(asset: MediaAsset, *, paths: Mapping[str, str]) -> str:
     if asset.archive_path:
         return asset.archive_path
-    if local := paths.get(asset.id):
-        return local
     for rendition in asset.renditions:
         if local := paths.get(rendition.source_url):
             return local
+    if local := paths.get(asset.id):
+        return local
     return asset.renditions[0].source_url if asset.renditions else ""
 
 
 def _media_original_source(asset: MediaAsset) -> str:
     return asset.renditions[0].source_url if asset.renditions else ""
+
+
+def _cover_to_markdown(
+    source_url: str | None,
+    title: str,
+    *,
+    paths: Mapping[str, str],
+) -> str:
+    if not source_url:
+        return ""
+    rendered_source = _safe_url(paths.get(source_url, source_url))
+    if rendered_source is None:
+        return ""
+    if not _is_local_media_reference(rendered_source):
+        return _markdown_link(f"远程封面未下载：{title}", rendered_source)
+    alt = _escape_markdown_label(f"{title}封面")
+    image = f"![{alt}]({_markdown_href(rendered_source)})"
+    original = _safe_url(source_url)
+    if original is None:
+        return image
+    return f"[{image}]({_markdown_href(original)})"
+
+
+def _cover_to_html(
+    source_url: str | None,
+    title: str,
+    *,
+    paths: Mapping[str, str],
+) -> str:
+    if not source_url:
+        return ""
+    rendered_source = _safe_url(paths.get(source_url, source_url))
+    if rendered_source is None:
+        return ""
+    if not _is_local_media_reference(rendered_source):
+        link = _html_link(f"远程封面未下载：{title}", rendered_source)
+        return f'      <p class="remote-media">{link}</p>\n'
+    image = (
+        '      <img class="cover" '
+        f'src="{html.escape(rendered_source, quote=True)}" '
+        f'alt="{html.escape(f"{title}封面", quote=True)}">\n'
+    )
+    original = _safe_url(source_url)
+    if original is None:
+        return image
+    return (
+        f'      <a class="cover-link" href="{html.escape(original, quote=True)}">\n'
+        f"{image}"
+        "      </a>\n"
+    )
 
 
 def _markdown_link(label: str, url: str) -> str:
@@ -1129,13 +1263,46 @@ def _safe_url(value: str) -> str | None:
     return candidate
 
 
+def _is_local_media_reference(value: str) -> bool:
+    """Return whether a media reference is an inert archive-local path."""
+
+    parsed = urlsplit(value)
+    return (
+        not parsed.scheme
+        and not parsed.netloc
+        and not value.startswith(("/", "\\"))
+        and "\\" not in value
+    )
+
+
 def _markdown_href(value: str) -> str:
     return value.replace("\\", "%5C").replace(" ", "%20").replace("(", "%28").replace(")", "%29")
 
 
 def _escape_markdown_label(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+    return _markdown_single_line(value)
 
 
 def _escape_table_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", "<br>")
+
+
+def _escape_markdown_text(value: str) -> str:
+    escaped = re.sub(r"([\\`*_[\]<>])", r"\\\1", value)
+    escaped = re.sub(r"(?m)^([ \t]{0,3})([#>])(?=\s)", r"\1\\\2", escaped)
+    escaped = re.sub(r"(?m)^([ \t]{0,3})([-+])(?=\s)", r"\1\\\2", escaped)
+    return re.sub(
+        r"(?m)^([ \t]{0,3})(\d{1,9})([.)])(?=\s)",
+        r"\1\2\\\3",
+        escaped,
+    )
+
+
+def _markdown_single_line(value: str) -> str:
+    normalized = " ".join(value.replace("\r\n", "\n").replace("\r", "\n").splitlines())
+    return _escape_markdown_text(normalized)
+
+
+def _backtick_fence(value: str, *, minimum: int = 1) -> str:
+    longest = max((len(match.group(0)) for match in re.finditer(r"`+", value)), default=0)
+    return "`" * max(minimum, longest + 1)

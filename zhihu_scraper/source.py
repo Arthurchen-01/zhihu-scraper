@@ -58,7 +58,9 @@ class ZhihuSource:
     ) -> Mapping[str, object]:
         answer_id = _resolve_reference(answer, TargetKind.ANSWER)
         return _require_mapping(
-            self._client.get_json(f"/api/v4/answers/{answer_id}"),
+            self._client.get_json(
+                f"/api/v4/answers/{answer_id}?include=content,voteup_count,question,author"
+            ),
             "回答 API",
         )
 
@@ -80,9 +82,16 @@ class ZhihuSource:
     ) -> Iterator[Mapping[str, object]]:
         question_id = _resolve_reference(question, TargetKind.QUESTION)
         endpoint = f"/api/v4/questions/{question_id}/answers"
+        include = quote(
+            "data[*].content,voteup_count,comment_count",
+            safe="",
+        )
 
         def page_url(offset: int) -> str:
-            return f"{endpoint}?limit={page_size}&offset={offset}&platform=desktop&sort_by=default"
+            return (
+                f"{endpoint}?limit={page_size}&offset={offset}"
+                f"&platform=desktop&sort_by=default&include={include}"
+            )
 
         yield from self._iter_payloads(
             endpoint=endpoint,
@@ -144,6 +153,7 @@ class ZhihuSource:
         offset = 0
         current_url = page_url(offset)
         visited_urls: set[str] = set()
+        seen_item_ids: set[str] = set()
 
         while True:
             if current_url in visited_urls:
@@ -162,6 +172,16 @@ class ZhihuSource:
             for index, item in enumerate(raw_data):
                 if not isinstance(item, Mapping):
                     raise InvalidZhihuPayloadError(f"{payload_label}第 {index + 1} 项必须是对象。")
+                raw_id = item.get("id")
+                stable_id = (
+                    str(raw_id).strip()
+                    if isinstance(raw_id, (str, int)) and not isinstance(raw_id, bool)
+                    else ""
+                )
+                if stable_id:
+                    if stable_id in seen_item_ids:
+                        continue
+                    seen_item_ids.add(stable_id)
                 yield dict(item)
 
             raw_paging = page.get("paging", {})
@@ -315,12 +335,18 @@ def _validate_next_url(next_url: str, endpoint: str) -> str:
     parsed = urlsplit(next_url)
     if parsed.scheme or parsed.netloc:
         host = (parsed.hostname or "").casefold()
+        expected_port = 443 if parsed.scheme == "https" else 80
         if (
-            parsed.scheme != "https"
+            parsed.scheme not in {"http", "https"}
             or not (host == "zhihu.com" or host.endswith(".zhihu.com"))
             or parsed.path != endpoint
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.port not in {None, expected_port}
+            or bool(parsed.fragment)
         ):
             raise InvalidZhihuPayloadError("分页 next 地址不是预期的知乎 API 端点。")
+        return parsed._replace(scheme="https", netloc=host).geturl()
     elif parsed.path not in {"", endpoint}:
         raise InvalidZhihuPayloadError("分页 next 地址不是预期的知乎 API 端点。")
     elif not parsed.path:

@@ -42,10 +42,14 @@ class FakeSession:
     def __init__(self, responses: list[FakeResponse]):
         self._responses = list(responses)
         self.calls: list[tuple[str, dict[str, object]]] = []
+        self.close_count = 0
 
     def get(self, url: str, **kwargs):
         self.calls.append((url, kwargs))
         return self._responses.pop(0)
+
+    def close(self):
+        self.close_count += 1
 
 
 class ExplodingSession:
@@ -94,6 +98,26 @@ class CookieLoadingTests(unittest.TestCase):
         self.assertEqual(cookies, {"z_c0": "z-secret", "d_c0": "d-secret"})
         self.assertTrue(diagnose_cookies(cookies).is_complete)
 
+    def test_browser_export_list_keeps_only_explicit_zhihu_domains(self):
+        exported_cookies = [
+            {"name": "z_c0", "value": "z-secret", "domain": ".zhihu.com"},
+            {"name": "d_c0", "value": "d-secret", "domain": "www.zhihu.com"},
+            {"name": "google-session", "value": "foreign-secret", "domain": ".google.com"},
+            {"name": "lookalike", "value": "lookalike-secret", "domain": "notzhihu.com"},
+            {"name": "unscoped", "value": "unknown-secret"},
+        ]
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            cookie_path = Path(temporary_directory) / "cookies.json"
+            cookie_path.write_text(json.dumps(exported_cookies), encoding="utf-8")
+
+            cookies = load_cookies(cookie_path)
+
+        self.assertEqual(cookies, {"z_c0": "z-secret", "d_c0": "d-secret"})
+        self.assertNotIn("foreign-secret", repr(cookies))
+        self.assertNotIn("lookalike-secret", repr(cookies))
+        self.assertNotIn("unknown-secret", repr(cookies))
+
     def test_malformed_cookie_file_raises_a_sanitized_error(self):
         secret_value = "malformed-secret-value"
 
@@ -129,6 +153,16 @@ class CookieLoadingTests(unittest.TestCase):
 
 
 class ZhihuHttpClientTests(unittest.TestCase):
+    def test_context_manager_closes_the_owned_session_exactly_once(self):
+        session = FakeSession([])
+        client = ZhihuHttpClient(session=session)
+
+        with client:
+            pass
+        client.close()
+
+        self.assertEqual(session.close_count, 1)
+
     def test_invalid_json_is_wrapped_without_copying_response_details(self):
         session = FakeSession([FakeResponse(json_data=ValueError("secret response body"))])
 
@@ -149,6 +183,50 @@ class ZhihuHttpClientTests(unittest.TestCase):
         requested_url, request_options = session.calls[0]
         self.assertEqual(requested_url, "https://www.zhihu.com/api/v4/me")
         self.assertEqual(request_options["cookies"], cookies)
+        self.assertIs(request_options["allow_redirects"], False)
+
+    def test_unexpected_redirect_is_not_followed_or_treated_as_success(self):
+        session = FakeSession(
+            [
+                FakeResponse(
+                    status_code=302,
+                    headers={"Location": "https://attacker.example/cookie-sink"},
+                )
+            ]
+        )
+
+        with self.assertRaisesRegex(InvalidResponseError, "unexpected redirect"):
+            ZhihuHttpClient(cookies={"z_c0": "secret"}, session=session).get_json(
+                "/api/v4/articles/1"
+            )
+
+        self.assertEqual(1, len(session.calls))
+        self.assertIs(session.calls[0][1]["allow_redirects"], False)
+
+    def test_browser_cookie_backflow_updates_subsequent_http_requests(self):
+        session = FakeSession([FakeResponse(json_data={"data": []})])
+        client = ZhihuHttpClient(
+            cookies={"z_c0": "initial-z"},
+            session=session,
+        )
+
+        client.update_cookies(
+            {
+                "d_c0": "browser-d",
+                "__zse_ck": "browser-challenge",
+                "": "ignored",
+            }
+        )
+        client.get_json("/api/v4/questions/1/answers")
+
+        self.assertEqual(
+            {
+                "z_c0": "initial-z",
+                "d_c0": "browser-d",
+                "__zse_ck": "browser-challenge",
+            },
+            session.calls[0][1]["cookies"],
+        )
 
     def test_get_html_preserves_absolute_url_and_applies_optional_proxy(self):
         source_url = "https://zhuanlan.zhihu.com/p/357892158"

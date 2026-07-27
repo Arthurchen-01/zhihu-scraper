@@ -84,6 +84,30 @@ class NewCommandLineTests(unittest.TestCase):
         self.assertNotIn("private-member-id", rendered)
         self.assertNotIn("private-name", rendered)
 
+    def test_fetch_reports_nonfatal_media_failures_without_marking_archive_failed(self):
+        receipt = SimpleNamespace(
+            entry_directory=Path("/archive/文章"),
+            markdown_path=Path("/archive/文章/文章.md"),
+            html_path=Path("/archive/文章/文章.html"),
+            database_path=Path("/archive/zhihu.db"),
+        )
+        failure = SimpleNamespace(display_message="正文媒体下载失败，已保留远程链接：image-1")
+        report = SimpleNamespace(
+            target=SimpleNamespace(title="文章"),
+            receipt=receipt,
+            used_browser=False,
+            media_failures=(failure,),
+        )
+        output = io.StringIO()
+
+        with patch("zhihu_scraper.cli.archive_url", return_value=report):
+            with redirect_stdout(output):
+                exit_code = run_cli(["fetch", "https://zhuanlan.zhihu.com/p/1"])
+
+        self.assertEqual(0, exit_code)
+        self.assertIn("媒体警告：1 个", output.getvalue())
+        self.assertIn("image-1", output.getvalue())
+
     def test_init_never_overwrites_existing_settings(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "settings.toml"

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import builtins
+import sys
 from pathlib import Path, PurePosixPath
+from types import ModuleType
 
 import pytest
 
@@ -9,6 +11,7 @@ from zhihu_scraper.browser import (
     BrowserCookieError,
     BrowserDependencyError,
     BrowserFallback,
+    BrowserLaunchError,
     BrowserNavigationError,
 )
 from zhihu_scraper.platform import OperatingSystem, RuntimePlatform
@@ -45,6 +48,8 @@ class FakeContext:
         self.closed = False
         self.close_count = 0
         self.added_cookies: list[dict[str, object]] = []
+        self.init_scripts: list[str] = []
+        self.cleared_cookie_names: list[str] = []
 
     def new_page(self) -> FakePage:
         return self.page
@@ -55,6 +60,13 @@ class FakeContext:
     def add_cookies(self, cookies: list[dict[str, object]]) -> None:
         self.added_cookies.extend(cookies)
 
+    def add_init_script(self, script: str) -> None:
+        self.init_scripts.append(script)
+
+    def clear_cookies(self, *, name: str | None = None) -> None:
+        if name is not None:
+            self.cleared_cookie_names.append(name)
+
     def close(self) -> None:
         self.closed = True
         self.close_count += 1
@@ -63,7 +75,7 @@ class FakeContext:
 class FakeExecutor:
     def __init__(self, context: FakeContext | None = None) -> None:
         self.context = context or FakeContext()
-        self.launches: list[tuple[Path, bool, Path | None]] = []
+        self.launches: list[tuple[Path, bool, Path | None, str | None]] = []
         self.closed = False
         self.close_count = 0
 
@@ -73,8 +85,9 @@ class FakeExecutor:
         *,
         headless: bool,
         executable_path: Path | None,
+        proxy: str | None,
     ) -> FakeContext:
-        self.launches.append((profile_dir, headless, executable_path))
+        self.launches.append((profile_dir, headless, executable_path, proxy))
         return self.context
 
     def close(self) -> None:
@@ -100,13 +113,16 @@ def test_fetch_html_uses_a_persistent_headed_profile_and_waits_for_dom(tmp_path:
     html = browser.fetch_html("https://www.zhihu.com/question/1")
 
     assert html == "<html><body>ready</body></html>"
-    assert executor.launches == [(tmp_path / "app-data" / "browser-profile", False, None)]
-    assert (tmp_path / "app-data" / "browser-profile").is_dir()
+    assert executor.launches == [(tmp_path / "app-data" / "browser-profile-v4", False, None, None)]
+    assert (tmp_path / "app-data" / "browser-profile-v4").is_dir()
     assert executor.context.page.goto_calls == [
         ("https://www.zhihu.com/question/1", "domcontentloaded", 30_000)
     ]
     assert executor.context.page.wait_calls == [("domcontentloaded", 30_000)]
     assert executor.context.page.closed is True
+    assert len(executor.context.init_scripts) == 1
+    assert "webdriver" in executor.context.init_scripts[0]
+    assert executor.context.cleared_cookie_names == ["BEC", "__zse_ck"]
 
 
 def test_explicit_profile_headless_mode_and_browser_context_are_reused(tmp_path: Path) -> None:
@@ -132,8 +148,149 @@ def test_explicit_profile_headless_mode_and_browser_context_are_reused(tmp_path:
     browser.fetch_html("https://www.zhihu.com/question/1")
     browser.fetch_html("https://www.zhihu.com/question/2")
 
-    assert executor.launches == [(explicit_profile, True, installed_browser)]
+    assert executor.launches == [(explicit_profile, True, installed_browser, None)]
     assert explicit_profile.is_dir()
+    assert executor.context.cleared_cookie_names == [
+        "BEC",
+        "__zse_ck",
+        "BEC",
+        "__zse_ck",
+    ]
+
+
+def test_managed_chromium_is_retried_when_discovered_system_chrome_cannot_launch(
+    tmp_path: Path,
+) -> None:
+    installed_browser = tmp_path / "chrome"
+    installed_browser.touch()
+    runtime = RuntimePlatform(
+        operating_system=OperatingSystem.LINUX,
+        user_data_directory=PurePosixPath(tmp_path / "app-data"),
+        browser_candidates=(PurePosixPath(installed_browser),),
+    )
+
+    class SystemChromeFailure(FakeExecutor):
+        def launch_persistent_context(
+            self,
+            profile_dir: Path,
+            *,
+            headless: bool,
+            executable_path: Path | None,
+            proxy: str | None,
+        ) -> FakeContext:
+            self.launches.append((profile_dir, headless, executable_path, proxy))
+            if executable_path is not None:
+                raise BrowserLaunchError("system chrome policy rejected launch")
+            return self.context
+
+    executor = SystemChromeFailure()
+    browser = BrowserFallback(executor=executor, runtime_platform=runtime)
+
+    assert browser.fetch_html("https://zhuanlan.zhihu.com/p/1") == (
+        "<html><body>ready</body></html>"
+    )
+    assert executor.launches == [
+        (
+            tmp_path / "app-data" / "browser-profile-v4",
+            False,
+            installed_browser,
+            None,
+        ),
+        (
+            tmp_path / "app-data" / "browser-profile-v4",
+            False,
+            None,
+            None,
+        ),
+    ]
+
+
+def test_content_read_retries_when_zhihu_is_still_navigating(tmp_path: Path) -> None:
+    class NavigatingPage(FakePage):
+        def __init__(self) -> None:
+            super().__init__("<html><body>settled</body></html>")
+            self.content_calls = 0
+
+        def content(self) -> str:
+            self.content_calls += 1
+            if self.content_calls == 1:
+                raise RuntimeError("page is navigating and changing the content")
+            return self.html
+
+    page = NavigatingPage()
+    sleeps: list[float] = []
+    browser = BrowserFallback(
+        executor=FakeExecutor(FakeContext(page=page)),
+        runtime_platform=runtime_for(tmp_path),
+        sleep=sleeps.append,
+    )
+
+    assert browser.fetch_html("https://zhuanlan.zhihu.com/p/1") == (
+        "<html><body>settled</body></html>"
+    )
+    assert page.content_calls == 2
+    assert sleeps == [0.25]
+
+
+def test_playwright_adapter_applies_authenticated_proxy_to_managed_browser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = FakeContext()
+
+    class FakeChromium:
+        def __init__(self) -> None:
+            self.launches: list[tuple[str, dict[str, object]]] = []
+
+        def launch_persistent_context(
+            self,
+            profile_dir: str,
+            **options: object,
+        ) -> FakeContext:
+            self.launches.append((profile_dir, options))
+            return context
+
+    chromium = FakeChromium()
+
+    class FakePlaywright:
+        def __init__(self) -> None:
+            self.chromium = chromium
+
+        def stop(self) -> None:
+            return None
+
+    class FakePlaywrightStarter:
+        def start(self) -> FakePlaywright:
+            return FakePlaywright()
+
+    sync_api = ModuleType("playwright.sync_api")
+    sync_api.sync_playwright = lambda: FakePlaywrightStarter()  # type: ignore[attr-defined]
+    package = ModuleType("playwright")
+    package.sync_api = sync_api  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright", package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+
+    browser = BrowserFallback(
+        proxy="http://account:password@127.0.0.1:7890",
+        runtime_platform=runtime_for(tmp_path),
+    )
+    browser.fetch_html("https://zhuanlan.zhihu.com/p/1")
+    browser.close()
+
+    assert chromium.launches == [
+        (
+            str(tmp_path / "app-data" / "browser-profile-v4"),
+            {
+                "headless": False,
+                "args": ["--disable-blink-features=AutomationControlled"],
+                "proxy": {
+                    "server": "http://127.0.0.1:7890",
+                    "username": "account",
+                    "password": "password",
+                },
+            },
+        )
+    ]
 
 
 def test_cookie_dict_contains_only_zhihu_cookies(tmp_path: Path) -> None:
@@ -237,8 +394,9 @@ def test_missing_playwright_has_an_actionable_secret_free_error(
         browser.fetch_html("https://www.zhihu.com/question/1")
 
     message = str(caught.value)
-    assert "zhihu-scraper[full]" in message
+    assert "Playwright runtime" in message
     assert "playwright install chromium" in message
+    assert "zhihu-scraper[full]" not in message
     assert "must-not-leak" not in message
 
 

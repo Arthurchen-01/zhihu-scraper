@@ -131,7 +131,7 @@ def _parse_block_children(
             blocks.append(_parse_list(node, base_url=base_url))
         elif name == "table":
             flush_loose_text()
-            table = _parse_table(node)
+            table = _parse_table(node, base_url=base_url)
             if table.headers or table.rows:
                 blocks.append(table)
         elif name == "figure":
@@ -293,9 +293,19 @@ def _parse_list(node: Tag, *, base_url: str) -> ListBlock:
     return ListBlock(ordered=node.name == "ol", items=tuple(items))
 
 
-def _parse_table(node: Tag) -> TableBlock:
+def _parse_table(node: Tag, *, base_url: str) -> TableBlock:
     rows = [
-        tuple(_block_text(cell.get_text(" ", strip=True)) for cell in row.find_all(["th", "td"]))
+        tuple(
+            tuple(
+                _trim_inline_edges(
+                    _parse_inline_children(
+                        cell.children,
+                        base_url=base_url,
+                    )
+                )
+            )
+            for cell in row.find_all(["th", "td"])
+        )
         for row in node.find_all("tr")
     ]
     rows = [row for row in rows if row]

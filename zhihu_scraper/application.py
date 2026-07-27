@@ -8,7 +8,8 @@ from datetime import UTC, datetime
 from types import TracebackType
 from typing import Protocol, Self
 
-from .comments import CommentClient, fetch_comment_thread
+from .assets import MediaArchiveFailure
+from .comments import CommentClient, InvalidCommentPayloadError, fetch_comment_thread
 from .domain import (
     Answer,
     ArchiveTarget,
@@ -19,6 +20,7 @@ from .domain import (
 )
 from .http import InvalidResponseError, TransportError, ZhihuHttpError
 from .normalize import (
+    NormalizationError,
     normalize_answer,
     normalize_article,
     normalize_column,
@@ -66,6 +68,8 @@ class BrowserReader(Protocol):
 
     def fetch_html(self, url: str) -> str: ...
 
+    def cookie_dict(self) -> dict[str, str]: ...
+
     def __enter__(self) -> Self: ...
 
     def __exit__(
@@ -85,6 +89,7 @@ class ArchiveReport:
     target: ArchiveTarget
     receipt: object
     used_browser: bool
+    media_failures: tuple[MediaArchiveFailure, ...] = ()
 
 
 class ArchiveWorkflow:
@@ -99,6 +104,8 @@ class ArchiveWorkflow:
         comment_client: CommentClient | None = None,
         browser_factory: Callable[[], BrowserReader] | None = None,
         browser_cookies: Mapping[str, str] | None = None,
+        browser_cookie_sink: Callable[[Mapping[str, str]], None] | None = None,
+        resource_closer: Callable[[], object] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._source = source
@@ -107,10 +114,15 @@ class ArchiveWorkflow:
         self._comment_client = comment_client
         self._browser_factory = browser_factory
         self._browser_cookies = dict(browser_cookies or {})
+        self._browser_cookie_sink = browser_cookie_sink
+        self._resource_closer = resource_closer
         self._clock = clock
         self._used_browser = False
+        self._closed = False
 
     def run(self, raw_url: str) -> ArchiveReport:
+        if self._closed:
+            raise RuntimeError("Archive workflow is closed.")
         self._used_browser = False
         routed = route_zhihu_url(raw_url)
         target = self._collect(routed)
@@ -119,7 +131,28 @@ class ArchiveWorkflow:
             target=target,
             receipt=receipt,
             used_browser=self._used_browser,
+            media_failures=_receipt_media_failures(receipt),
         )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        if self._resource_closer is not None:
+            self._resource_closer()
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            raise RuntimeError("Archive workflow is closed.")
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
     def _collect(self, target: ZhihuTarget) -> ArchiveTarget:
         if target.kind is TargetKind.ARTICLE:
@@ -127,6 +160,10 @@ class ArchiveWorkflow:
                 target,
                 direct=lambda: self._source.fetch_article_payload(target),
                 collection="articles",
+                validate=lambda candidate: _validate_article_payload(
+                    candidate,
+                    source_url=target.canonical_url,
+                ),
             )
             article = normalize_article(payload, source_url=target.canonical_url)
             return self._with_article_comments(article)
@@ -136,6 +173,10 @@ class ArchiveWorkflow:
                 target,
                 direct=lambda: self._source.fetch_answer_payload(target),
                 collection="answers",
+                validate=lambda candidate: _validate_answer_payload(
+                    candidate,
+                    source_url=target.canonical_url,
+                ),
             )
             answer = normalize_answer(payload, source_url=target.canonical_url)
             return self._with_answer_comments(answer)
@@ -145,17 +186,26 @@ class ArchiveWorkflow:
                 target,
                 direct=lambda: self._source.fetch_question_payload(target),
                 collection="questions",
+                validate=lambda candidate: normalize_question(
+                    candidate,
+                    source_url=target.canonical_url,
+                ),
             )
             question = normalize_question(
                 question_payload,
                 source_url=target.canonical_url,
             )
-            answers = tuple(
-                self._with_answer_comments(normalize_answer(payload))
-                for payload in self._source.iter_question_answer_payloads(
+            answer_payloads = self._collection_payloads(
+                target,
+                collection="questions",
+                direct=lambda: self._source.iter_question_answer_payloads(
                     target,
                     page_size=self._settings.page_size,
-                )
+                ),
+                validate=_validate_answer_payload,
+            )
+            answers = tuple(
+                self._with_answer_comments(normalize_answer(payload)) for payload in answer_payloads
             )
             return QuestionArchive(
                 question=question,
@@ -168,6 +218,10 @@ class ArchiveWorkflow:
                 target,
                 direct=lambda: self._source.fetch_column_payload(target),
                 collection="columns",
+                validate=lambda candidate: normalize_column(
+                    candidate,
+                    source_url=target.canonical_url,
+                ),
             )
             column = normalize_column(
                 column_payload,
@@ -179,10 +233,16 @@ class ArchiveWorkflow:
                 url=column.source_url,
             )
             articles: list[Article] = []
-            for payload in self._source.iter_column_article_payloads(
+            article_payloads = self._collection_payloads(
                 target,
-                page_size=self._settings.page_size,
-            ):
+                collection="columns",
+                direct=lambda: self._source.iter_column_article_payloads(
+                    target,
+                    page_size=self._settings.page_size,
+                ),
+                validate=_validate_article_payload,
+            )
+            for payload in article_payloads:
                 article = normalize_article(payload)
                 if all(item.token != origin.token for item in article.columns):
                     article = replace(
@@ -203,11 +263,15 @@ class ArchiveWorkflow:
                 target,
                 direct=lambda: self._source.fetch_video_payload(target),
                 collection="zvideos",
+                validate=lambda candidate: normalize_video(
+                    candidate,
+                    source_url=target.canonical_url,
+                ),
             )
             video = normalize_video(payload, source_url=target.canonical_url)
             if not self._settings.comments:
                 return video
-            thread = self._comments("zvideo", video.id)
+            thread = self._comments("zvideo", video.id, video.source_url)
             return replace(video, comments=thread)
 
         raise AssertionError(f"unhandled target kind: {target.kind}")
@@ -218,21 +282,27 @@ class ArchiveWorkflow:
         *,
         direct: Callable[[], Mapping[str, object]],
         collection: str,
+        validate: Callable[[Mapping[str, object]], object],
     ) -> Mapping[str, object]:
+        def validated(payload: Mapping[str, object]) -> Mapping[str, object]:
+            validate(payload)
+            return payload
+
         mode = self._settings.browser_fallback
         if mode is BrowserFallbackMode.ALWAYS:
-            return self._browser_payload(target, collection=collection)
+            return validated(self._browser_payload(target, collection=collection))
         try:
-            return direct()
+            return validated(direct())
         except (
             InvalidZhihuPayloadError,
             InvalidResponseError,
+            NormalizationError,
             ZhihuHttpError,
             TransportError,
         ):
             if mode is BrowserFallbackMode.NEVER:
                 raise
-            return self._browser_payload(target, collection=collection)
+            return validated(self._browser_payload(target, collection=collection))
 
     def _browser_payload(
         self,
@@ -246,6 +316,11 @@ class ArchiveWorkflow:
             if self._browser_cookies:
                 browser.set_cookie_dict(self._browser_cookies)
             document = browser.fetch_html(target.canonical_url)
+            exported_cookies = browser.cookie_dict()
+            if exported_cookies:
+                self._browser_cookies.update(exported_cookies)
+                if self._browser_cookie_sink is not None:
+                    self._browser_cookie_sink(exported_cookies)
         self._used_browser = True
         return extract_entity_payload(
             document,
@@ -253,12 +328,40 @@ class ArchiveWorkflow:
             entity_id=target.content_id,
         )
 
+    def _collection_payloads(
+        self,
+        target: ZhihuTarget,
+        *,
+        collection: str,
+        direct: Callable[[], Iterator[Mapping[str, object]]],
+        validate: Callable[[Mapping[str, object]], object],
+    ) -> tuple[Mapping[str, object], ...]:
+        def collect_validated() -> tuple[Mapping[str, object], ...]:
+            payloads = tuple(direct())
+            for payload in payloads:
+                validate(payload)
+            return payloads
+
+        try:
+            return collect_validated()
+        except (
+            InvalidZhihuPayloadError,
+            InvalidResponseError,
+            NormalizationError,
+            ZhihuHttpError,
+            TransportError,
+        ):
+            if self._settings.browser_fallback is BrowserFallbackMode.NEVER:
+                raise
+            self._browser_payload(target, collection=collection)
+            return collect_validated()
+
     def _with_article_comments(self, article: Article) -> Article:
         if not self._settings.comments:
             return article
         return replace(
             article,
-            comments=self._comments("article", article.id),
+            comments=self._comments("article", article.id, article.source_url),
         )
 
     def _with_answer_comments(self, answer: Answer) -> Answer:
@@ -266,16 +369,68 @@ class ArchiveWorkflow:
             return answer
         return replace(
             answer,
-            comments=self._comments("answer", answer.id),
+            comments=self._comments("answer", answer.id, answer.source_url),
         )
 
-    def _comments(self, target_kind: str, target_id: str):
+    def _comments(self, target_kind: str, target_id: str, source_url: str):
         if self._comment_client is None:
             raise RuntimeError("评论已启用，但没有可用的知乎请求客户端。")
-        return fetch_comment_thread(
-            self._comment_client,
-            target_kind=target_kind,
-            target_id=target_id,
-            root_limit=self._settings.comment_roots,
-            reply_limit=self._settings.comment_replies,
-        )
+
+        def fetch():
+            return fetch_comment_thread(
+                self._comment_client,
+                target_kind=target_kind,
+                target_id=target_id,
+                root_limit=self._settings.comment_roots,
+                reply_limit=self._settings.comment_replies,
+            )
+
+        try:
+            return fetch()
+        except (
+            InvalidCommentPayloadError,
+            InvalidResponseError,
+            ZhihuHttpError,
+            TransportError,
+        ):
+            if self._settings.browser_fallback is BrowserFallbackMode.NEVER:
+                raise
+            collections = {
+                "article": "articles",
+                "answer": "answers",
+                "zvideo": "zvideos",
+            }
+            self._browser_payload(
+                route_zhihu_url(source_url),
+                collection=collections[target_kind],
+            )
+            return fetch()
+
+
+def _validate_article_payload(
+    payload: Mapping[str, object],
+    *,
+    source_url: str | None = None,
+) -> None:
+    article = normalize_article(payload, source_url=source_url)
+    if not article.blocks:
+        raise NormalizationError("article payload is missing full content")
+
+
+def _validate_answer_payload(
+    payload: Mapping[str, object],
+    *,
+    source_url: str | None = None,
+) -> None:
+    answer = normalize_answer(payload, source_url=source_url)
+    if not answer.blocks:
+        raise NormalizationError("answer payload is missing full content")
+
+
+def _receipt_media_failures(receipt: object) -> tuple[MediaArchiveFailure, ...]:
+    candidates = getattr(receipt, "media_failures", ())
+    if not isinstance(candidates, tuple):
+        return ()
+    return tuple(
+        candidate for candidate in candidates if isinstance(candidate, MediaArchiveFailure)
+    )

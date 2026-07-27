@@ -93,6 +93,11 @@ cdp_url = "http://127.0.0.1:9222"
             ("[network]\ntimeout = -1", "network.timeout", "大于 0"),
             ("[network]\nretries = 11", "network.retries", "0 到 10"),
             ("[network]\npage_size = 101", "network.page_size", "1 到 100"),
+            (
+                '[network]\nproxy = "socks5://127.0.0.1:7890"',
+                "network.proxy",
+                "HTTP",
+            ),
             ('[browser]\nfallback = "sometimes"', "browser.fallback", "auto"),
         )
 

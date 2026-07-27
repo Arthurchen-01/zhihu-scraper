@@ -7,7 +7,8 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, cast
+from types import TracebackType
+from typing import Any, Protocol, Self, cast
 from urllib.parse import urljoin, urlparse
 
 from curl_cffi import requests
@@ -110,6 +111,49 @@ class ZhihuHttpClient:
         self._max_retries = max_retries
         self._timeout = timeout
         self._sleep = sleep
+        self._closed = False
+
+    def update_cookies(self, cookies: Mapping[str, str]) -> None:
+        """Merge browser-exported Cookie values into future HTTP requests."""
+
+        for name, value in cookies.items():
+            if not isinstance(name, str) or not isinstance(value, str):
+                continue
+            normalized_name = name.strip()
+            normalized_value = value.strip()
+            if normalized_name and normalized_value:
+                self._cookies[normalized_name] = normalized_value
+
+    def close(self) -> None:
+        """Release the underlying connection pool exactly once."""
+
+        if self._closed:
+            return
+        self._closed = True
+        close_session = getattr(self._session, "close", None)
+        if not callable(close_session):
+            return
+        try:
+            close_session()
+        except Exception:
+            raise TransportError("Zhihu HTTP resources could not be closed cleanly.") from None
+
+    def __enter__(self) -> Self:
+        if self._closed:
+            raise TransportError("Zhihu HTTP client is closed.")
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        try:
+            self.close()
+        except TransportError:
+            if exc_value is None:
+                raise
 
     def get_json(self, url_or_path: str) -> object:
         response = self._get(url_or_path, accept="application/json, text/plain, */*")
@@ -153,6 +197,8 @@ class ZhihuHttpClient:
         )
 
     def _get(self, url_or_path: str, *, accept: str) -> _HttpResponse:
+        if self._closed:
+            raise TransportError("Zhihu HTTP client is closed.")
         url = _absolute_zhihu_url(url_or_path)
         request_options: dict[str, object] = {
             "headers": {
@@ -161,6 +207,7 @@ class ZhihuHttpClient:
             },
             "cookies": self._cookies,
             "timeout": self._timeout,
+            "allow_redirects": False,
         }
         if self._proxy:
             request_options["proxy"] = self._proxy
@@ -203,6 +250,11 @@ class ZhihuHttpClient:
                     f"Zhihu returned HTTP {response.status_code} after limited retries; "
                     "the server is temporarily unavailable.",
                 )
+            if 300 <= response.status_code <= 399:
+                raise InvalidResponseError(
+                    "Zhihu returned an unexpected redirect; authenticated requests "
+                    "are never forwarded to another origin."
+                )
             return response
 
         raise AssertionError("retry loop must return or raise")
@@ -223,7 +275,9 @@ def load_cookies(path: Path) -> dict[str, str]:
         pairs = payload.items()
     elif isinstance(payload, list):
         pairs = (
-            (item.get("name"), item.get("value")) for item in payload if isinstance(item, dict)
+            (item.get("name"), item.get("value"))
+            for item in payload
+            if isinstance(item, dict) and _is_zhihu_cookie_domain(item.get("domain"))
         )
     else:
         raise CookieFileError(
@@ -241,6 +295,15 @@ def load_cookies(path: Path) -> dict[str, str]:
             continue
         cookies[normalized_name] = normalized_value
     return cookies
+
+
+def _is_zhihu_cookie_domain(value: object) -> bool:
+    """Limit full browser exports to cookies scoped to Zhihu origins."""
+
+    if not isinstance(value, str):
+        return False
+    domain = value.strip().lstrip(".").casefold()
+    return domain == "zhihu.com" or domain.endswith(".zhihu.com")
 
 
 def diagnose_cookies(cookies: dict[str, str]) -> CookieDiagnostic:

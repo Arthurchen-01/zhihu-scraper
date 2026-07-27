@@ -43,6 +43,7 @@ class LineBreak:
 
 
 Inline = Text | Link | CodeSpan | InlineFormula | LineBreak
+TableCell = tuple[Inline, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,8 +112,8 @@ class MediaBlock:
 
 @dataclass(frozen=True, slots=True)
 class TableBlock:
-    headers: tuple[str, ...]
-    rows: tuple[tuple[str, ...], ...]
+    headers: tuple[TableCell, ...]
+    rows: tuple[tuple[TableCell, ...], ...]
 
 
 @dataclass(frozen=True, slots=True)

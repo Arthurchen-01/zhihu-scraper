@@ -32,6 +32,8 @@ class FakeContext:
         self.pages: list[FakePage] = []
         self.closed = False
         self.added_cookies: list[dict[str, object]] = []
+        self.init_scripts: list[str] = []
+        self.cleared_cookie_names: list[str] = []
 
     def new_page(self) -> FakePage:
         page = FakePage()
@@ -45,6 +47,13 @@ class FakeContext:
 
     def add_cookies(self, cookies: list[dict[str, object]]) -> None:
         self.added_cookies.extend(cookies)
+
+    def add_init_script(self, script: str) -> None:
+        self.init_scripts.append(script)
+
+    def clear_cookies(self, *, name: str | None = None) -> None:
+        if name is not None:
+            self.cleared_cookie_names.append(name)
 
     def close(self) -> None:
         self.closed = True
@@ -68,6 +77,7 @@ class FakeExecutor:
         *,
         headless: bool,
         executable_path: Path | None,
+        proxy: str | None,
     ) -> FakeContext:
         self.launches += 1
         return self.context
@@ -108,6 +118,7 @@ def test_cdp_connection_reuses_default_context_for_pages_and_cookies(
     assert executor.launches == 0
     assert len(executor.context.pages) == 2
     assert all(page.closed for page in executor.context.pages)
+    assert len(executor.context.init_scripts) == 1
     assert executor.context.added_cookies == [
         {
             "name": "d_c0",
@@ -117,6 +128,7 @@ def test_cdp_connection_reuses_default_context_for_pages_and_cookies(
             "secure": True,
         }
     ]
+    assert executor.context.cleared_cookie_names == []
     assert not (tmp_path / "app-data" / "browser-profile").exists()
 
 

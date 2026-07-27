@@ -33,7 +33,11 @@ def archive_url(
     """Archive one supported Zhihu URL using validated local settings."""
 
     effective_settings = settings or ArchiveSettings()
-    return build_workflow(effective_settings).run(raw_url)
+    workflow = build_workflow(effective_settings)
+    try:
+        return workflow.run(raw_url)
+    finally:
+        workflow.close()
 
 
 def build_workflow(
@@ -60,6 +64,7 @@ def build_workflow(
             return BrowserFallback(
                 cdp_url=settings.cdp_url,
                 headless=settings.headless,
+                proxy=settings.proxy,
                 timeout_ms=max(1, int(settings.timeout * 1000)),
             )
 
@@ -71,6 +76,8 @@ def build_workflow(
         comment_client=http_client,
         browser_factory=browser_factory,
         browser_cookies=configured_cookies,
+        browser_cookie_sink=getattr(http_client, "update_cookies", None),
+        resource_closer=http_client.close if client is None else None,
     )
 
 
@@ -91,10 +98,13 @@ def check_session(settings: ArchiveSettings | None = None) -> SessionReport:
         max_retries=effective_settings.retries,
         timeout=effective_settings.timeout,
     )
-    return SessionReport(
-        cookie_diagnostic=diagnostic,
-        login_status=client.check_login(),
-    )
+    try:
+        return SessionReport(
+            cookie_diagnostic=diagnostic,
+            login_status=client.check_login(),
+        )
+    finally:
+        client.close()
 
 
 def _configured_cookies(settings: ArchiveSettings) -> dict[str, str]:

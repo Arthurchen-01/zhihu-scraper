@@ -10,9 +10,11 @@ from zhihu_scraper.domain import (
     ColumnRef,
     Comment,
     CommentThread,
+    FormulaBlock,
     InlineFormula,
     Link,
     MediaAsset,
+    MediaBlock,
     MediaKind,
     MediaRendition,
     Paragraph,
@@ -68,6 +70,7 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
         )
 
     def test_article_has_compact_column_context_and_comment_thread(self):
+        cover = "https://pic.example/article-cover.jpg"
         article = Article(
             id="357892158",
             title="一文归纳AI数据增强之法",
@@ -75,6 +78,7 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
             author=self.author,
             published_at=datetime(2021, 3, 17, tzinfo=UTC),
             blocks=(paragraph("文章正文"),),
+            cover_url=cover,
             columns=(
                 ColumnRef(
                     token="hsmyy",
@@ -96,6 +100,7 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
                 markdown_href="../机器学习.md",
                 html_href="../机器学习.html",
             ),
+            item_count=81,
             previous=RenderNavigationItem(
                 title="上一篇",
                 markdown_href="上一篇.md",
@@ -108,13 +113,30 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
             ),
         )
 
-        markdown = MarkdownRenderer().render(article, column_context=context)
-        rendered_html = HtmlRenderer().render(article, column_context=context)
+        media_paths = {cover: "media/article-cover.jpg"}
+        markdown = MarkdownRenderer().render(
+            article,
+            column_context=context,
+            media_paths=media_paths,
+        )
+        rendered_html = HtmlRenderer().render(
+            article,
+            column_context=context,
+            media_paths=media_paths,
+        )
 
         self.assertIn("收录专栏：", markdown)
         self.assertIn("[机器学习与数学]", markdown)
-        self.assertIn("本次归档自：[机器学习]", markdown)
-        self.assertIn("[查看完整目录](../机器学习.md)", markdown)
+        self.assertIn(
+            "> 本次归档自：[机器学习](https://www.zhihu.com/column/machinelearningpku)"
+            " · 本栏目共 81 篇 · [查看完整目录](../机器学习.md)",
+            markdown,
+        )
+        self.assertIn(
+            "[![一文归纳AI数据增强之法封面](media/article-cover.jpg)]"
+            "(https://pic.example/article-cover.jpg)",
+            markdown,
+        )
         self.assertIn("[上一篇：上一篇](上一篇.md)", markdown)
         self.assertIn("[下一篇：下一篇](下一篇.md)", markdown)
         self.assertIn("[返回目录](../机器学习.md)", markdown)
@@ -122,6 +144,16 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
         self.assertIn("二级回复正文", markdown)
 
         self.assertIn('href="../机器学习.html"', rendered_html)
+        self.assertIn(
+            '本次归档自：<a href="https://www.zhihu.com/column/machinelearningpku">'
+            "机器学习</a> · 本栏目共 81 篇 · "
+            '<a href="../机器学习.html">查看完整目录</a>',
+            rendered_html,
+        )
+        self.assertIn(
+            'class="cover" src="media/article-cover.jpg"',
+            rendered_html,
+        )
         self.assertIn('href="上一篇.html"', rendered_html)
         self.assertIn('href="../assets/archive.css"', rendered_html)
         self.assertIn('class="comments"', rendered_html)
@@ -246,6 +278,7 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
 
     def test_video_uses_local_media_and_retains_original_link(self):
         original = "https://video.example/highest.mp4"
+        cover = "https://pic.example/video-cover.jpg"
         video = Video(
             id="1666569497233207296",
             title="哑铃全身训练方案",
@@ -258,15 +291,24 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
                 kind=MediaKind.VIDEO,
                 renditions=(MediaRendition(source_url=original, width=1920, height=1080),),
             ),
+            cover_url=cover,
         )
-        paths = {original: "media/哑铃全身训练方案.mp4"}
+        paths = {
+            original: "media/哑铃全身训练方案.mp4",
+            cover: "media/video-cover.jpg",
+        }
 
         markdown = MarkdownRenderer().render(video, media_paths=paths)
         rendered_html = HtmlRenderer().render(video, media_paths=paths)
 
         self.assertIn("[播放或下载视频](media/哑铃全身训练方案.mp4)", markdown)
         self.assertIn(f"[原始视频链接]({original})", markdown)
+        self.assertIn(
+            "[![哑铃全身训练方案封面](media/video-cover.jpg)](https://pic.example/video-cover.jpg)",
+            markdown,
+        )
         self.assertIn('src="media/哑铃全身训练方案.mp4"', rendered_html)
+        self.assertIn('poster="media/video-cover.jpg"', rendered_html)
         self.assertIn(f'href="{original}"', rendered_html)
         self.assertNotIn("<script", rendered_html)
 
@@ -283,8 +325,11 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
                         Link(label="危险链接", url="javascript:alert(1)"),
                         Text(" "),
                         InlineFormula(tex="<img onerror=alert(1)>"),
+                        Text(" "),
+                        InlineFormula(tex=r"\href{javascript:alert(1)}{x}"),
                     ),
                 ),
+                FormulaBlock(tex=r"\href{javascript:alert(2)}{y}"),
             ),
         )
 
@@ -293,8 +338,73 @@ class ArchiveTargetRenderingTests(unittest.TestCase):
 
         self.assertNotIn("javascript:", markdown)
         self.assertNotIn("javascript:", rendered_html)
+        self.assertNotIn('href="javascript:', rendered_html)
         self.assertNotIn("<img onerror", rendered_html)
         self.assertIn("&lt;img onerror=alert(1)&gt;", rendered_html)
+        self.assertIn("blocked:alert", rendered_html)
+
+    def test_markdown_escapes_untrusted_titles_authors_captions_and_column_description(self):
+        hostile_author = Author(id="hostile", name="<script>alert(1)</script>")
+        article = Article(
+            id="hostile",
+            title="<img src=x onerror=alert(1)> *标题*",
+            source_url="https://zhuanlan.zhihu.com/p/hostile",
+            author=hostile_author,
+            published_at=None,
+            blocks=(
+                Paragraph(
+                    inlines=(Link(label="<iframe>链接</iframe>", url="https://example.com"),)
+                ),
+                MediaBlock(
+                    asset=MediaAsset(
+                        id="hostile-media",
+                        kind=MediaKind.IMAGE,
+                        renditions=(MediaRendition("https://pic.example/hostile.png"),),
+                        alt_text="<video>媒体</video>",
+                    ),
+                    caption="<svg onload=alert(1)>说明</svg>",
+                ),
+            ),
+            comments=CommentThread(
+                comments=(
+                    Comment(
+                        id="hostile-comment",
+                        author=Author(id="commenter", name="<details open>评论者</details>"),
+                        blocks=(paragraph("评论"),),
+                        created_at=None,
+                        like_count=0,
+                    ),
+                ),
+                order="api_returned",
+                roots_complete=True,
+            ),
+        )
+        column = ColumnArchive(
+            column=Column(
+                token="hostile",
+                title="<object>专栏</object>",
+                source_url="https://www.zhihu.com/column/hostile",
+                description="<style>body{display:none}</style>",
+                author=hostile_author,
+                item_count=1,
+            ),
+            articles=(article,),
+            archived_at=datetime(2026, 7, 27, tzinfo=UTC),
+        )
+
+        markdown = MarkdownRenderer().render(article)
+        column_markdown = MarkdownRenderer().render(column)
+
+        self.assertNotRegex(
+            markdown,
+            r"(?<!\\)<(?:img|script|iframe|video|svg|details)\b",
+        )
+        self.assertNotRegex(
+            column_markdown,
+            r"(?<!\\)<(?:object|style|script)\b",
+        )
+        self.assertIn(r"\<img src=x onerror=alert(1)\>", markdown)
+        self.assertIn(r"\<style\>body{display:none}\</style\>", column_markdown)
 
 
 if __name__ == "__main__":

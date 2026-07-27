@@ -6,6 +6,7 @@ import hashlib
 import re
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from urllib.parse import unquote, urlsplit
@@ -27,9 +28,49 @@ from .domain import (
     Quote,
     Video,
 )
-from .media import MediaDownloadReceipt, download_media
+from .media import MediaDownloadError, MediaDownloadReceipt, download_media
 
 AssetDownloader = Callable[[str, Path], MediaDownloadReceipt]
+
+
+class MediaArchiveRole(StrEnum):
+    """The role an asset plays in a readable archive."""
+
+    CONTENT = "content"
+    COVER = "cover"
+    PRIMARY_VIDEO = "primary_video"
+
+
+@dataclass(frozen=True, slots=True)
+class MediaArchiveFailure:
+    """A non-secret, structured description of one failed asset download."""
+
+    asset_id: str
+    kind: MediaKind
+    role: MediaArchiveRole
+    source_url: str
+    destination: Path
+    error_type: str
+    reason: str
+
+    @property
+    def display_message(self) -> str:
+        """Return a concise warning suitable for a CLI or agent report."""
+
+        labels = {
+            MediaArchiveRole.CONTENT: "正文媒体",
+            MediaArchiveRole.COVER: "封面",
+            MediaArchiveRole.PRIMARY_VIDEO: "独立视频主文件",
+        }
+        return f"{labels[self.role]}下载失败，已保留远程链接：{self.asset_id}（{self.reason}）"
+
+
+class PrimaryVideoDownloadError(MediaDownloadError):
+    """Raised when the required main file of an independent zvideo fails."""
+
+    def __init__(self, failure: MediaArchiveFailure) -> None:
+        self.failure = failure
+        super().__init__(failure.display_message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +79,17 @@ class AssetArchiveReceipt:
 
     source_paths: Mapping[str, str]
     downloads: tuple[MediaDownloadReceipt, ...]
+    failures: tuple[MediaArchiveFailure, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _AssetRequest:
+    asset: MediaAsset
+    role: MediaArchiveRole
+
+    @property
+    def required(self) -> bool:
+        return self.role is MediaArchiveRole.PRIMARY_VIDEO
 
 
 def archive_assets(
@@ -54,11 +106,11 @@ def archive_assets(
     """
 
     media_directory = Path(media_directory)
-    assets = tuple(_unique_assets(_target_assets(target)))
+    requests = tuple(_unique_requests(_target_requests(target)))
     downloadable = tuple(
-        (asset, rendition)
-        for asset in assets
-        if (rendition := _select_rendition(asset)) is not None
+        (request, rendition)
+        for request in requests
+        if (rendition := _select_rendition(request.asset)) is not None
     )
     if not downloadable:
         return AssetArchiveReceipt(MappingProxyType({}), ())
@@ -66,14 +118,31 @@ def archive_assets(
     media_directory.mkdir(parents=True, exist_ok=True)
     source_paths: dict[str, str] = {}
     downloads: list[MediaDownloadReceipt] = []
+    failures: list[MediaArchiveFailure] = []
     selected_sources: dict[str, str] = {}
 
-    for asset, selected in downloadable:
+    for request, selected in downloadable:
+        asset = request.asset
         existing_path = selected_sources.get(selected.source_url)
         if existing_path is None:
             filename = _archive_filename(asset, selected)
             destination = media_directory / filename
-            receipt = downloader(selected.source_url, destination)
+            try:
+                receipt = downloader(selected.source_url, destination)
+            except MediaDownloadError as error:
+                failure = MediaArchiveFailure(
+                    asset_id=asset.id,
+                    kind=asset.kind,
+                    role=request.role,
+                    source_url=selected.source_url,
+                    destination=destination,
+                    error_type=type(error).__name__,
+                    reason=str(error) or type(error).__name__,
+                )
+                if request.required:
+                    raise PrimaryVideoDownloadError(failure) from error
+                failures.append(failure)
+                continue
             relative_path = PurePosixPath(media_directory.name, filename).as_posix()
             selected_sources[selected.source_url] = relative_path
             downloads.append(receipt)
@@ -89,53 +158,65 @@ def archive_assets(
     return AssetArchiveReceipt(
         source_paths=MappingProxyType(source_paths),
         downloads=tuple(downloads),
+        failures=tuple(failures),
     )
 
 
-def _target_assets(target: ArchiveTarget) -> Iterator[MediaAsset]:
+def _target_requests(target: ArchiveTarget) -> Iterator[_AssetRequest]:
     if isinstance(target, Article):
-        yield from _article_assets(target)
+        yield from _article_requests(target)
         return
     if isinstance(target, Answer):
-        yield from _answer_assets(target)
+        yield from _answer_requests(target)
         return
     if isinstance(target, QuestionArchive):
-        yield from _blocks_assets(target.question.detail)
+        yield from _requests(_blocks_assets(target.question.detail))
         for answer in target.answers:
-            yield from _answer_assets(answer)
+            yield from _answer_requests(answer)
         return
     if isinstance(target, ColumnArchive):
         for article in target.articles:
-            yield from _article_assets(article)
+            yield from _article_requests(article)
         return
     if isinstance(target, Video):
-        yield target.asset
-        yield from _blocks_assets(target.description)
-        yield from _thread_assets(target.comments)
+        yield _AssetRequest(target.asset, MediaArchiveRole.PRIMARY_VIDEO)
+        yield from _requests(_blocks_assets(target.description))
+        yield from _requests(_thread_assets(target.comments))
         if target.cover_url:
-            yield _remote_image(
-                asset_id=f"zvideo-{target.id}-cover",
-                source_url=target.cover_url,
-                alt_text=target.title,
+            yield _AssetRequest(
+                _remote_image(
+                    asset_id=f"zvideo-{target.id}-cover",
+                    source_url=target.cover_url,
+                    alt_text=target.title,
+                ),
+                MediaArchiveRole.COVER,
             )
         return
     raise TypeError(f"unsupported archive target: {type(target).__name__}")
 
 
-def _article_assets(article: Article) -> Iterator[MediaAsset]:
-    yield from _blocks_assets(article.blocks)
-    yield from _thread_assets(article.comments)
+def _article_requests(article: Article) -> Iterator[_AssetRequest]:
+    yield from _requests(_blocks_assets(article.blocks))
+    yield from _requests(_thread_assets(article.comments))
     if article.cover_url:
-        yield _remote_image(
-            asset_id=f"article-{article.id}-cover",
-            source_url=article.cover_url,
-            alt_text=article.title,
+        yield _AssetRequest(
+            _remote_image(
+                asset_id=f"article-{article.id}-cover",
+                source_url=article.cover_url,
+                alt_text=article.title,
+            ),
+            MediaArchiveRole.COVER,
         )
 
 
-def _answer_assets(answer: Answer) -> Iterator[MediaAsset]:
-    yield from _blocks_assets(answer.blocks)
-    yield from _thread_assets(answer.comments)
+def _answer_requests(answer: Answer) -> Iterator[_AssetRequest]:
+    yield from _requests(_blocks_assets(answer.blocks))
+    yield from _requests(_thread_assets(answer.comments))
+
+
+def _requests(assets: Iterable[MediaAsset]) -> Iterator[_AssetRequest]:
+    for asset in assets:
+        yield _AssetRequest(asset, MediaArchiveRole.CONTENT)
 
 
 def _blocks_assets(blocks: Iterable[Block]) -> Iterator[MediaAsset]:
@@ -162,13 +243,13 @@ def _comment_assets(comment: Comment) -> Iterator[MediaAsset]:
         yield from _comment_assets(reply)
 
 
-def _unique_assets(assets: Iterable[MediaAsset]) -> Iterator[MediaAsset]:
+def _unique_requests(requests: Iterable[_AssetRequest]) -> Iterator[_AssetRequest]:
     seen: set[str] = set()
-    for asset in assets:
-        if asset.id in seen:
+    for request in requests:
+        if request.asset.id in seen:
             continue
-        seen.add(asset.id)
-        yield asset
+        seen.add(request.asset.id)
+        yield request
 
 
 def _select_rendition(asset: MediaAsset) -> MediaRendition | None:
@@ -177,15 +258,21 @@ def _select_rendition(asset: MediaAsset) -> MediaRendition | None:
         return None
     if asset.kind is not MediaKind.VIDEO:
         return available[0]
-    return max(available, key=_video_resolution)
+    return max(available, key=_video_quality)
 
 
-def _video_resolution(rendition: MediaRendition) -> int:
+def _video_quality(rendition: MediaRendition) -> tuple[int, int, int]:
     width = rendition.width
     height = rendition.height
     if width is None or height is None or width <= 0 or height <= 0:
-        return -1
-    return width * height
+        area = -1
+    else:
+        area = width * height
+    return (
+        area,
+        rendition.bitrate if rendition.bitrate is not None else -1,
+        rendition.size_bytes if rendition.size_bytes is not None else -1,
+    )
 
 
 def _remote_image(*, asset_id: str, source_url: str, alt_text: str) -> MediaAsset:
@@ -225,10 +312,21 @@ def _archive_filename(asset: MediaAsset, rendition: MediaRendition) -> str:
     stem = _SAFE_STEM.sub("-", asset.id.casefold()).strip("._-")[:48]
     if not stem:
         stem = asset.kind.value
-    digest = hashlib.sha256(
-        f"{asset.kind.value}\0{asset.id}\0{rendition.source_url}".encode()
-    ).hexdigest()[:10]
-    return f"{stem}-{digest}{_extension(asset.kind, rendition)}"
+    extension = _extension(asset.kind, rendition)
+    stable_identity = "\0".join(
+        (
+            asset.kind.value,
+            asset.id,
+            rendition.mime_type or "",
+            str(rendition.width or ""),
+            str(rendition.height or ""),
+            str(rendition.bitrate or ""),
+            str(rendition.size_bytes or ""),
+            extension,
+        )
+    )
+    digest = hashlib.sha256(stable_identity.encode()).hexdigest()[:10]
+    return f"{stem}-{digest}{extension}"
 
 
 def _extension(kind: MediaKind, rendition: MediaRendition) -> str:

@@ -1,7 +1,7 @@
 import unittest
 from datetime import UTC, datetime
 
-from zhihu_scraper.comments import fetch_comment_thread
+from zhihu_scraper.comments import InvalidCommentPayloadError, fetch_comment_thread
 
 
 class FakeClient:
@@ -15,6 +15,22 @@ class FakeClient:
 
 
 class CommentFetchingTests(unittest.TestCase):
+    def test_malformed_success_payload_has_a_distinct_error(self):
+        client = FakeClient(
+            {
+                "/api/v4/comment_v5/articles/123/root_comment?limit=10&offset=": {
+                    "error": {"message": "challenge"},
+                }
+            }
+        )
+
+        with self.assertRaises(InvalidCommentPayloadError):
+            fetch_comment_thread(
+                client,
+                target_kind="article",
+                target_id="123",
+            )
+
     def test_article_comments_preserve_api_order_and_normalize_replies(self):
         root_url = "/api/v4/comment_v5/articles/123/root_comment?limit=10&offset="
         reply_url = "/api/v4/comment_v5/comment/900/child_comment?limit=10&offset="

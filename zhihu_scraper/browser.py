@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Protocol, Self, cast
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from .platform import RuntimePlatform
 
@@ -51,6 +53,10 @@ class BrowserContext(Protocol):
 
     def add_cookies(self, cookies: list[dict[str, object]]) -> object: ...
 
+    def add_init_script(self, script: str) -> object: ...
+
+    def clear_cookies(self, *, name: str | None = None) -> object: ...
+
     def close(self) -> object: ...
 
 
@@ -65,6 +71,7 @@ class BrowserExecutor(Protocol):
         *,
         headless: bool,
         executable_path: Path | None,
+        proxy: str | None,
     ) -> BrowserContext: ...
 
     def close(self) -> object: ...
@@ -104,12 +111,16 @@ class _PlaywrightExecutor:
         *,
         headless: bool,
         executable_path: Path | None,
+        proxy: str | None,
     ) -> BrowserContext:
         try:
             playwright = self._start_playwright()
             options: dict[str, object] = {"headless": headless}
+            options["args"] = ["--disable-blink-features=AutomationControlled"]
             if executable_path is not None:
                 options["executable_path"] = str(executable_path)
+            if proxy is not None:
+                options["proxy"] = _playwright_proxy(proxy)
             return cast(
                 BrowserContext,
                 playwright.chromium.launch_persistent_context(
@@ -133,9 +144,8 @@ class _PlaywrightExecutor:
             from playwright.sync_api import sync_playwright
         except (ImportError, ModuleNotFoundError):
             raise BrowserDependencyError(
-                "Browser fallback requires the optional Playwright package. "
-                "Install `zhihu-scraper[full]`, then run "
-                "`playwright install chromium`."
+                "Browser fallback requires the Playwright runtime. Reinstall the project, "
+                "then run `playwright install chromium`."
             ) from None
         self._playwright = sync_playwright().start()
         return self._playwright
@@ -159,9 +169,11 @@ class BrowserFallback:
         cdp_url: str | None = None,
         profile_dir: Path | None = None,
         headless: bool = False,
+        proxy: str | None = None,
         timeout_ms: int = 30_000,
         runtime_platform: RuntimePlatform | None = None,
         executor: BrowserExecutor | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         if timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
@@ -169,13 +181,15 @@ class BrowserFallback:
             _validate_cdp_url(cdp_url)
         runtime = runtime_platform or RuntimePlatform.detect()
         self.profile_dir = profile_dir or (
-            Path(str(runtime.user_data_directory)) / "browser-profile"
+            Path(str(runtime.user_data_directory)) / "browser-profile-v4"
         )
         self.cdp_url = cdp_url
         self.headless = headless
+        self.proxy = proxy
         self.timeout_ms = timeout_ms
         self._runtime = runtime
         self._executor: BrowserExecutor = executor or _PlaywrightExecutor()
+        self._sleep = sleep
         self._context: BrowserContext | None = None
         self._closed = False
 
@@ -183,14 +197,16 @@ class BrowserFallback:
         _validate_zhihu_url(url)
         page: BrowserPage | None = None
         try:
-            page = self._ensure_context().new_page()
+            context = self._ensure_context()
+            self._clear_managed_challenge_cookies(context)
+            page = context.new_page()
             page.goto(
                 url,
                 wait_until="domcontentloaded",
                 timeout=self.timeout_ms,
             )
             page.wait_for_load_state("domcontentloaded", timeout=self.timeout_ms)
-            return page.content()
+            return self._stable_content(page)
         except BrowserFallbackError:
             raise
         except Exception:
@@ -205,6 +221,25 @@ class BrowserFallback:
                     # Per-page cleanup is best effort; closing the persistent
                     # context remains available through ``close``.
                     pass
+
+    def _clear_managed_challenge_cookies(self, context: BrowserContext) -> None:
+        """Repair only the app-owned profile after an earlier blocked request.
+
+        Zhihu can persist these two short-lived challenge cookies after an
+        automation-blocked navigation. Keeping them poisons later requests even
+        after a valid ``z_c0`` is imported. External CDP sessions belong to the
+        user and are deliberately left untouched.
+        """
+
+        if self.cdp_url is not None:
+            return
+        try:
+            for name in ("BEC", "__zse_ck"):
+                context.clear_cookies(name=name)
+        except Exception:
+            raise BrowserCookieError(
+                "The managed browser challenge cookies could not be refreshed."
+            ) from None
 
     def cookie_dict(self) -> dict[str, str]:
         """Return browser cookies scoped to Zhihu without logging their values."""
@@ -268,19 +303,50 @@ class BrowserFallback:
                 raise BrowserLaunchError(
                     "The running Chrome browser could not be connected."
                 ) from None
+            self._prepare_context(self._context)
             return self._context
         self.profile_dir.mkdir(parents=True, exist_ok=True)
+        installed_browser = self._installed_browser()
         try:
             self._context = self._executor.launch_persistent_context(
                 self.profile_dir,
                 headless=self.headless,
-                executable_path=self._installed_browser(),
+                executable_path=installed_browser,
+                proxy=self.proxy,
+            )
+        except BrowserLaunchError:
+            if installed_browser is None:
+                raise
+            self._context = self._executor.launch_persistent_context(
+                self.profile_dir,
+                headless=self.headless,
+                executable_path=None,
+                proxy=self.proxy,
             )
         except BrowserFallbackError:
             raise
         except Exception:
             raise BrowserLaunchError("The persistent browser could not be started.") from None
+        self._prepare_context(self._context)
         return self._context
+
+    def _prepare_context(self, context: BrowserContext) -> None:
+        try:
+            context.add_init_script(_BROWSER_INIT_SCRIPT)
+        except Exception:
+            raise BrowserLaunchError(
+                "The browser context could not be prepared for Zhihu navigation."
+            ) from None
+
+    def _stable_content(self, page: BrowserPage) -> str:
+        for attempt in range(5):
+            try:
+                return page.content()
+            except Exception:
+                if attempt == 4:
+                    raise
+                self._sleep(0.25)
+        raise AssertionError("content retry loop must return or raise")
 
     def _installed_browser(self) -> Path | None:
         for candidate in self._runtime.browser_candidates:
@@ -337,6 +403,20 @@ def _validate_zhihu_url(url: str) -> None:
         raise BrowserNavigationError("Browser fallback only opens trusted Zhihu HTTPS pages.")
 
 
+_BROWSER_INIT_SCRIPT = """\
+(() => {
+  const navigatorPrototype = Object.getPrototypeOf(navigator);
+  const descriptor = Object.getOwnPropertyDescriptor(navigatorPrototype, "webdriver");
+  if (descriptor && descriptor.configurable) {
+    Object.defineProperty(navigatorPrototype, "webdriver", {
+      configurable: true,
+      get: () => undefined,
+    });
+  }
+})();
+"""
+
+
 def _validate_cdp_url(url: str) -> None:
     """Keep the authenticated browser-control channel on this machine."""
 
@@ -360,3 +440,31 @@ def _validate_cdp_url(url: str) -> None:
             "CDP connection requires a loopback HTTP or WebSocket URL "
             "(127.0.0.1, localhost, or [::1])."
         )
+
+
+def _playwright_proxy(proxy: str) -> dict[str, str]:
+    """Translate one proxy URL without retaining credentials in its server field."""
+
+    try:
+        parsed = urlparse(proxy)
+        parsed.port
+    except ValueError:
+        raise BrowserLaunchError("Browser proxy must be a valid HTTP or HTTPS URL.") from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        raise BrowserLaunchError("Browser proxy must be a valid HTTP or HTTPS URL.")
+
+    server_netloc = parsed.netloc.rsplit("@", 1)[-1]
+    options = {
+        "server": parsed._replace(netloc=server_netloc, path="").geturl(),
+    }
+    if parsed.username is not None:
+        options["username"] = unquote(parsed.username)
+    if parsed.password is not None:
+        options["password"] = unquote(parsed.password)
+    return options

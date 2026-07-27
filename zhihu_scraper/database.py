@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import closing
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,9 +22,13 @@ from .domain import (
     ListBlock,
     MediaAsset,
     MediaBlock,
+    MediaKind,
+    MediaRendition,
+    Paragraph,
     Question,
     QuestionArchive,
     Quote,
+    Text,
     Video,
 )
 from .render import content_plain_text
@@ -121,30 +127,129 @@ class ArchiveDatabase:
         media_paths: Mapping[str, str] | None = None,
     ) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as connection:
-            connection.execute("PRAGMA foreign_keys = ON")
-            connection.execute("PRAGMA busy_timeout = 5000")
-            connection.executescript(_SCHEMA)
-            if isinstance(target, Article):
-                self._save_article(connection, target, media_paths=media_paths or {})
-            elif isinstance(target, Answer):
-                self._save_answer(connection, target, media_paths=media_paths or {})
-            elif isinstance(target, QuestionArchive):
-                self._save_question_archive(
-                    connection,
-                    target,
-                    media_paths=media_paths or {},
+        with closing(sqlite3.connect(self.path)) as connection:
+            with connection:
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("PRAGMA busy_timeout = 5000")
+                connection.executescript(_SCHEMA)
+                if isinstance(target, Article):
+                    self._save_article(connection, target, media_paths=media_paths or {})
+                elif isinstance(target, Answer):
+                    self._save_answer(connection, target, media_paths=media_paths or {})
+                elif isinstance(target, QuestionArchive):
+                    self._save_question_archive(
+                        connection,
+                        target,
+                        media_paths=media_paths or {},
+                    )
+                elif isinstance(target, ColumnArchive):
+                    self._save_column_archive(
+                        connection,
+                        target,
+                        media_paths=media_paths or {},
+                    )
+                elif isinstance(target, Video):
+                    self._save_video(connection, target, media_paths=media_paths or {})
+                else:
+                    raise TypeError(f"unsupported archive target: {type(target).__name__}")
+
+    def load_comment_thread(self, content_key: str) -> CommentThread | None:
+        """Restore the last explicitly fetched thread for a no-fetch rearchive."""
+
+        if not self.path.is_file():
+            return None
+        try:
+            with closing(sqlite3.connect(self.path)) as connection:
+                connection.row_factory = sqlite3.Row
+                fetch = connection.execute(
+                    """
+                    SELECT source_order, roots_complete, root_limit, reply_limit
+                    FROM comment_fetches
+                    WHERE content_key = ?
+                    """,
+                    (content_key,),
+                ).fetchone()
+                if fetch is None:
+                    return None
+                rows = connection.execute(
+                    """
+                    SELECT id, parent_id, ordinal, author_id, author_name,
+                           created_at, like_count, body_text, replies_complete
+                    FROM comments
+                    WHERE content_key = ?
+                    ORDER BY depth, ordinal, id
+                    """,
+                    (content_key,),
+                ).fetchall()
+        except sqlite3.Error:
+            return None
+
+        children: dict[str | None, list[sqlite3.Row]] = {}
+        for row in rows:
+            parent_id = row["parent_id"]
+            children.setdefault(parent_id if isinstance(parent_id, str) else None, []).append(row)
+
+        def restore(row: sqlite3.Row) -> Comment:
+            comment_id = str(row["id"])
+            author_name = row["author_name"]
+            author = (
+                Author(
+                    id=row["author_id"] if isinstance(row["author_id"], str) else None,
+                    name=author_name,
                 )
-            elif isinstance(target, ColumnArchive):
-                self._save_column_archive(
-                    connection,
-                    target,
-                    media_paths=media_paths or {},
-                )
-            elif isinstance(target, Video):
-                self._save_video(connection, target, media_paths=media_paths or {})
-            else:
-                raise TypeError(f"unsupported archive target: {type(target).__name__}")
+                if isinstance(author_name, str) and author_name
+                else None
+            )
+            body_text = row["body_text"] if isinstance(row["body_text"], str) else ""
+            return Comment(
+                id=comment_id,
+                author=author,
+                blocks=(Paragraph((Text(body_text),)),) if body_text else (),
+                created_at=_datetime_from_iso(row["created_at"]),
+                like_count=int(row["like_count"]),
+                replies=tuple(restore(child) for child in children.get(comment_id, [])),
+                replies_complete=bool(row["replies_complete"]),
+            )
+
+        return CommentThread(
+            comments=tuple(restore(row) for row in children.get(None, [])),
+            order=str(fetch["source_order"]),
+            roots_complete=bool(fetch["roots_complete"]),
+            root_limit=int(fetch["root_limit"]),
+            reply_limit=int(fetch["reply_limit"]),
+        )
+
+    def load_media_paths(self, content_keys: Iterable[str]) -> dict[str, str]:
+        """Return existing local paths keyed by rendition URL and stable asset ID."""
+
+        keys = tuple(dict.fromkeys(content_keys))
+        if not keys or not self.path.is_file():
+            return {}
+        placeholders = ", ".join("?" for _ in keys)
+        try:
+            with closing(sqlite3.connect(self.path)) as connection:
+                rows = connection.execute(
+                    f"""
+                    SELECT asset_id, source_url, archive_path
+                    FROM media
+                    WHERE content_key IN ({placeholders})
+                      AND archive_path IS NOT NULL
+                    ORDER BY content_key, ordinal, source_url
+                    """,
+                    keys,
+                ).fetchall()
+        except sqlite3.Error:
+            return {}
+
+        paths: dict[str, str] = {}
+        for asset_id, source_url, archive_path in rows:
+            if not isinstance(archive_path, str) or not archive_path:
+                continue
+            if isinstance(source_url, str) and source_url:
+                paths.setdefault(source_url, archive_path)
+            if isinstance(asset_id, str) and asset_id:
+                paths.setdefault(asset_id, archive_path)
+        return paths
 
     def _save_article(
         self,
@@ -185,14 +290,17 @@ class ArchiveDatabase:
                 f"column:{column.token}",
                 article.source_url,
             )
+        self._replace_comments(connection, key, article.source_url, article.comments)
         self._replace_media(
             connection,
             key,
             article.source_url,
             article.blocks,
+            comments=article.comments,
+            cover_url=article.cover_url,
+            cover_asset_id=f"article-{article.id}-cover",
             media_paths=media_paths,
         )
-        self._replace_comments(connection, key, article.source_url, article.comments)
 
     def _save_answer(
         self,
@@ -221,14 +329,15 @@ class ArchiveDatabase:
             f"question:{answer.question.id}",
             answer.source_url,
         )
+        self._replace_comments(connection, key, answer.source_url, answer.comments)
         self._replace_media(
             connection,
             key,
             answer.source_url,
             answer.blocks,
+            comments=answer.comments,
             media_paths=media_paths,
         )
-        self._replace_comments(connection, key, answer.source_url, answer.comments)
 
     def _save_question_archive(
         self,
@@ -342,14 +451,24 @@ class ArchiveDatabase:
             updated_at=video.updated_at,
             blocks=video.description,
         )
+        self._replace_comments(connection, key, video.source_url, video.comments)
         self._replace_media_assets(
             connection,
             key,
             video.source_url,
-            (video.asset,),
+            tuple(
+                _owned_media(
+                    content_key=key,
+                    blocks=video.description,
+                    comments=video.comments,
+                    cover_url=video.cover_url,
+                    cover_asset_id=f"zvideo-{video.id}-cover",
+                    primary_assets=(video.asset,),
+                )
+            ),
             media_paths=media_paths,
+            replace_comment_media=video.comments is not None,
         )
-        self._replace_comments(connection, key, video.source_url, video.comments)
 
     def _save_content(
         self,
@@ -366,6 +485,7 @@ class ArchiveDatabase:
         blocks: Sequence[Block],
         archived_at: datetime | None = None,
     ) -> None:
+        self._clear_content_state(connection, key)
         self._save_author(connection, author)
         connection.execute(
             """
@@ -406,6 +526,22 @@ class ArchiveDatabase:
                 f"author:{author.id}",
                 source_url,
             )
+
+    @staticmethod
+    def _clear_content_state(
+        connection: sqlite3.Connection,
+        content_key: str,
+    ) -> None:
+        """Remove derived rows before rebuilding one content's current state."""
+
+        connection.execute(
+            """
+            DELETE FROM relations
+            WHERE subject_key = ?
+              AND predicate NOT IN ('has_comment', 'contains', 'has_cover')
+            """,
+            (content_key,),
+        )
 
     @staticmethod
     def _save_author(
@@ -450,14 +586,26 @@ class ArchiveDatabase:
         source_url: str,
         blocks: Sequence[Block],
         *,
+        comments: CommentThread | None = None,
+        cover_url: str | None = None,
+        cover_asset_id: str | None = None,
         media_paths: Mapping[str, str],
     ) -> None:
         self._replace_media_assets(
             connection,
             content_key,
             source_url,
-            tuple(_walk_media(blocks)),
+            tuple(
+                _owned_media(
+                    content_key=content_key,
+                    blocks=blocks,
+                    comments=comments,
+                    cover_url=cover_url,
+                    cover_asset_id=cover_asset_id,
+                )
+            ),
             media_paths=media_paths,
+            replace_comment_media=comments is not None,
         )
 
     def _replace_media_assets(
@@ -465,42 +613,132 @@ class ArchiveDatabase:
         connection: sqlite3.Connection,
         content_key: str,
         source_url: str,
-        assets: Sequence[MediaAsset],
+        media: Sequence[_OwnedMedia],
         *,
         media_paths: Mapping[str, str],
+        replace_comment_media: bool = False,
     ) -> None:
-        connection.execute("DELETE FROM media WHERE content_key = ?", (content_key,))
-        for ordinal, asset in enumerate(assets):
-            for rendition in asset.renditions:
-                connection.execute(
+        existing_paths = {
+            (asset_id, rendition_url): archive_path
+            for asset_id, rendition_url, archive_path in connection.execute(
+                """
+                SELECT asset_id, source_url, archive_path
+                FROM media
+                WHERE content_key = ? AND archive_path IS NOT NULL
+                """,
+                (content_key,),
+            )
+        }
+        preserved_comment_assets: set[str] = set()
+        if not replace_comment_media:
+            preserved_comment_assets = {
+                object_key.removeprefix("media:")
+                for (object_key,) in connection.execute(
                     """
-                    INSERT INTO media (
-                        content_key, asset_id, kind, ordinal, source_url,
-                        archive_path, mime_type, width, height, bitrate, size_bytes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    SELECT object_key
+                    FROM relations
+                    WHERE object_key LIKE 'media:%'
+                      AND subject_key IN (
+                          SELECT 'comment:' || id
+                          FROM comments
+                          WHERE content_key = ?
+                      )
                     """,
-                    (
-                        content_key,
-                        asset.id,
-                        asset.kind.value,
-                        ordinal,
-                        rendition.source_url,
-                        (
-                            asset.archive_path
-                            or media_paths.get(rendition.source_url)
-                            or media_paths.get(asset.id)
-                        ),
-                        rendition.mime_type,
-                        rendition.width,
-                        rendition.height,
-                        rendition.bitrate,
-                        rendition.size_bytes,
-                    ),
+                    (content_key,),
                 )
+            }
+        if preserved_comment_assets:
+            placeholders = ", ".join("?" for _ in preserved_comment_assets)
+            connection.execute(
+                f"""
+                DELETE FROM media
+                WHERE content_key = ?
+                  AND asset_id NOT IN ({placeholders})
+                """,
+                (content_key, *sorted(preserved_comment_assets)),
+            )
+        else:
+            connection.execute("DELETE FROM media WHERE content_key = ?", (content_key,))
+
+        connection.execute(
+            """
+            DELETE FROM relations
+            WHERE subject_key = ?
+              AND predicate IN ('contains', 'has_cover')
+              AND object_key LIKE 'media:%'
+            """,
+            (content_key,),
+        )
+        if replace_comment_media:
+            connection.execute(
+                """
+                DELETE FROM relations
+                WHERE object_key LIKE 'media:%'
+                  AND subject_key IN (
+                      SELECT 'comment:' || id
+                      FROM comments
+                      WHERE content_key = ?
+                  )
+                """,
+                (content_key,),
+            )
+        seen_assets: set[str] = set()
+        seen_renditions: set[tuple[str, str]] = set()
+        asset_ordinals: dict[str, int] = {}
+        for owned in media:
+            asset = owned.asset
+            available = tuple(
+                rendition for rendition in asset.renditions if rendition.source_url.strip()
+            )
+            if not available:
+                continue
+            ordinal = asset_ordinals.setdefault(asset.id, len(asset_ordinals))
+            if asset.id not in seen_assets:
+                seen_assets.add(asset.id)
+                for rendition in available:
+                    rendition_key = (asset.id, rendition.source_url)
+                    if rendition_key in seen_renditions:
+                        continue
+                    seen_renditions.add(rendition_key)
+                    connection.execute(
+                        """
+                        INSERT INTO media (
+                            content_key, asset_id, kind, ordinal, source_url,
+                            archive_path, mime_type, width, height, bitrate, size_bytes
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(content_key, asset_id, source_url) DO UPDATE SET
+                            kind = excluded.kind,
+                            ordinal = excluded.ordinal,
+                            archive_path = COALESCE(excluded.archive_path, media.archive_path),
+                            mime_type = excluded.mime_type,
+                            width = excluded.width,
+                            height = excluded.height,
+                            bitrate = excluded.bitrate,
+                            size_bytes = excluded.size_bytes
+                        """,
+                        (
+                            content_key,
+                            asset.id,
+                            asset.kind.value,
+                            ordinal,
+                            rendition.source_url,
+                            (
+                                asset.archive_path
+                                or media_paths.get(rendition.source_url)
+                                or media_paths.get(asset.id)
+                                or existing_paths.get((asset.id, rendition.source_url))
+                            ),
+                            rendition.mime_type,
+                            rendition.width,
+                            rendition.height,
+                            rendition.bitrate,
+                            rendition.size_bytes,
+                        ),
+                    )
             self._save_relation(
                 connection,
-                content_key,
-                "contains",
+                owned.subject_key,
+                owned.predicate,
                 f"media:{asset.id}",
                 source_url,
             )
@@ -514,7 +752,23 @@ class ArchiveDatabase:
     ) -> None:
         if thread is None:
             return
+        connection.execute(
+            """
+            DELETE FROM relations
+            WHERE (subject_key = ? AND predicate = 'has_comment')
+               OR subject_key IN (
+                   SELECT 'comment:' || id
+                   FROM comments
+                   WHERE content_key = ?
+               )
+            """,
+            (content_key, content_key),
+        )
         connection.execute("DELETE FROM comments WHERE content_key = ?", (content_key,))
+        connection.execute(
+            "DELETE FROM comment_fetches WHERE content_key = ?",
+            (content_key,),
+        )
         connection.execute(
             """
             INSERT INTO comment_fetches (
@@ -606,6 +860,51 @@ class ArchiveDatabase:
             )
 
 
+@dataclass(frozen=True, slots=True)
+class _OwnedMedia:
+    asset: MediaAsset
+    subject_key: str
+    predicate: str
+
+
+def _owned_media(
+    *,
+    content_key: str,
+    blocks: Iterable[Block],
+    comments: CommentThread | None = None,
+    cover_url: str | None = None,
+    cover_asset_id: str | None = None,
+    primary_assets: Iterable[MediaAsset] = (),
+) -> Iterable[_OwnedMedia]:
+    """Enumerate every asset with the entity and role that owns it."""
+
+    for asset in primary_assets:
+        yield _OwnedMedia(asset, content_key, "contains")
+    for asset in _walk_media(blocks):
+        yield _OwnedMedia(asset, content_key, "contains")
+    if comments is not None:
+        for comment in comments.comments:
+            yield from _comment_media(comment)
+    if cover_url and cover_asset_id:
+        yield _OwnedMedia(
+            MediaAsset(
+                id=cover_asset_id,
+                kind=MediaKind.IMAGE,
+                renditions=(MediaRendition(source_url=cover_url),),
+            ),
+            content_key,
+            "has_cover",
+        )
+
+
+def _comment_media(comment: Comment) -> Iterable[_OwnedMedia]:
+    owner_key = f"comment:{comment.id}"
+    for asset in _walk_media(comment.blocks):
+        yield _OwnedMedia(asset, owner_key, "contains")
+    for reply in comment.replies:
+        yield from _comment_media(reply)
+
+
 def _walk_media(blocks: Iterable[Block]) -> Iterable[MediaAsset]:
     for block in blocks:
         if isinstance(block, MediaBlock):
@@ -619,3 +918,12 @@ def _walk_media(blocks: Iterable[Block]) -> Iterable[MediaAsset]:
 
 def _isoformat(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+def _datetime_from_iso(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None

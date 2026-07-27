@@ -1,15 +1,20 @@
 import json
 import unittest
 from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
 
 from zhihu_scraper.application import ArchiveWorkflow
+from zhihu_scraper.assets import MediaArchiveFailure, MediaArchiveRole
 from zhihu_scraper.domain import (
     Answer,
     Article,
     ColumnArchive,
+    MediaKind,
     QuestionArchive,
     Video,
 )
+from zhihu_scraper.http import InvalidResponseError
 from zhihu_scraper.settings import ArchiveSettings, BrowserFallback
 from zhihu_scraper.source import InvalidZhihuPayloadError
 
@@ -89,10 +94,11 @@ class FakeCommentClient:
 
 
 class FakeBrowser:
-    def __init__(self, html):
+    def __init__(self, html, exported_cookies=None):
         self.html = html
         self.urls = []
         self.cookies = None
+        self.exported_cookies = dict(exported_cookies or {})
         self.closed = False
 
     def set_cookie_dict(self, cookies):
@@ -102,6 +108,9 @@ class FakeBrowser:
         self.urls.append(url)
         return self.html
 
+    def cookie_dict(self):
+        return dict(self.exported_cookies)
+
     def __enter__(self):
         return self
 
@@ -110,6 +119,32 @@ class FakeBrowser:
 
 
 class ArchiveWorkflowTests(unittest.TestCase):
+    def test_report_exposes_structured_media_failures_from_the_archive_sink(self):
+        failure = MediaArchiveFailure(
+            asset_id="missing-image",
+            kind=MediaKind.IMAGE,
+            role=MediaArchiveRole.CONTENT,
+            source_url="https://pic.example/missing.png",
+            destination=Path("media/missing.png"),
+            error_type="MediaDownloadError",
+            reason="unexpected HTTP status 404",
+        )
+
+        class FailureReportingSink(FakeSink):
+            def archive(self, target):
+                self.targets.append(target)
+                return SimpleNamespace(media_failures=(failure,))
+
+        report = ArchiveWorkflow(
+            source=FakeSource(),
+            sink=FailureReportingSink(),
+            settings=ArchiveSettings(media_download=False),
+            clock=lambda: NOW,
+        ).run("https://zhuanlan.zhihu.com/p/1")
+
+        self.assertEqual((failure,), report.media_failures)
+        self.assertIn("404", report.media_failures[0].display_message)
+
     def test_routes_and_archives_every_supported_target_type(self):
         cases = (
             ("https://zhuanlan.zhihu.com/p/1", Article),
@@ -204,8 +239,10 @@ class ArchiveWorkflowTests(unittest.TestCase):
             }
         }
         browser = FakeBrowser(
-            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>'
+            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>',
+            exported_cookies={"__zse_ck": "browser-session"},
         )
+        browser_cookie_updates = []
         workflow = ArchiveWorkflow(
             source=source,
             sink=FakeSink(),
@@ -215,6 +252,7 @@ class ArchiveWorkflowTests(unittest.TestCase):
             ),
             browser_factory=lambda: browser,
             browser_cookies={"z_c0": "secret"},
+            browser_cookie_sink=browser_cookie_updates.append,
             clock=lambda: NOW,
         )
 
@@ -223,7 +261,229 @@ class ArchiveWorkflowTests(unittest.TestCase):
         self.assertEqual("浏览器文章", report.target.title)
         self.assertTrue(report.used_browser)
         self.assertEqual({"z_c0": "secret"}, browser.cookies)
+        self.assertEqual(
+            [{"__zse_ck": "browser-session"}],
+            browser_cookie_updates,
+        )
         self.assertTrue(browser.closed)
+
+    def test_auto_browser_fallback_replaces_a_truncated_success_payload(self):
+        source = FakeSource()
+        source.article = {
+            "id": "1",
+            "title": "被裁剪的文章",
+            "author": {"id": "a", "name": "文章作者"},
+        }
+        complete = _article_payload("1", "浏览器完整文章")
+        complete["content"] = "<p>不能静默丢失的完整正文</p>"
+        state = {
+            "initialState": {
+                "entities": {
+                    "articles": {
+                        "1": complete,
+                    }
+                }
+            }
+        }
+        browser = FakeBrowser(
+            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>'
+        )
+
+        report = ArchiveWorkflow(
+            source=source,
+            sink=FakeSink(),
+            settings=ArchiveSettings(media_download=False),
+            browser_factory=lambda: browser,
+            clock=lambda: NOW,
+        ).run("https://zhuanlan.zhihu.com/p/1")
+
+        self.assertEqual("浏览器完整文章", report.target.title)
+        self.assertEqual("不能静默丢失的完整正文", report.target.blocks[0].inlines[0].text)
+        self.assertTrue(report.used_browser)
+
+    def test_question_retries_truncated_answer_collection_after_browser_hydration(self):
+        source = FakeSource()
+        source.answers = [
+            {
+                "id": "2",
+                "question": {"id": "10", "title": "问题"},
+                "author": {"id": "b", "name": "回答作者"},
+            }
+        ]
+        state = {
+            "initialState": {
+                "entities": {
+                    "questions": {
+                        "10": source.question,
+                    }
+                }
+            }
+        }
+        browser = FakeBrowser(
+            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>',
+            exported_cookies={"__zse_ck": "browser-session"},
+        )
+
+        def update_session(_cookies):
+            source.answers = [_answer_payload("2", "10")]
+
+        report = ArchiveWorkflow(
+            source=source,
+            sink=FakeSink(),
+            settings=ArchiveSettings(media_download=False),
+            browser_factory=lambda: browser,
+            browser_cookie_sink=update_session,
+            clock=lambda: NOW,
+        ).run("https://www.zhihu.com/question/10")
+
+        self.assertIsInstance(report.target, QuestionArchive)
+        self.assertEqual("回答", report.target.answers[0].blocks[0].inlines[0].text)
+        self.assertTrue(report.used_browser)
+
+    def test_question_pagination_retries_after_browser_cookie_backflow(self):
+        source = FakeSource()
+        source.session_ready = False
+
+        def fail_question(target):
+            raise InvalidZhihuPayloadError("blocked")
+
+        def gated_answers(target, *, page_size):
+            if not source.session_ready:
+                raise InvalidZhihuPayloadError("missing browser session")
+            yield source.answer
+
+        source.fetch_question_payload = fail_question
+        source.iter_question_answer_payloads = gated_answers
+        state = {
+            "initialState": {
+                "entities": {
+                    "questions": {
+                        "10": source.question,
+                    }
+                }
+            }
+        }
+        browser = FakeBrowser(
+            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>',
+            exported_cookies={"__zse_ck": "browser-session"},
+        )
+
+        def update_session(cookies):
+            self.assertEqual({"__zse_ck": "browser-session"}, cookies)
+            source.session_ready = True
+
+        report = ArchiveWorkflow(
+            source=source,
+            sink=FakeSink(),
+            settings=ArchiveSettings(media_download=False),
+            browser_factory=lambda: browser,
+            browser_cookie_sink=update_session,
+            clock=lambda: NOW,
+        ).run("https://www.zhihu.com/question/10")
+
+        self.assertIsInstance(report.target, QuestionArchive)
+        self.assertEqual(1, len(report.target.answers))
+        self.assertTrue(report.used_browser)
+
+    def test_comments_retry_once_after_browser_cookie_backflow(self):
+        source = FakeSource()
+        state = {
+            "initialState": {
+                "entities": {
+                    "articles": {
+                        "1": source.article,
+                    }
+                }
+            }
+        }
+        browser = FakeBrowser(
+            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>',
+            exported_cookies={"__zse_ck": "browser-session"},
+        )
+
+        class GatedCommentClient(FakeCommentClient):
+            def __init__(self):
+                super().__init__()
+                self.session_ready = False
+
+            def get_json(self, url):
+                self.calls.append(url)
+                if not self.session_ready:
+                    raise InvalidResponseError("blocked")
+                return {
+                    "data": [],
+                    "paging": {"is_end": True, "next": ""},
+                }
+
+        comments = GatedCommentClient()
+
+        def update_session(cookies):
+            self.assertEqual({"__zse_ck": "browser-session"}, cookies)
+            comments.session_ready = True
+
+        report = ArchiveWorkflow(
+            source=source,
+            sink=FakeSink(),
+            settings=ArchiveSettings(
+                comments=True,
+                media_download=False,
+            ),
+            comment_client=comments,
+            browser_factory=lambda: browser,
+            browser_cookie_sink=update_session,
+            clock=lambda: NOW,
+        ).run("https://zhuanlan.zhihu.com/p/1")
+
+        self.assertIsNotNone(report.target.comments)
+        self.assertEqual(2, len(comments.calls))
+        self.assertTrue(report.used_browser)
+        self.assertEqual(
+            ["https://zhuanlan.zhihu.com/p/1"],
+            browser.urls,
+        )
+
+    def test_invalid_comment_payload_uses_the_same_browser_hydration_path(self):
+        source = FakeSource()
+        state = {
+            "initialState": {
+                "entities": {
+                    "articles": {
+                        "1": source.article,
+                    }
+                }
+            }
+        }
+        browser = FakeBrowser(
+            f'<script id="js-initialData">{json.dumps(state, ensure_ascii=False)}</script>',
+            exported_cookies={"__zse_ck": "browser-session"},
+        )
+
+        class InvalidThenReadyComments(FakeCommentClient):
+            def __init__(self):
+                super().__init__()
+                self.ready = False
+
+            def get_json(self, url):
+                self.calls.append(url)
+                if not self.ready:
+                    return {"error": {"message": "challenge"}}
+                return {"data": [], "paging": {"is_end": True, "next": ""}}
+
+        comments = InvalidThenReadyComments()
+
+        report = ArchiveWorkflow(
+            source=source,
+            sink=FakeSink(),
+            settings=ArchiveSettings(comments=True, media_download=False),
+            comment_client=comments,
+            browser_factory=lambda: browser,
+            browser_cookie_sink=lambda _cookies: setattr(comments, "ready", True),
+            clock=lambda: NOW,
+        ).run("https://zhuanlan.zhihu.com/p/1")
+
+        self.assertIsNotNone(report.target.comments)
+        self.assertEqual(2, len(comments.calls))
+        self.assertTrue(report.used_browser)
 
     def test_browser_never_preserves_the_original_fetch_error(self):
         source = FakeSource()

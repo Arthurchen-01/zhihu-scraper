@@ -14,6 +14,10 @@ class CommentClient(Protocol):
     def get_json(self, url_or_path: str) -> object: ...
 
 
+class InvalidCommentPayloadError(ValueError):
+    """A 200 response whose comment structure cannot be trusted."""
+
+
 def fetch_comment_thread(
     client: CommentClient,
     *,
@@ -93,7 +97,7 @@ def _fetch_bounded_pages(
     visited: set[str] = set()
     while next_url:
         if next_url in visited:
-            raise ValueError("Zhihu comment paging contains a loop.")
+            raise InvalidCommentPayloadError("Zhihu comment paging contains a loop.")
         visited.add(next_url)
         data, is_end, following_url = _page(client.get_json(next_url))
         remaining = limit - len(items)
@@ -110,33 +114,33 @@ def _fetch_bounded_pages(
 
 def _page(payload: object) -> tuple[list[object], bool, str]:
     if not isinstance(payload, Mapping):
-        raise ValueError("Zhihu comment page must be an object.")
+        raise InvalidCommentPayloadError("Zhihu comment page must be an object.")
     data = payload.get("data")
     paging = payload.get("paging")
     if not isinstance(data, list) or not isinstance(paging, Mapping):
-        raise ValueError("Zhihu comment page is missing data or paging.")
+        raise InvalidCommentPayloadError("Zhihu comment page is missing data or paging.")
     end = paging.get("is_end", paging.get("end"))
     if not isinstance(end, bool):
-        raise ValueError("Zhihu comment page has an invalid paging end flag.")
+        raise InvalidCommentPayloadError("Zhihu comment page has an invalid paging end flag.")
     raw_next = paging.get("next")
     if end:
         next_url = ""
     elif isinstance(raw_next, str) and raw_next.strip():
         next_url = raw_next.strip()
     else:
-        raise ValueError("Zhihu comment page is missing its next page URL.")
+        raise InvalidCommentPayloadError("Zhihu comment page is missing its next page URL.")
     return data, end, next_url
 
 
 def _normalize_comment(payload: object) -> Comment:
     if not isinstance(payload, Mapping):
-        raise ValueError("Zhihu comment must be an object.")
+        raise InvalidCommentPayloadError("Zhihu comment must be an object.")
     raw_id = payload.get("id")
     if not isinstance(raw_id, (str, int)) or not str(raw_id).strip():
-        raise ValueError("Zhihu comment is missing an id.")
+        raise InvalidCommentPayloadError("Zhihu comment is missing an id.")
     content = payload.get("content")
     if not isinstance(content, str):
-        raise ValueError("Zhihu comment is missing content.")
+        raise InvalidCommentPayloadError("Zhihu comment is missing content.")
     raw_created = payload.get("created_time")
     if raw_created is None:
         created_at = None
@@ -144,16 +148,16 @@ def _normalize_comment(payload: object) -> Comment:
         try:
             created_at = datetime.fromtimestamp(raw_created, tz=UTC)
         except (OSError, OverflowError, ValueError):
-            raise ValueError("Zhihu comment has an invalid created_time.") from None
+            raise InvalidCommentPayloadError("Zhihu comment has an invalid created_time.") from None
     else:
-        raise ValueError("Zhihu comment has an invalid created_time.")
+        raise InvalidCommentPayloadError("Zhihu comment has an invalid created_time.")
     raw_like_count = payload.get("like_count", 0)
     if (
         not isinstance(raw_like_count, int)
         or isinstance(raw_like_count, bool)
         or raw_like_count < 0
     ):
-        raise ValueError("Zhihu comment has an invalid like_count.")
+        raise InvalidCommentPayloadError("Zhihu comment has an invalid like_count.")
     like_count = raw_like_count
     return Comment(
         id=str(raw_id),

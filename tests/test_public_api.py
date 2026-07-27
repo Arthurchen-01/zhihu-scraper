@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from zhihu_scraper.domain import Article
-from zhihu_scraper.facade import build_workflow, check_session
+from zhihu_scraper.facade import archive_url, build_workflow, check_session
 from zhihu_scraper.http import LoginStatus
 from zhihu_scraper.settings import ArchiveSettings, BrowserFallback
 
@@ -36,6 +36,18 @@ class FakeSink:
 
 
 class PublicApiTests(unittest.TestCase):
+    def test_archive_url_closes_the_internally_built_workflow(self):
+        workflow = Mock()
+        workflow.run.return_value = "report"
+        with patch("zhihu_scraper.facade.build_workflow", return_value=workflow):
+            result = archive_url(
+                "https://zhuanlan.zhihu.com/p/1",
+                ArchiveSettings(media_download=False),
+            )
+
+        self.assertEqual(result, "report")
+        workflow.close.assert_called_once_with()
+
     def test_build_workflow_exposes_injectable_source_and_sink_boundaries(self):
         client = FakeClient()
         sink = FakeSink()
@@ -84,6 +96,7 @@ class PublicApiTests(unittest.TestCase):
         self.assertTrue(report.cookie_diagnostic.is_complete)
         self.assertTrue(report.login_status.authenticated)
         self.assertNotIn(secret, repr(report))
+        fake_client.close.assert_called_once_with()
 
 
 if __name__ == "__main__":

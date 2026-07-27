@@ -189,7 +189,7 @@ class SinglePayloadSourceTests(unittest.TestCase):
             (
                 "fetch_answer_payload",
                 "https://www.zhihu.com/question/100/answer/200",
-                "/api/v4/answers/200",
+                "/api/v4/answers/200?include=content,voteup_count,question,author",
                 {"id": 200, "content": "<p>回答</p>"},
             ),
             (
@@ -252,6 +252,7 @@ class PaginationSourceTests(unittest.TestCase):
         next_url = (
             "https://www.zhihu.com/api/v4/questions/100/answers"
             "?limit=2&offset=2&platform=desktop&sort_by=default"
+            "&include=data%5B%2A%5D.content%2Cvoteup_count%2Ccomment_count"
         )
         client = FakeClient(
             json_responses=[
@@ -272,7 +273,11 @@ class PaginationSourceTests(unittest.TestCase):
         self.assertEqual([{"id": 1}, {"id": 2}, {"id": 3}], answers)
         self.assertEqual(
             [
-                ("/api/v4/questions/100/answers?limit=2&offset=0&platform=desktop&sort_by=default"),
+                (
+                    "/api/v4/questions/100/answers?limit=2&offset=0"
+                    "&platform=desktop&sort_by=default"
+                    "&include=data%5B%2A%5D.content%2Cvoteup_count%2Ccomment_count"
+                ),
                 next_url,
             ],
             client.json_calls,
@@ -305,6 +310,76 @@ class PaginationSourceTests(unittest.TestCase):
             [
                 "/api/v4/columns/machinelearningpku/items?limit=2&offset=0",
                 "/api/v4/columns/machinelearningpku/items?limit=2&offset=2",
+            ],
+            client.json_calls,
+        )
+
+    def test_deduplicates_overlapping_pages_by_stable_id_preserving_first_seen_order(self):
+        client = FakeClient(
+            json_responses=[
+                {
+                    "data": [
+                        {"id": 11, "title": "first"},
+                        {"id": "12", "title": "original"},
+                    ],
+                    "paging": {"is_end": False},
+                },
+                {
+                    "data": [
+                        {"id": 12, "title": "duplicate"},
+                        {"id": 13, "title": "last"},
+                    ],
+                    "paging": {"is_end": True},
+                },
+            ]
+        )
+
+        articles = list(
+            ZhihuSource(client).iter_column_article_payloads(
+                "machinelearningpku",
+                page_size=2,
+            )
+        )
+
+        self.assertEqual(
+            [
+                {"id": 11, "title": "first"},
+                {"id": "12", "title": "original"},
+                {"id": 13, "title": "last"},
+            ],
+            articles,
+        )
+
+    def test_normalizes_legacy_http_next_from_the_same_zhihu_endpoint(self):
+        insecure_next = (
+            "http://www.zhihu.com/api/v4/columns/machinelearningpku/items?limit=2&offset=2"
+        )
+        secure_next = insecure_next.replace("http://", "https://", 1)
+        client = FakeClient(
+            json_responses=[
+                {
+                    "data": [{"id": 11}, {"id": 12}],
+                    "paging": {"is_end": False, "next": insecure_next},
+                },
+                {
+                    "data": [{"id": 13}],
+                    "paging": {"is_end": True, "next": ""},
+                },
+            ]
+        )
+
+        articles = list(
+            ZhihuSource(client).iter_column_article_payloads(
+                "machinelearningpku",
+                page_size=2,
+            )
+        )
+
+        self.assertEqual([{"id": 11}, {"id": 12}, {"id": 13}], articles)
+        self.assertEqual(
+            [
+                "/api/v4/columns/machinelearningpku/items?limit=2&offset=0",
+                secure_next,
             ],
             client.json_calls,
         )

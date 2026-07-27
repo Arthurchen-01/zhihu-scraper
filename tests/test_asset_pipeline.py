@@ -3,7 +3,12 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from zhihu_scraper.assets import archive_assets
+from zhihu_scraper.archive import LocalArchive
+from zhihu_scraper.assets import (
+    MediaArchiveRole,
+    PrimaryVideoDownloadError,
+    archive_assets,
+)
 from zhihu_scraper.domain import (
     Answer,
     Article,
@@ -25,7 +30,7 @@ from zhihu_scraper.domain import (
     Text,
     Video,
 )
-from zhihu_scraper.media import MediaDownloadReceipt
+from zhihu_scraper.media import MediaDownloadError, MediaDownloadReceipt
 
 NOW = datetime(2026, 7, 27, tzinfo=UTC)
 AUTHOR = Author(id="writer", name="作者")
@@ -63,6 +68,229 @@ def image(
 
 
 class AssetPipelineTests(unittest.TestCase):
+    def test_one_failed_image_keeps_remote_url_and_does_not_block_other_outputs(self):
+        failed_url = "https://pic.example/missing.png"
+        downloaded_url = "https://pic.example/available.png"
+        article = Article(
+            id="partial-media",
+            title="部分媒体下载失败",
+            source_url="https://zhuanlan.zhihu.com/p/partial-media",
+            author=AUTHOR,
+            published_at=NOW,
+            blocks=(
+                MediaBlock(image("missing-image", failed_url)),
+                MediaBlock(image("available-image", downloaded_url)),
+            ),
+        )
+
+        class OneFailureDownloader(RecordingDownloader):
+            def __call__(
+                self,
+                source_url: str,
+                destination: Path,
+            ) -> MediaDownloadReceipt:
+                self.calls.append((source_url, destination))
+                if source_url == failed_url:
+                    raise MediaDownloadError("unexpected HTTP status 404")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(source_url.encode())
+                return MediaDownloadReceipt(
+                    source_url=source_url,
+                    destination=destination,
+                    resumed_from=0,
+                    bytes_total=destination.stat().st_size,
+                )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt = LocalArchive(
+                Path(temporary_directory),
+                downloader=OneFailureDownloader(),
+            ).archive(article)
+
+            self.assertTrue(receipt.markdown_path.is_file())
+            self.assertTrue(receipt.html_path.is_file())
+            self.assertTrue(receipt.database_path.is_file())
+            markdown = receipt.markdown_path.read_text(encoding="utf-8")
+            rendered_html = receipt.html_path.read_text(encoding="utf-8")
+            self.assertIn(failed_url, markdown)
+            self.assertNotIn(downloaded_url, markdown)
+            self.assertNotIn(f'<img src="{failed_url}"', rendered_html)
+            self.assertIn(f'href="{failed_url}"', rendered_html)
+            self.assertEqual(1, len(receipt.media_downloads))
+            self.assertEqual(1, len(receipt.media_failures))
+            failure = receipt.media_failures[0]
+            self.assertEqual("missing-image", failure.asset_id)
+            self.assertEqual(failed_url, failure.source_url)
+            self.assertEqual(MediaArchiveRole.CONTENT, failure.role)
+            self.assertIn("404", failure.display_message)
+
+    def test_private_media_failure_is_never_embedded_as_an_automatic_browser_request(self):
+        private_url = "http://127.0.0.1:8080/private.png"
+        article = Article(
+            id="private-media",
+            title="私网媒体防护",
+            source_url="https://zhuanlan.zhihu.com/p/private-media",
+            author=AUTHOR,
+            published_at=NOW,
+            blocks=(MediaBlock(image("private-image", private_url)),),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt = LocalArchive(Path(temporary_directory)).archive(article)
+            markdown = receipt.markdown_path.read_text(encoding="utf-8")
+            rendered_html = receipt.html_path.read_text(encoding="utf-8")
+
+        self.assertEqual(1, len(receipt.media_failures))
+        self.assertIn("远程媒体未下载", markdown)
+        self.assertNotIn("![", markdown)
+        self.assertIn(f'href="{private_url}"', rendered_html)
+        self.assertNotIn(f'src="{private_url}"', rendered_html)
+
+    def test_failed_animation_and_cover_are_reported_without_blocking_other_assets(self):
+        animation_url = "https://pic.example/missing.gif"
+        image_url = "https://pic.example/available.webp"
+        cover_url = "https://pic.example/missing-cover.jpg"
+        article = Article(
+            id="mixed-failures",
+            title="动图和封面失败",
+            source_url="https://zhuanlan.zhihu.com/p/mixed-failures",
+            author=AUTHOR,
+            published_at=NOW,
+            blocks=(
+                MediaBlock(
+                    image(
+                        "missing-animation",
+                        animation_url,
+                        kind=MediaKind.ANIMATION,
+                    )
+                ),
+                MediaBlock(image("available-image", image_url)),
+            ),
+            cover_url=cover_url,
+        )
+
+        class MixedDownloader(RecordingDownloader):
+            def __call__(
+                self,
+                source_url: str,
+                destination: Path,
+            ) -> MediaDownloadReceipt:
+                if source_url in {animation_url, cover_url}:
+                    self.calls.append((source_url, destination))
+                    raise MediaDownloadError("temporary media failure")
+                return super().__call__(source_url, destination)
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            result = archive_assets(
+                article,
+                Path(temporary_directory) / "media",
+                downloader=MixedDownloader(),
+            )
+
+        self.assertEqual(1, len(result.downloads))
+        self.assertIn(image_url, result.source_paths)
+        self.assertNotIn(animation_url, result.source_paths)
+        self.assertNotIn(cover_url, result.source_paths)
+        self.assertEqual(
+            [MediaArchiveRole.CONTENT, MediaArchiveRole.COVER],
+            [failure.role for failure in result.failures],
+        )
+
+    def test_one_failed_article_asset_does_not_block_a_whole_column_archive(self):
+        failed_url = "https://pic.example/column-missing.png"
+        downloaded_url = "https://pic.example/column-available.png"
+        column = ColumnArchive(
+            column=Column(
+                token="resilient-column",
+                title="完整专栏",
+                source_url="https://www.zhihu.com/column/resilient-column",
+                description="",
+                author=AUTHOR,
+                item_count=2,
+            ),
+            articles=(
+                Article(
+                    id="first",
+                    title="坏图文章",
+                    source_url="https://zhuanlan.zhihu.com/p/first",
+                    author=AUTHOR,
+                    published_at=NOW,
+                    blocks=(MediaBlock(image("column-missing", failed_url)),),
+                ),
+                Article(
+                    id="second",
+                    title="好图文章",
+                    source_url="https://zhuanlan.zhihu.com/p/second",
+                    author=AUTHOR,
+                    published_at=NOW,
+                    blocks=(MediaBlock(image("column-available", downloaded_url)),),
+                ),
+            ),
+            archived_at=NOW,
+        )
+
+        class ColumnDownloader(RecordingDownloader):
+            def __call__(
+                self,
+                source_url: str,
+                destination: Path,
+            ) -> MediaDownloadReceipt:
+                if source_url == failed_url:
+                    self.calls.append((source_url, destination))
+                    raise MediaDownloadError("unexpected HTTP status 404")
+                return super().__call__(source_url, destination)
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt = LocalArchive(
+                Path(temporary_directory),
+                downloader=ColumnDownloader(),
+            ).archive(column)
+
+            self.assertTrue(receipt.markdown_path.is_file())
+            self.assertTrue(receipt.html_path.is_file())
+            self.assertTrue(receipt.database_path.is_file())
+            self.assertEqual(2, len(receipt.child_markdown_paths))
+            self.assertTrue(all(path.is_file() for path in receipt.child_markdown_paths))
+            self.assertEqual(1, len(receipt.media_downloads))
+            self.assertEqual(1, len(receipt.media_failures))
+            failed_article = receipt.child_markdown_paths[0].read_text(encoding="utf-8")
+            downloaded_article = receipt.child_markdown_paths[1].read_text(encoding="utf-8")
+            self.assertIn(failed_url, failed_article)
+            self.assertNotIn(downloaded_url, downloaded_article)
+
+    def test_independent_video_main_file_failure_has_an_explicit_fatal_error(self):
+        main_url = "https://video.example/unavailable.mp4"
+        video = Video(
+            id="required-video",
+            title="主文件失败",
+            source_url="https://www.zhihu.com/zvideo/required-video",
+            author=AUTHOR,
+            published_at=NOW,
+            description=(),
+            asset=MediaAsset(
+                id="zvideo-required-video",
+                kind=MediaKind.VIDEO,
+                renditions=(MediaRendition(main_url, width=1920, height=1080),),
+            ),
+        )
+
+        def unavailable(_source_url: str, _destination: Path) -> MediaDownloadReceipt:
+            raise MediaDownloadError("temporary video failure")
+
+        with (
+            tempfile.TemporaryDirectory() as temporary_directory,
+            self.assertRaises(PrimaryVideoDownloadError) as raised,
+        ):
+            archive_assets(
+                video,
+                Path(temporary_directory) / "media",
+                downloader=unavailable,
+            )
+
+        self.assertEqual(MediaArchiveRole.PRIMARY_VIDEO, raised.exception.failure.role)
+        self.assertEqual(main_url, raised.exception.failure.source_url)
+        self.assertIn("独立视频主文件", str(raised.exception))
+
     def test_recursively_archives_article_assets_and_deduplicates_asset_ids(self):
         original = "https://pic.example/original.png?source=zhihu"
         alternate = "https://pic.example/large.jpg"
@@ -184,6 +412,66 @@ class AssetPipelineTests(unittest.TestCase):
         self.assertEqual(
             result.source_paths["https://video.example/low.mp4"],
             result.source_paths["https://video.example/high"],
+        )
+
+    def test_video_tie_prefers_bitrate_and_refreshing_signed_url_keeps_resume_filename(self):
+        lower_bitrate = MediaRendition(
+            "https://video.example/FHD/movie.mp4?pkey=old-low",
+            width=1920,
+            height=1080,
+            bitrate=300,
+            size_bytes=30_000,
+        )
+        old_signed = MediaRendition(
+            "https://video.example/FHD/movie.mp4?pkey=old-high&expiration=1",
+            width=1920,
+            height=1080,
+            bitrate=500,
+            size_bytes=50_000,
+        )
+        refreshed_signed = MediaRendition(
+            "https://video.example/FHD/movie.mp4?pkey=new-high&expiration=2",
+            width=1920,
+            height=1080,
+            bitrate=500,
+            size_bytes=50_000,
+        )
+
+        def video_with(renditions):
+            return Video(
+                id="1666569497233207296",
+                title="训练方案",
+                source_url="https://www.zhihu.com/zvideo/1666569497233207296",
+                author=AUTHOR,
+                published_at=NOW,
+                description=(),
+                asset=MediaAsset(
+                    id="zvideo-1666569497233207296",
+                    kind=MediaKind.VIDEO,
+                    renditions=renditions,
+                ),
+            )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            first_downloader = RecordingDownloader()
+            refreshed_downloader = RecordingDownloader()
+            archive_assets(
+                video_with((lower_bitrate, old_signed)),
+                root / "media",
+                downloader=first_downloader,
+            )
+            archive_assets(
+                video_with((lower_bitrate, refreshed_signed)),
+                root / "media",
+                downloader=refreshed_downloader,
+            )
+
+        self.assertEqual(old_signed.source_url, first_downloader.calls[0][0])
+        self.assertEqual(refreshed_signed.source_url, refreshed_downloader.calls[0][0])
+        self.assertEqual(
+            first_downloader.calls[0][1].name,
+            refreshed_downloader.calls[0][1].name,
         )
 
     def test_question_and_column_archives_recurse_into_children(self):

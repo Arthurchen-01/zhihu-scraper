@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, replace
+from functools import partial
+from html import escape
+from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
-from .assets import AssetArchiveReceipt, archive_assets
+from .assets import AssetArchiveReceipt, MediaArchiveFailure, archive_assets
 from .database import ArchiveDatabase
 from .domain import (
     Answer,
@@ -40,6 +43,7 @@ class ArchiveReceipt:
     child_markdown_paths: tuple[Path, ...] = ()
     child_html_paths: tuple[Path, ...] = ()
     media_downloads: tuple[MediaDownloadReceipt, ...] = ()
+    media_failures: tuple[MediaArchiveFailure, ...] = ()
 
 
 class LocalArchive:
@@ -69,7 +73,7 @@ class LocalArchive:
         cls,
         settings: ArchiveSettings,
         *,
-        downloader: MediaDownloader = download_media,
+        downloader: MediaDownloader | None = None,
     ) -> LocalArchive:
         if settings.pdf:
             raise NotImplementedError("PDF 输出仍是待办功能，请先保持 pdf = false。")
@@ -79,16 +83,30 @@ class LocalArchive:
             html=settings.html,
             sqlite=settings.sqlite,
             media_download=settings.media_download,
-            downloader=downloader,
+            downloader=downloader
+            or partial(
+                download_media,
+                proxy=settings.proxy,
+                timeout=settings.timeout,
+                max_retries=settings.retries,
+            ),
         )
 
     def archive(self, target: ArchiveTarget) -> ArchiveReceipt:
         self._root.mkdir(parents=True, exist_ok=True)
-        if isinstance(target, ColumnArchive):
-            return self._archive_column(target)
-        return self._archive_standalone(target)
+        render_target = self._restore_unfetched_comments(target)
+        if isinstance(render_target, ColumnArchive):
+            if not isinstance(target, ColumnArchive):
+                raise AssertionError("comment restoration changed the archive target type")
+            return self._archive_column(render_target, database_target=target)
+        return self._archive_standalone(render_target, database_target=target)
 
-    def _archive_standalone(self, target: ArchiveTarget) -> ArchiveReceipt:
+    def _archive_standalone(
+        self,
+        target: ArchiveTarget,
+        *,
+        database_target: ArchiveTarget,
+    ) -> ArchiveReceipt:
         title = target.title
         filename = safe_filename(title)
         entry_directory = self._entry_directory(
@@ -100,6 +118,11 @@ class LocalArchive:
         entry_directory.mkdir(parents=True, exist_ok=True)
 
         assets = self._archive_media(target, entry_directory)
+        render_paths = self._render_media_paths(
+            target,
+            entry_directory,
+            assets.source_paths,
+        )
         markdown_path = entry_directory / f"{filename}.md" if self._markdown else None
         html_path = entry_directory / f"{filename}.html" if self._html else None
 
@@ -108,7 +131,7 @@ class LocalArchive:
                 markdown_path,
                 MarkdownRenderer().render(
                     target,
-                    media_paths=assets.source_paths,
+                    media_paths=render_paths,
                 ),
             )
         if html_path is not None:
@@ -116,14 +139,17 @@ class LocalArchive:
                 html_path,
                 HtmlRenderer().render(
                     target,
-                    media_paths=assets.source_paths,
+                    media_paths=render_paths,
                 ),
             )
             self._write_html_assets(entry_directory / "assets")
 
         database_path = self._save_database(
-            target,
-            media_paths=assets.source_paths,
+            database_target,
+            media_paths=self._database_media_paths(
+                entry_directory,
+                assets.source_paths,
+            ),
         )
         return ArchiveReceipt(
             entry_directory=entry_directory,
@@ -131,9 +157,15 @@ class LocalArchive:
             html_path=html_path,
             database_path=database_path,
             media_downloads=assets.downloads,
+            media_failures=assets.failures,
         )
 
-    def _archive_column(self, archive: ColumnArchive) -> ArchiveReceipt:
+    def _archive_column(
+        self,
+        archive: ColumnArchive,
+        *,
+        database_target: ColumnArchive,
+    ) -> ArchiveReceipt:
         column = archive.column
         column_filename = safe_filename(column.title)
         entry_directory = self._entry_directory(
@@ -144,13 +176,18 @@ class LocalArchive:
         )
         entry_directory.mkdir(parents=True, exist_ok=True)
         assets = self._archive_media(archive, entry_directory)
+        render_paths = self._render_media_paths(
+            archive,
+            entry_directory,
+            assets.source_paths,
+        )
 
         article_names = _unique_article_names(archive.articles)
         directory_entries = {
             article.id: RenderNavigationItem(
                 title=article.title,
-                markdown_href=f"内容/{name}.md" if self._markdown else "",
-                html_href=f"内容/{name}.html" if self._html else "",
+                markdown_href=_relative_href(f"内容/{name}.md") if self._markdown else "",
+                html_href=_relative_href(f"内容/{name}.html") if self._html else "",
             )
             for article, name in zip(archive.articles, article_names, strict=True)
         }
@@ -183,7 +220,7 @@ class LocalArchive:
             content_directory.mkdir(exist_ok=True)
             child_media_paths = {
                 source_url: f"../{relative_path}"
-                for source_url, relative_path in assets.source_paths.items()
+                for source_url, relative_path in render_paths.items()
             }
             column_ref = ColumnRef(
                 token=column.token,
@@ -192,8 +229,8 @@ class LocalArchive:
             )
             directory_item = RenderNavigationItem(
                 title=column.title,
-                markdown_href=f"../{column_filename}.md" if self._markdown else "",
-                html_href=f"../{column_filename}.html" if self._html else "",
+                markdown_href=_relative_href(f"../{column_filename}.md") if self._markdown else "",
+                html_href=_relative_href(f"../{column_filename}.html") if self._html else "",
             )
             for index, (article, name) in enumerate(
                 zip(archive.articles, article_names, strict=True)
@@ -221,6 +258,7 @@ class LocalArchive:
                 context = ColumnRenderContext(
                     column=column_ref,
                     directory=directory_item,
+                    item_count=column.item_count,
                     previous=previous_item,
                     next=next_item,
                 )
@@ -248,8 +286,11 @@ class LocalArchive:
                     child_html_paths.append(article_html)
 
         database_path = self._save_database(
-            archive,
-            media_paths=assets.source_paths,
+            database_target,
+            media_paths=self._database_media_paths(
+                entry_directory,
+                assets.source_paths,
+            ),
         )
         return ArchiveReceipt(
             entry_directory=entry_directory,
@@ -259,6 +300,7 @@ class LocalArchive:
             child_markdown_paths=tuple(child_markdown_paths),
             child_html_paths=tuple(child_html_paths),
             media_downloads=assets.downloads,
+            media_failures=assets.failures,
         )
 
     def _archive_media(
@@ -279,6 +321,67 @@ class LocalArchive:
         for filename, content in HtmlRenderer.assets().items():
             _atomic_write_text(assets_directory / filename, content)
 
+    def _restore_unfetched_comments(self, target: ArchiveTarget) -> ArchiveTarget:
+        database = ArchiveDatabase(self._root / "zhihu.db")
+
+        def article_with_comments(article: Article) -> Article:
+            if article.comments is not None:
+                return article
+            thread = database.load_comment_thread(f"article:{article.id}")
+            return replace(article, comments=thread) if thread is not None else article
+
+        def answer_with_comments(answer: Answer) -> Answer:
+            if answer.comments is not None:
+                return answer
+            thread = database.load_comment_thread(f"answer:{answer.id}")
+            return replace(answer, comments=thread) if thread is not None else answer
+
+        if isinstance(target, Article):
+            return article_with_comments(target)
+        if isinstance(target, Answer):
+            return answer_with_comments(target)
+        if isinstance(target, QuestionArchive):
+            return replace(
+                target,
+                answers=tuple(answer_with_comments(answer) for answer in target.answers),
+            )
+        if isinstance(target, ColumnArchive):
+            return replace(
+                target,
+                articles=tuple(article_with_comments(article) for article in target.articles),
+            )
+        if isinstance(target, Video):
+            if target.comments is not None:
+                return target
+            thread = database.load_comment_thread(f"video:{target.id}")
+            return replace(target, comments=thread) if thread is not None else target
+        return target
+
+    def _render_media_paths(
+        self,
+        target: ArchiveTarget,
+        entry_directory: Path,
+        current_paths: Mapping[str, str],
+    ) -> dict[str, str]:
+        database = ArchiveDatabase(self._root / "zhihu.db")
+        existing = database.load_media_paths(_content_keys(target))
+        root_resolved = self._root.resolve()
+        preserved: dict[str, str] = {}
+        for identity, archive_path in existing.items():
+            candidate = self._root / archive_path
+            try:
+                resolved = candidate.resolve()
+                resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+            if not resolved.is_file() or resolved.stat().st_size <= 0:
+                continue
+            preserved[identity] = _relative_href(
+                Path(os.path.relpath(resolved, start=entry_directory.resolve())).as_posix()
+            )
+        preserved.update(current_paths)
+        return preserved
+
     def _save_database(
         self,
         target: ArchiveTarget,
@@ -291,6 +394,17 @@ class LocalArchive:
         ArchiveDatabase(path).save(target, media_paths=media_paths)
         return path
 
+    def _database_media_paths(
+        self,
+        entry_directory: Path,
+        source_paths: Mapping[str, str],
+    ) -> dict[str, str]:
+        entry_prefix = entry_directory.relative_to(self._root).as_posix()
+        return {
+            source: PurePosixPath(entry_prefix, relative_path).as_posix()
+            for source, relative_path in source_paths.items()
+        }
+
     def _entry_directory(
         self,
         *,
@@ -300,7 +414,11 @@ class LocalArchive:
         source_url: str,
     ) -> Path:
         base = self._root / safe_filename(title)
-        if not base.exists() or _directory_belongs_to(base, source_url):
+        if not base.exists() or _directory_belongs_to(
+            base,
+            source_url,
+            target_type=target_type,
+        ):
             return base
         suffix = safe_filename(f"{title}--{target_type}-{target_id}")
         return self._root / suffix
@@ -332,8 +450,17 @@ def _article_navigation(
 ) -> RenderNavigationItem:
     return RenderNavigationItem(
         title=article.title,
-        markdown_href=f"{filename}.md" if markdown else "",
-        html_href=f"{filename}.html" if html else "",
+        markdown_href=_relative_href(f"{filename}.md") if markdown else "",
+        html_href=_relative_href(f"{filename}.html") if html else "",
+    )
+
+
+def _relative_href(value: str) -> str:
+    """Encode URL-significant ASCII while keeping readable Unicode filenames."""
+
+    return "".join(
+        character if not character.isascii() else quote(character, safe="/._~-")
+        for character in value
     )
 
 
@@ -351,14 +478,43 @@ def _target_type(target: ArchiveTarget) -> str:
     raise TypeError(f"unsupported archive target: {type(target).__name__}")
 
 
-def _directory_belongs_to(directory: Path, source_url: str) -> bool:
+def _content_keys(target: ArchiveTarget) -> tuple[str, ...]:
+    if isinstance(target, Article):
+        return (f"article:{target.id}",)
+    if isinstance(target, Answer):
+        return (f"answer:{target.id}",)
+    if isinstance(target, QuestionArchive):
+        return (
+            f"question:{target.question.id}",
+            *(f"answer:{answer.id}" for answer in target.answers),
+        )
+    if isinstance(target, ColumnArchive):
+        return tuple(f"article:{article.id}" for article in target.articles)
+    if isinstance(target, Video):
+        return (f"video:{target.id}",)
+    raise TypeError(f"unsupported archive target: {type(target).__name__}")
+
+
+def _directory_belongs_to(
+    directory: Path,
+    source_url: str,
+    *,
+    target_type: str,
+) -> bool:
+    label = {
+        "question": "知乎原问题",
+        "column": "知乎专栏",
+    }.get(target_type, "知乎原文")
+    markdown_marker = f"> {label}：[{source_url}]({source_url})"
+    html_marker = f'<a href="{escape(source_url, quote=True)}">{label}</a>'
     for suffix in ("*.md", "*.html"):
         for document in directory.glob(suffix):
             try:
                 prefix = document.read_text(encoding="utf-8")[:16_384]
             except (OSError, UnicodeError):
                 continue
-            if source_url in prefix:
+            marker = markdown_marker if document.suffix == ".md" else html_marker
+            if marker in prefix:
                 return True
     return False
 

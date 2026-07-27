@@ -151,6 +151,12 @@ def _print_archive_report(report: object) -> None:
         print("抓取路径：浏览器回退")
     else:
         print("抓取路径：HTTP/API")
+    media_failures = getattr(report, "media_failures", ())
+    if media_failures:
+        print(f"媒体警告：{len(media_failures)} 个非必要媒体下载失败，正文归档已保留。")
+        for failure in media_failures:
+            message = getattr(failure, "display_message", "媒体下载失败，已保留远程链接。")
+            print(f"- {message}")
 
 
 if __name__ == "__main__":

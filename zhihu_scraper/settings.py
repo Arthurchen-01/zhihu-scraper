@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 
 class SettingsError(ValueError):
@@ -58,7 +59,7 @@ class ArchiveSettings:
             if self.cookie_file is None
             else _path_value(self.cookie_file, "network.cookie_file")
         )
-        proxy = _optional_nonempty_string(self.proxy, "network.proxy")
+        proxy = _proxy_url(self.proxy)
         fallback = _browser_fallback(self.browser_fallback)
         cdp_url = _optional_nonempty_string(self.cdp_url, "browser.cdp_url")
 
@@ -378,6 +379,26 @@ def _optional_nonempty_string(value: object, field_name: str) -> str | None:
     normalized = value.strip()
     if not normalized:
         raise SettingsError(f"配置项 {field_name} 不能为空；不使用时请删除这一项")
+    return normalized
+
+
+def _proxy_url(value: object) -> str | None:
+    normalized = _optional_nonempty_string(value, "network.proxy")
+    if normalized is None:
+        return None
+    try:
+        parsed = urlparse(normalized)
+        parsed.port
+    except ValueError:
+        raise SettingsError("配置项 network.proxy 必须是有效的 HTTP 或 HTTPS 代理地址") from None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise SettingsError("配置项 network.proxy 必须是有效的 HTTP 或 HTTPS 代理地址")
     return normalized
 
 
