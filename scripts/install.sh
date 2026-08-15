@@ -46,5 +46,6 @@ printf '%s\n' \
     "Installation complete, including managed browser fallback." \
     "Activate the environment with:" \
     "  . \"$venv_dir/bin/activate\"" \
-    "Then check the command with:" \
+    "Then verify the installed command with:" \
+    "  zhihu --version" \
     "  zhihu --help"

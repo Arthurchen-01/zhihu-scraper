@@ -91,10 +91,10 @@ class LocalArchiveLayoutTests(unittest.TestCase):
 
             self.assertEqual(root / "机器学习", receipt.entry_directory)
             self.assertEqual(root / "机器学习" / "机器学习.md", receipt.markdown_path)
-            self.assertEqual(root / "机器学习" / "机器学习.html", receipt.html_path)
+            self.assertIsNone(receipt.html_path)
             self.assertFalse((root / "zhihu.db").exists())
             self.assertEqual(2, len(receipt.child_markdown_paths))
-            self.assertEqual(2, len(receipt.child_html_paths))
+            self.assertEqual(0, len(receipt.child_html_paths))
             self.assertTrue(
                 all(path.parent.name == "内容" for path in receipt.child_markdown_paths)
             )
@@ -102,13 +102,14 @@ class LocalArchiveLayoutTests(unittest.TestCase):
                 len({path.name.casefold() for path in receipt.child_markdown_paths}),
                 2,
             )
-            self.assertTrue((root / "机器学习" / "assets" / "archive.css").is_file())
+            self.assertFalse((root / "机器学习" / "assets").exists())
             self.assertFalse((root / "机器学习" / "media").exists())
 
             catalog = receipt.markdown_path.read_text(encoding="utf-8")
             first_page = receipt.child_markdown_paths[0].read_text(encoding="utf-8")
             self.assertIn("本栏目共 81 篇", catalog)
             self.assertIn("内容/同名_文章.md", catalog)
+            self.assertNotIn("HTML", catalog)
             self.assertIn("本次归档自", first_page)
             self.assertIn("本栏目共 81 篇", first_page)
             self.assertIn("查看完整目录", first_page)
@@ -177,7 +178,9 @@ class LocalArchiveLayoutTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as temporary_directory:
-            receipt = LocalArchive(Path(temporary_directory), media_download=False).archive(archive)
+            receipt = LocalArchive(
+                Path(temporary_directory), html=True, media_download=False
+            ).archive(archive)
             markdown = receipt.markdown_path.read_text(encoding="utf-8")
             rendered_html = receipt.html_path.read_text(encoding="utf-8")
             child_markdown = receipt.child_markdown_paths[0]
@@ -295,8 +298,8 @@ class LocalArchiveLayoutTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
-            first = LocalArchive(root, downloader=FakeDownloader()).archive(initial)
-            second = LocalArchive(root, media_download=False).archive(refreshed)
+            first = LocalArchive(root, html=True, downloader=FakeDownloader()).archive(initial)
+            second = LocalArchive(root, html=True, media_download=False).archive(refreshed)
             markdown = second.markdown_path.read_text(encoding="utf-8")
             rendered_html = second.html_path.read_text(encoding="utf-8")
             self.assertTrue(first.media_downloads[0].destination.is_file())

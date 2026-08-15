@@ -6,6 +6,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
+from importlib.metadata import version
 from pathlib import Path
 
 from .facade import archive_url, check_session
@@ -21,31 +22,55 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="zhihu",
         description="把知乎文章、回答、问题、专栏和独立视频归档到本地。",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""常用选择：
+  zhihu fetch URL                    Markdown + 媒体（默认）
+  zhihu fetch --html URL             再生成离线 HTML
+  zhihu fetch --comments URL         再抓取 10×10 评论
+  zhihu fetch --html --comments URL  同时开启 HTML 和评论
+  zhihu fetch --no-media URL         不下载媒体，只保留远程链接
+
+准备与检查：
+  zhihu init                         生成 settings.toml
+  zhihu check -s settings.toml       检查 Cookie 登录状态""",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {version('zhihu-scraper')}",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
     fetch = subcommands.add_parser("fetch", help="抓取并归档一个知乎链接")
     fetch.add_argument("url", help="知乎文章、回答、问题、专栏或 zvideo 链接")
     _settings_argument(fetch)
-    fetch.add_argument("-o", "--output", type=Path, help="覆盖本次保存目录")
-    fetch.add_argument(
+    output_options = fetch.add_argument_group("输出选项")
+    output_options.add_argument("-o", "--output", type=Path, help="覆盖本次保存目录")
+    output_options.add_argument(
+        "--html",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="本次开启/关闭离线 HTML 输出（默认关闭）",
+    )
+    output_options.add_argument(
         "--comments",
         action=argparse.BooleanOptionalAction,
         default=None,
         help="本次开启/关闭 10×10 评论抓取",
     )
-    fetch.add_argument(
+    output_options.add_argument(
         "--media",
         action=argparse.BooleanOptionalAction,
         default=None,
         help="本次开启/关闭图片、动图和视频下载",
     )
-    fetch.add_argument(
+    fetch_path = fetch.add_argument_group("抓取路径")
+    fetch_path.add_argument(
         "--browser",
         choices=tuple(mode.value for mode in BrowserFallback),
         help="覆盖浏览器回退策略：auto、never 或 always",
     )
-    fetch.add_argument("--cdp", help="连接本机已登录 Chrome 的 CDP 地址")
+    fetch_path.add_argument("--cdp", help="连接本机已登录 Chrome 的 CDP 地址")
 
     check = subcommands.add_parser("check", help="检查 Cookie 是否存在且仍可登录")
     _settings_argument(check)
@@ -84,6 +109,8 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
 
         if arguments.output is not None:
             settings = replace(settings, output_dir=arguments.output)
+        if arguments.html is not None:
+            settings = replace(settings, html=arguments.html)
         if arguments.comments is not None:
             settings = replace(settings, comments=arguments.comments)
         if arguments.media is not None:

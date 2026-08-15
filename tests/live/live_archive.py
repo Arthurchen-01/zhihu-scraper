@@ -1,8 +1,7 @@
-"""Opt-in Zhihu smoke tests.
+"""Explicit Zhihu smoke suite, kept outside pytest's default file pattern.
 
-These tests never run from the normal unit-test command unless the operator
-explicitly supplies both ``ZHIHU_LIVE=1`` and ``ZHIHU_COOKIE_FILE``. Cookie
-values are never read from a repository-default path or printed.
+Run this file directly with both ``ZHIHU_LIVE=1`` and ``ZHIHU_COOKIE_FILE``.
+Cookie values are never read from a repository-default path or printed.
 """
 
 from __future__ import annotations
@@ -10,6 +9,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from importlib.metadata import version
 from pathlib import Path
 from typing import cast
 from urllib.request import Request, urlopen
@@ -23,15 +23,19 @@ LIVE_ENABLED = os.environ.get("ZHIHU_LIVE") == "1"
 COOKIE_FILE = os.environ.get("ZHIHU_COOKIE_FILE", "").strip()
 
 
-@unittest.skipUnless(
-    LIVE_ENABLED and COOKIE_FILE,
-    "set ZHIHU_LIVE=1 and ZHIHU_COOKIE_FILE to run controlled online smoke tests",
-)
 class LiveArchiveTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not LIVE_ENABLED or not COOKIE_FILE:
+            raise RuntimeError(
+                "set ZHIHU_LIVE=1 and ZHIHU_COOKIE_FILE before running the live suite"
+            )
+
     def settings(self, output_dir: Path) -> ArchiveSettings:
         return ArchiveSettings(
             output_dir=output_dir,
             cookie_file=Path(COOKIE_FILE),
+            html=True,
             media_download=False,
             browser_fallback=BrowserFallback.AUTO,
             headless=True,
@@ -91,7 +95,7 @@ class LiveArchiveTests(unittest.TestCase):
                 headers={
                     "Range": "bytes=0-0",
                     "Referer": "https://www.zhihu.com/",
-                    "User-Agent": "zhihu-scraper-live-smoke/4",
+                    "User-Agent": f"zhihu-scraper-live-smoke/{version('zhihu-scraper')}",
                 },
             )
             with urlopen(request, timeout=30.0) as response:

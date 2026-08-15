@@ -18,7 +18,7 @@ class ArchiveSettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.output_dir, Path("知乎归档"))
         self.assertTrue(settings.markdown)
-        self.assertTrue(settings.html)
+        self.assertFalse(settings.html)
         self.assertFalse(settings.pdf)
         self.assertFalse(settings.comments)
         self.assertEqual(settings.comment_roots, 10)
@@ -166,6 +166,7 @@ cdp_url = "http://127.0.0.1:9222"
 
             self.assertEqual(settings_path.read_text(encoding="utf-8"), "keep = true")
             self.assertIn("[archive]", generated)
+            self.assertIn("html = false", generated)
             self.assertIn("[network]", generated)
             self.assertIn("[browser]", generated)
             self.assertNotIn("z_c0", generated)

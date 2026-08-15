@@ -56,8 +56,19 @@ class NewCommandLineTests(unittest.TestCase):
         self.assertIn("fetch", rendered)
         self.assertIn("check", rendered)
         self.assertIn("init", rendered)
+        self.assertIn("zhihu fetch --html URL", rendered)
+        self.assertIn("zhihu fetch --comments URL", rendered)
         self.assertNotIn("tui", rendered.casefold())
         self.assertNotIn("translate", rendered.casefold())
+
+    def test_version_reports_the_current_installed_project_version(self):
+        output = io.StringIO()
+
+        with redirect_stdout(output), self.assertRaises(SystemExit) as raised:
+            run_cli(["--version"])
+
+        self.assertEqual(0, raised.exception.code)
+        self.assertEqual("zhihu 4.0.0", output.getvalue().strip())
 
     def test_fetch_applies_command_overrides_and_prints_readable_paths(self):
         receipt = SimpleNamespace(
@@ -81,6 +92,7 @@ class NewCommandLineTests(unittest.TestCase):
                         "--output",
                         "/archive",
                         "--comments",
+                        "--html",
                         "--no-media",
                         "--browser",
                         "never",
@@ -91,6 +103,7 @@ class NewCommandLineTests(unittest.TestCase):
         settings = archive.call_args.args[1]
         self.assertEqual(Path("/archive"), settings.output_dir)
         self.assertTrue(settings.comments)
+        self.assertTrue(settings.html)
         self.assertFalse(settings.media_download)
         self.assertEqual("never", settings.browser_fallback.value)
         self.assertIn("归档完成：文章", output.getvalue())
@@ -115,6 +128,37 @@ class NewCommandLineTests(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertFalse(archive.call_args.args[1].comments)
+        self.assertFalse(archive.call_args.args[1].html)
+
+    def test_no_html_overrides_a_settings_file_that_enables_html(self):
+        receipt = SimpleNamespace(
+            entry_directory=Path("/archive/文章"),
+            markdown_path=Path("/archive/文章/文章.md"),
+            html_path=None,
+        )
+        report = SimpleNamespace(
+            target=SimpleNamespace(title="文章"),
+            receipt=receipt,
+            used_browser=False,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            settings_path = Path(temporary_directory) / "settings.toml"
+            settings_path.write_text("[archive]\nhtml = true\n", encoding="utf-8")
+            with patch("zhihu_scraper.cli.archive_url", return_value=report) as archive:
+                with redirect_stdout(io.StringIO()):
+                    exit_code = run_cli(
+                        [
+                            "fetch",
+                            "https://zhuanlan.zhihu.com/p/1",
+                            "--settings",
+                            str(settings_path),
+                            "--no-html",
+                        ]
+                    )
+
+        self.assertEqual(0, exit_code)
+        self.assertFalse(archive.call_args.args[1].html)
 
     def test_check_reports_real_status_without_printing_identity_or_cookie_values(self):
         report = SimpleNamespace(

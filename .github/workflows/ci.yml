@@ -61,6 +61,7 @@ jobs:
 
       - name: Check command-line entry point
         run: |
+          zhihu --version
           zhihu --help
           zhihu fetch --help
           zhihu check --help

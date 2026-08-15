@@ -34,7 +34,7 @@ class ArchiveSettings:
 
     output_dir: Path = Path("知乎归档")
     markdown: bool = True
-    html: bool = True
+    html: bool = False
     pdf: bool = False
     comments: bool = False
     comment_roots: int = 10
@@ -245,7 +245,7 @@ DEFAULT_SETTINGS_TOML = """\
 [archive]
 output_dir = "知乎归档"
 markdown = true
-html = true
+html = false
 pdf = false
 comments = false
 comment_roots = 10

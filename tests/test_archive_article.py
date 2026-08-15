@@ -21,7 +21,7 @@ class StandaloneArticleArchiveTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             library_root = Path(temporary_directory)
 
-            receipt = LocalArchive(library_root).archive(article)
+            receipt = LocalArchive(library_root, html=True).archive(article)
 
             entry_directory = library_root / article.title
             markdown_path = entry_directory / f"{article.title}.md"
@@ -41,6 +41,23 @@ class StandaloneArticleArchiveTests(unittest.TestCase):
             self.assertIn("数据、算法、算力", html)
             self.assertFalse((library_root / "zhihu.db").exists())
             self.assertFalse((entry_directory / "内容").exists())
+
+    def test_default_archive_writes_markdown_without_html_assets(self):
+        article = Article(
+            id="default-markdown",
+            title="默认 Markdown",
+            source_url="https://zhuanlan.zhihu.com/p/default-markdown",
+            author=Author(id="author-1", name="泳鱼"),
+            published_at=None,
+            blocks=(Paragraph(inlines=(Text("正文"),)),),
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt = LocalArchive(Path(temporary_directory)).archive(article)
+
+            self.assertIsNotNone(receipt.markdown_path)
+            self.assertIsNone(receipt.html_path)
+            self.assertFalse((receipt.entry_directory / "assets").exists())
 
 
 if __name__ == "__main__":

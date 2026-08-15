@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -25,6 +26,7 @@ class NewInstallContractTests(unittest.TestCase):
         self.assertIn("python -m mypy zhihu_scraper", workflow)
         self.assertIn("uv lock --check", workflow)
         self.assertIn("zhihu --help", workflow)
+        self.assertIn("zhihu --version", workflow)
         self.assertIn("zhihu fetch --help", workflow)
         self.assertIn("zhihu check --help", workflow)
         self.assertIn("zhihu init --help", workflow)
@@ -58,6 +60,7 @@ class NewInstallContractTests(unittest.TestCase):
         self.assertIn('"$venv_python" -m playwright install chromium', script)
         self.assertIn('"$venv_python" -m playwright install --with-deps chromium', script)
         self.assertIn('case "$(uname -s)"', script)
+        self.assertIn("zhihu --version", script)
         self.assertNotIn("[full]", script)
 
     def test_powershell_installer_is_relocatable_and_fails_fast(self) -> None:
@@ -73,6 +76,7 @@ class NewInstallContractTests(unittest.TestCase):
             script,
             re.compile(r"& \$VenvPython -m playwright install chromium\s*$", re.MULTILINE),
         )
+        self.assertIn("zhihu --version", script)
         self.assertNotIn("[full]", script)
 
     def test_default_dependencies_include_the_browser_fallback_runtime(self) -> None:
@@ -83,6 +87,16 @@ class NewInstallContractTests(unittest.TestCase):
         self.assertRegex(runtime, r'"playwright>=.*"')
         self.assertNotRegex(project, r"(?m)^full\s*=")
         self.assertNotIn("zhihu-scraper[full]", browser)
+
+    def test_project_has_one_current_version_and_command_entry_point(self) -> None:
+        project = tomllib.loads(self._read("pyproject.toml"))["project"]
+
+        self.assertEqual("4.0.0", project["version"])
+        self.assertEqual(
+            {"zhihu": "zhihu_scraper.cli:main"},
+            project["scripts"],
+        )
+        self.assertFalse((REPO_ROOT / "cli").exists())
 
     def _read(self, relative_path: str) -> str:
         return (REPO_ROOT / relative_path).read_text(encoding="utf-8")

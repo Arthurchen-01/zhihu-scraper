@@ -38,5 +38,6 @@ finally {
 Write-Host "Installation complete, including managed browser fallback."
 Write-Host "Activate the environment with:"
 Write-Host "  .\.venv\Scripts\Activate.ps1"
-Write-Host "Then check the command with:"
+Write-Host "Then verify the installed command with:"
+Write-Host "  zhihu --version"
 Write-Host "  zhihu --help"

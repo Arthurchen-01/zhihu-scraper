@@ -104,6 +104,7 @@ class AssetPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             receipt = LocalArchive(
                 Path(temporary_directory),
+                html=True,
                 downloader=OneFailureDownloader(),
             ).archive(article)
 
@@ -135,7 +136,7 @@ class AssetPipelineTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as temporary_directory:
-            receipt = LocalArchive(Path(temporary_directory)).archive(article)
+            receipt = LocalArchive(Path(temporary_directory), html=True).archive(article)
             markdown = receipt.markdown_path.read_text(encoding="utf-8")
             rendered_html = receipt.html_path.read_text(encoding="utf-8")
 
@@ -242,6 +243,7 @@ class AssetPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             receipt = LocalArchive(
                 Path(temporary_directory),
+                html=True,
                 downloader=ColumnDownloader(),
             ).archive(column)
 

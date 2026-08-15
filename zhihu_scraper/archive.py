@@ -52,7 +52,7 @@ class LocalArchive:
         root: Path,
         *,
         markdown: bool = True,
-        html: bool = True,
+        html: bool = False,
         media_download: bool = True,
         downloader: MediaDownloader = download_media,
     ) -> None:

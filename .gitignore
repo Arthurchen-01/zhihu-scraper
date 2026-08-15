@@ -46,9 +46,6 @@ _agents/
 settings.toml
 .local/
 data/
-*.db
-*.db-shm
-*.db-wal
 
 # Debug artifacts
 debug_*.html

@@ -380,11 +380,13 @@ def _column_to_markdown(
             md_path = entry.markdown_href if entry is not None else f"内容/{article.title}.md"
             html_path = entry.html_href if entry is not None else f"内容/{article.title}.html"
             date = article.published_at.date().isoformat() if article.published_at else "日期未知"
-            parts.append(
-                f"- {date} · {_markdown_single_line(article.title)}（"
-                f"{_markdown_link('Markdown', md_path)} · "
-                f"{_markdown_link('HTML', html_path)}）"
-            )
+            output_links = []
+            if md_path:
+                output_links.append(_markdown_link("Markdown", md_path))
+            if html_path:
+                output_links.append(_markdown_link("HTML", html_path))
+            suffix = f"（{' · '.join(output_links)}）" if output_links else ""
+            parts.append(f"- {date} · {_markdown_single_line(article.title)}{suffix}")
     return "\n".join([*parts, ""])
 
 
@@ -546,11 +548,12 @@ def _column_to_html(
             entry = entries.get(article.id)
             html_path = entry.html_href if entry is not None else f"内容/{article.title}.html"
             markdown_path = entry.markdown_href if entry is not None else f"内容/{article.title}.md"
+            markdown_link = f"（{_html_link('Markdown', markdown_path)}）" if markdown_path else ""
             entry_lines.append(
                 "          <li>"
                 f"<time>{html.escape(date)}</time> · "
                 f"{_html_link(article.title, html_path)} "
-                f"（{_html_link('Markdown', markdown_path)}）"
+                f"{markdown_link}"
                 "</li>\n"
             )
         groups.append(
