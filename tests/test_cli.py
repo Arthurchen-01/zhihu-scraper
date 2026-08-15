@@ -64,7 +64,6 @@ class NewCommandLineTests(unittest.TestCase):
             entry_directory=Path("/archive/文章"),
             markdown_path=Path("/archive/文章/文章.md"),
             html_path=Path("/archive/文章/文章.html"),
-            database_path=Path("/archive/zhihu.db"),
         )
         report = SimpleNamespace(
             target=SimpleNamespace(title="文章"),
@@ -96,6 +95,26 @@ class NewCommandLineTests(unittest.TestCase):
         self.assertEqual("never", settings.browser_fallback.value)
         self.assertIn("归档完成：文章", output.getvalue())
         self.assertIn("HTTP/API", output.getvalue())
+        self.assertNotIn("SQLite", output.getvalue())
+
+    def test_fetch_without_comment_option_keeps_comments_disabled(self):
+        receipt = SimpleNamespace(
+            entry_directory=Path("/archive/文章"),
+            markdown_path=Path("/archive/文章/文章.md"),
+            html_path=Path("/archive/文章/文章.html"),
+        )
+        report = SimpleNamespace(
+            target=SimpleNamespace(title="文章"),
+            receipt=receipt,
+            used_browser=False,
+        )
+
+        with patch("zhihu_scraper.cli.archive_url", return_value=report) as archive:
+            with redirect_stdout(io.StringIO()):
+                exit_code = run_cli(["fetch", "https://zhuanlan.zhihu.com/p/1"])
+
+        self.assertEqual(0, exit_code)
+        self.assertFalse(archive.call_args.args[1].comments)
 
     def test_check_reports_real_status_without_printing_identity_or_cookie_values(self):
         report = SimpleNamespace(
@@ -123,7 +142,6 @@ class NewCommandLineTests(unittest.TestCase):
             entry_directory=Path("/archive/文章"),
             markdown_path=Path("/archive/文章/文章.md"),
             html_path=Path("/archive/文章/文章.html"),
-            database_path=Path("/archive/zhihu.db"),
         )
         failure = SimpleNamespace(display_message="正文媒体下载失败，已保留远程链接：image-1")
         report = SimpleNamespace(

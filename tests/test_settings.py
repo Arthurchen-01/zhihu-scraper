@@ -19,7 +19,6 @@ class ArchiveSettingsTests(unittest.TestCase):
         self.assertEqual(settings.output_dir, Path("知乎归档"))
         self.assertTrue(settings.markdown)
         self.assertTrue(settings.html)
-        self.assertTrue(settings.sqlite)
         self.assertFalse(settings.pdf)
         self.assertFalse(settings.comments)
         self.assertEqual(settings.comment_roots, 10)
@@ -42,7 +41,6 @@ class ArchiveSettingsTests(unittest.TestCase):
 output_dir = "~/my-zhihu"
 markdown = false
 html = true
-sqlite = false
 pdf = true
 comments = true
 comment_roots = 8
@@ -69,7 +67,6 @@ cdp_url = "http://127.0.0.1:9222"
         self.assertEqual(settings.output_dir, Path("~/my-zhihu").expanduser())
         self.assertFalse(settings.markdown)
         self.assertTrue(settings.html)
-        self.assertFalse(settings.sqlite)
         self.assertTrue(settings.pdf)
         self.assertTrue(settings.comments)
         self.assertEqual(settings.comment_roots, 8)
@@ -140,6 +137,7 @@ cdp_url = "http://127.0.0.1:9222"
 
     def test_unknown_sections_and_fields_are_rejected(self):
         invalid_documents = (
+            ("[archive]\nsqlite = true", "archive.sqlite"),
             ("[archive]\nhtlm = true", "archive.htlm"),
             ('[network]\nz_c0 = "secret"', "network.cookie_file"),
             ("[experimental]\nenabled = true", "experimental"),

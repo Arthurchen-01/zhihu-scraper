@@ -30,7 +30,6 @@ class StandaloneArticleArchiveTests(unittest.TestCase):
             self.assertEqual(entry_directory, receipt.entry_directory)
             self.assertEqual(markdown_path, receipt.markdown_path)
             self.assertEqual(html_path, receipt.html_path)
-            self.assertEqual(library_root / "zhihu.db", receipt.database_path)
 
             markdown = markdown_path.read_text(encoding="utf-8")
             html = html_path.read_text(encoding="utf-8")
@@ -40,7 +39,7 @@ class StandaloneArticleArchiveTests(unittest.TestCase):
             self.assertIn(article.title, html)
             self.assertIn(article.source_url, html)
             self.assertIn("数据、算法、算力", html)
-            self.assertTrue(receipt.database_path.is_file())
+            self.assertFalse((library_root / "zhihu.db").exists())
             self.assertFalse((entry_directory / "内容").exists())
 
 

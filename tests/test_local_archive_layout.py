@@ -1,7 +1,5 @@
-import sqlite3
 import tempfile
 import unittest
-from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
@@ -94,7 +92,7 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             self.assertEqual(root / "机器学习", receipt.entry_directory)
             self.assertEqual(root / "机器学习" / "机器学习.md", receipt.markdown_path)
             self.assertEqual(root / "机器学习" / "机器学习.html", receipt.html_path)
-            self.assertEqual(root / "zhihu.db", receipt.database_path)
+            self.assertFalse((root / "zhihu.db").exists())
             self.assertEqual(2, len(receipt.child_markdown_paths))
             self.assertEqual(2, len(receipt.child_html_paths))
             self.assertTrue(
@@ -148,16 +146,7 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             markdown = receipt.markdown_path.read_text(encoding="utf-8")
             self.assertIn("](media/", markdown)
             self.assertNotIn(source_url, markdown.split("##", 1)[-1])
-            with closing(sqlite3.connect(receipt.database_path)) as connection:
-                archive_path = connection.execute(
-                    """
-                    SELECT archive_path
-                    FROM media
-                    WHERE content_key = 'article:3'
-                    """
-                ).fetchone()[0]
-            self.assertTrue(archive_path.startswith("单篇文章/media/"))
-            self.assertTrue((receipt.database_path.parent / archive_path).is_file())
+            self.assertTrue(receipt.media_downloads[0].destination.is_file())
 
     def test_column_links_percent_encode_url_significant_filename_characters(self):
         column_ref = ColumnRef(
@@ -252,33 +241,17 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             },
         )
 
-    def test_disabled_outputs_do_not_create_empty_media_or_assets_directories(self):
-        article = Article(
-            id="4",
-            title="仅数据库",
-            source_url="https://zhuanlan.zhihu.com/p/4",
-            author=AUTHOR,
-            published_at=None,
-            blocks=(Paragraph((Text("正文"),)),),
-        )
-
+    def test_archive_requires_at_least_one_readable_output(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
-            receipt = LocalArchive(
-                Path(temporary_directory),
-                markdown=False,
-                html=False,
-                sqlite=True,
-                media_download=False,
-            ).archive(article)
+            with self.assertRaisesRegex(ValueError, "Markdown 或 HTML"):
+                LocalArchive(
+                    Path(temporary_directory),
+                    markdown=False,
+                    html=False,
+                    media_download=False,
+                )
 
-            self.assertIsNone(receipt.markdown_path)
-            self.assertIsNone(receipt.html_path)
-            self.assertTrue(receipt.database_path.is_file())
-            self.assertFalse((receipt.entry_directory / "assets").exists())
-            self.assertFalse((receipt.entry_directory / "media").exists())
-            self.assertFalse((receipt.entry_directory / "内容").exists())
-
-    def test_default_rearchive_preserves_previous_comments_and_local_media_references(self):
+    def test_rearchive_without_optional_fetches_reflects_only_the_current_run(self):
         source_url = "https://pic.example/preserved.png"
         initial = Article(
             id="preserved",
@@ -326,27 +299,12 @@ class LocalArchiveLayoutTests(unittest.TestCase):
             second = LocalArchive(root, media_download=False).archive(refreshed)
             markdown = second.markdown_path.read_text(encoding="utf-8")
             rendered_html = second.html_path.read_text(encoding="utf-8")
-            with closing(sqlite3.connect(second.database_path)) as connection:
-                comment_count = connection.execute(
-                    """
-                    SELECT COUNT(*) FROM comments
-                    WHERE content_key = 'article:preserved'
-                    """
-                ).fetchone()
-                archive_path = connection.execute(
-                    """
-                    SELECT archive_path FROM media
-                    WHERE content_key = 'article:preserved'
-                      AND asset_id = 'preserved-image'
-                    """
-                ).fetchone()[0]
+            self.assertTrue(first.media_downloads[0].destination.is_file())
 
-        self.assertEqual((1,), comment_count)
-        self.assertIn("已抓评论不能丢", markdown)
-        self.assertIn("已抓评论不能丢", rendered_html)
-        self.assertIn("](media/", markdown)
-        self.assertIn('src="media/', rendered_html)
-        self.assertEqual(first.media_downloads[0].destination.name, Path(archive_path).name)
+        self.assertNotIn("已抓评论不能丢", markdown)
+        self.assertNotIn("已抓评论不能丢", rendered_html)
+        self.assertIn(source_url, markdown)
+        self.assertIn(source_url, rendered_html)
 
     def test_answer_and_its_question_with_the_same_title_do_not_overwrite_each_other(self):
         title = "数据挖掘、机器学习、深度学习这些概念有区别吗？"

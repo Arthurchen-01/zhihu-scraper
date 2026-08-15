@@ -39,7 +39,7 @@ class LiveArchiveTests(unittest.TestCase):
             retries=2,
         )
 
-    def test_formula_article_writes_real_markdown_mathml_and_sqlite(self) -> None:
+    def test_formula_article_writes_real_markdown_and_mathml(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             report = archive_url(
                 "https://zhuanlan.zhihu.com/p/11617075708",
@@ -51,14 +51,12 @@ class LiveArchiveTests(unittest.TestCase):
             self.assertGreater(len(report.target.blocks), 100)
             assert receipt.markdown_path is not None
             assert receipt.html_path is not None
-            assert receipt.database_path is not None
             markdown = receipt.markdown_path.read_text(encoding="utf-8")
             rendered_html = receipt.html_path.read_text(encoding="utf-8")
 
             self.assertIn("$$", markdown)
             self.assertGreater(rendered_html.count("<math"), 100)
             self.assertIn("data-tex=", rendered_html)
-            self.assertTrue(receipt.database_path.is_file())
 
     def test_zvideo_exposes_highest_rendition_and_accepts_range_probe(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

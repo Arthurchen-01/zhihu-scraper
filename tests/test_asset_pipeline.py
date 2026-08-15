@@ -109,7 +109,6 @@ class AssetPipelineTests(unittest.TestCase):
 
             self.assertTrue(receipt.markdown_path.is_file())
             self.assertTrue(receipt.html_path.is_file())
-            self.assertTrue(receipt.database_path.is_file())
             markdown = receipt.markdown_path.read_text(encoding="utf-8")
             rendered_html = receipt.html_path.read_text(encoding="utf-8")
             self.assertIn(failed_url, markdown)
@@ -248,7 +247,6 @@ class AssetPipelineTests(unittest.TestCase):
 
             self.assertTrue(receipt.markdown_path.is_file())
             self.assertTrue(receipt.html_path.is_file())
-            self.assertTrue(receipt.database_path.is_file())
             self.assertEqual(2, len(receipt.child_markdown_paths))
             self.assertTrue(all(path.is_file() for path in receipt.child_markdown_paths))
             self.assertEqual(1, len(receipt.media_downloads))

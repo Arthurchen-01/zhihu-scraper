@@ -35,7 +35,6 @@ class ArchiveSettings:
     output_dir: Path = Path("知乎归档")
     markdown: bool = True
     html: bool = True
-    sqlite: bool = True
     pdf: bool = False
     comments: bool = False
     comment_roots: int = 10
@@ -83,7 +82,6 @@ class ArchiveSettings:
         for field_name in (
             "markdown",
             "html",
-            "sqlite",
             "pdf",
             "comments",
             "media_download",
@@ -149,7 +147,6 @@ class ArchiveSettings:
                 "output_dir",
                 "markdown",
                 "html",
-                "sqlite",
                 "pdf",
                 "comments",
                 "comment_roots",
@@ -178,7 +175,6 @@ class ArchiveSettings:
             ),
             markdown=_value(archive, "markdown", defaults.markdown),
             html=_value(archive, "html", defaults.html),
-            sqlite=_value(archive, "sqlite", defaults.sqlite),
             pdf=_value(archive, "pdf", defaults.pdf),
             comments=_value(archive, "comments", defaults.comments),
             comment_roots=_value(
@@ -222,7 +218,6 @@ class ArchiveSettings:
                 "output_dir": str(self.output_dir),
                 "markdown": self.markdown,
                 "html": self.html,
-                "sqlite": self.sqlite,
                 "pdf": self.pdf,
                 "comments": self.comments,
                 "comment_roots": self.comment_roots,
@@ -251,7 +246,6 @@ DEFAULT_SETTINGS_TOML = """\
 output_dir = "知乎归档"
 markdown = true
 html = true
-sqlite = true
 pdf = false
 comments = false
 comment_roots = 10

@@ -159,8 +159,6 @@ def _print_archive_report(report: object) -> None:
         print(f"Markdown：{receipt.markdown_path}")
     if receipt.html_path is not None:
         print(f"HTML：{receipt.html_path}")
-    if receipt.database_path is not None:
-        print(f"SQLite：{receipt.database_path}")
     if getattr(report, "used_browser", False):
         print("抓取路径：浏览器回退")
     else:
