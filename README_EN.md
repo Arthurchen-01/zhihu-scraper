@@ -12,7 +12,7 @@
 
 </div>
 
-Zhihu-Scraper is a local-first Zhihu archiver. Give it an article, answer, question, column, or standalone-video URL. It tries the lightweight HTTP/API path first, optionally falls back to a browser, normalizes the result, and writes Markdown, static HTML, SQLite, and local media.
+Zhihu-Scraper is a local-first Zhihu archiver. Give it an article, answer, question, column, or standalone-video URL. It tries the lightweight HTTP/API path first, optionally falls back to a browser, normalizes the result, and writes Markdown, static HTML, and local media.
 
 The project serves developers studying an engineered crawler as well as non-technical users who let an agent such as Codex run the command. There is no TUI, cloud account, or frontend build system: the public surface is one CLI and one Python function.
 
@@ -33,6 +33,18 @@ The project serves developers studying an engineered crawler as well as non-tech
 The content parser covers paragraphs, headings, lists, quotes, tables, code, links, images, animations, and TeX formulas. For a standalone video, it selects the rendition with the largest known dimensions. Interrupted downloads retain a `.part` file; archiving the same target again uses an HTTP Range request to resume and checks the final byte count when the server provides a length. A stale body image, animation, or cover does not destroy the text archive: remaining assets continue and structured warnings identify failures. Undownloaded remote media is shown as an ordinary link rather than an automatic browser request. Failure of a standalone video's primary file remains explicit and fatal.
 
 Column collections, video embedded inside an article or answer, author profiles, search results, pins, favorites, and Yanxuan content are not supported.
+
+## What a default fetch saves
+
+Without extra flags, a normal fetch saves:
+
+- The title, author, source URL, publication time, and any available vote count.
+- Paragraphs, headings, lists, quotes, tables, code, links, and TeX mathematics.
+- Body images, animations, and covers; a standalone `zvideo` also keeps its description, original link, and largest known rendition.
+- An article's column memberships, an answer's question, a question's detail and all accessible answers, or a column's description, directory, and all accessible articles.
+- Readable `.md`, offline `.html` that can be opened directly, local HTML styles, and successfully downloaded files under `media/`.
+
+Comments are **not fetched by default**. Pass `--comments` or set `comments = true` to fetch up to 10 root comments and up to 10 replies per root. The project creates no SQLite database, raw JSON archive, search index, or knowledge graph; PDF remains unimplemented.
 
 ## Installation
 
@@ -172,7 +184,6 @@ On macOS/Linux, you can additionally run `chmod 600 .local/cookies.json`. Cookie
 output_dir = "知乎归档"
 markdown = true
 html = true
-sqlite = true
 pdf = false
 comments = false
 comment_roots = 10
@@ -192,7 +203,7 @@ headless = false
 # cdp_url = "http://127.0.0.1:9222"
 ```
 
-Markdown, HTML, SQLite, and media downloads are enabled by default. PDF, comments, and proxy use are disabled. When comments are enabled, each content item stores up to 10 root comments in API return order and up to 10 replies for each root; smaller threads are kept in full. The 10/10 limits are configurable, and `--comments` enables them for one run. Disabling comments means “do not fetch them in this run”: a repeated archive preserves comments already stored in SQLite and the readable documents. Disabling media downloads likewise reuses local files that still exist.
+Markdown, HTML, and media downloads are enabled by default. PDF, comments, and proxy use are disabled. When comments are enabled, each content item stores up to 10 root comments in API return order and up to 10 replies for each root; smaller threads are kept in full. The 10/10 limits are configurable, and `--comments` enables them for one run. Disabling comments means that the current run does not request comments, so a repeated archive reflects only the current result. Disabling media downloads does not download new files and leaves remote media as ordinary links.
 
 `browser.fallback` accepts:
 
@@ -206,11 +217,10 @@ Without CDP, the project tries system Chrome first and falls back to its managed
 
 ## Local Output
 
-All archived content shares one `zhihu.db` at the archive root. Only a whole column creates `内容/`:
+Only a whole column creates `内容/`:
 
 ```text
 知乎归档/
-├── zhihu.db
 └── 机器学习/
     ├── 机器学习.md
     ├── 机器学习.html
@@ -228,7 +238,6 @@ A single article, answer, whole question, or standalone video uses the compact l
 
 ```text
 知乎归档/
-├── zhihu.db
 └── Title/
     ├── Title.md
     ├── Title.html
@@ -240,7 +249,7 @@ Answers under a question become sections in one question document; they do not c
 
 Original TeX is retained: Markdown uses `$…$` / `$$…$$`; HTML converts it to locally generated, browser-native MathML while keeping a safe trace expression in `data-tex`. No network-loaded KaTeX or MathJax is required. Generated MathML is stripped of link, event, and style attributes; malformed expressions safely fall back to readable TeX.
 
-SQLite currently stores content, authors, columns, comments, media, and relations directly supported by source data. It is the archive data layer; it does not imply that search or graph queries already exist.
+The project deliberately maintains no database, search index, or knowledge graph. Markdown, HTML, and media files are the complete archive, so users can read, move, back up, or delete it without hidden state.
 
 ## Python API
 
@@ -262,7 +271,7 @@ print(report.receipt.entry_directory)
 
 ## Three Platforms and Development
 
-Fetching, normalization, rendering, and SQLite behavior are shared across Windows, macOS, and Linux. The platform adapter contains real differences such as browser locations, application-data directories, and safe filenames. CI covers Python 3.12, 3.13, and 3.14 on all three operating systems. Zhihu endpoints and anti-bot behavior can change at any time, so a green test suite cannot guarantee that every future URL will remain fetchable.
+Fetching, normalization, rendering, and media behavior are shared across Windows, macOS, and Linux. The platform adapter contains real differences such as browser locations, application-data directories, and safe filenames. CI covers Python 3.12, 3.13, and 3.14 on all three operating systems. Zhihu endpoints and anti-bot behavior can change at any time, so a green test suite cannot guarantee that every future URL will remain fetchable.
 
 Set up a development environment:
 
@@ -290,7 +299,7 @@ ZHIHU_LIVE=1 ZHIHU_COOKIE_FILE=/private/path/cookies.json \
   uv run pytest tests/live/test_live_archive.py
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module boundaries. Deferred PDF, keyword search, semantic search, and knowledge-graph work is tracked in [docs/FEATURE_TODO.md](docs/FEATURE_TODO.md). Raw JSON is not a user-facing archive format.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for module boundaries. Deferred PDF, embedded-video, and login-experience work is tracked in [docs/FEATURE_TODO.md](docs/FEATURE_TODO.md). Database and raw JSON archives are not provided.
 
 ## References and License
 
