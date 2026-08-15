@@ -22,7 +22,7 @@
   ```text
   知乎数据
     → 归一化内容模型
-    → Markdown 渲染器 / HTML 渲染器 / 本地媒体
+    → Markdown 渲染器 / 可选 HTML 渲染器 / 本地媒体
   ```
 
 - 第一阶段支持 Windows、macOS、Linux，但平台差异只能出现在运行平台 Adapter 中。

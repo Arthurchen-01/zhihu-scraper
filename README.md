@@ -12,7 +12,7 @@
 
 </div>
 
-Zhihu-Scraper 是一个本地优先的知乎归档工具。输入文章、回答、问题、专栏或独立视频链接，程序会先尝试轻量 HTTP/API 抓取，再按设置回退到浏览器，并把统一的内容模型保存为 Markdown、静态 HTML 和本地媒体。
+Zhihu-Scraper 是一个本地优先的知乎归档工具。输入文章、回答、问题、专栏或独立视频链接，程序会先尝试轻量 HTTP/API 抓取，再按设置回退到浏览器，并把统一的内容模型保存为 Markdown 和本地媒体；离线 HTML 可按需开启。
 
 项目面向两类使用者：希望研究工程化爬虫的开发者，以及希望让 Codex 等 Agent 代为执行命令的普通用户。它没有 TUI、云端账号或前端构建系统，公开入口保持为一个 CLI 和一个 Python 函数。
 
@@ -42,9 +42,9 @@ Zhihu-Scraper 是一个本地优先的知乎归档工具。输入文章、回答
 - 段落、标题、列表、引用、表格、代码、超链接和 TeX 数学公式。
 - 正文图片、动图、封面；独立 `zvideo` 还会保存描述、原始链接和已知尺寸最大的清晰度。
 - 文章的所属专栏信息，回答对应的问题信息，问题详情及全部可访问回答，或者专栏简介、目录及全部可访问文章。
-- 可阅读的 `.md`、可直接双击打开的离线 `.html`、HTML 本地样式，以及成功下载的 `media/` 文件。
+- 可阅读的 `.md` 和成功下载的 `media/` 文件。
 
-默认**不抓评论**；只有传入 `--comments` 或在设置中写入 `comments = true` 才抓取最多 10 条一级评论及每条最多 10 条二级回复。项目不创建 SQLite 数据库、原始 JSON、搜索索引或知识图谱；PDF 仍未实现。
+默认**不生成 HTML，也不抓评论**。传入 `--html` 才生成可直接双击打开的离线 `.html` 和本地样式；传入 `--comments` 才抓取最多 10 条一级评论及每条最多 10 条二级回复。两个选项也可以在设置文件中长期开启。项目不创建 SQLite 数据库、原始 JSON、搜索索引或知识图谱；PDF 仍未实现。
 
 ## 安装
 
@@ -97,9 +97,22 @@ Playwright 属于核心运行依赖，因为浏览器回退是可靠抓取链路
 
 全新的 Linux 环境应使用 `python -m playwright install --with-deps chromium`。
 
-## 第一次归档
+## 命令怎么选
 
-先生成设置文件：
+所有功能都从 `zhihu` 这一个命令进入。最常用的选择放在一起：
+
+| 目的 | 命令 | 结果 |
+| --- | --- | --- |
+| 查看当前版本 | `zhihu --version` | 确认正在使用项目当前版本 |
+| 普通归档 | `zhihu fetch URL` | Markdown + 下载媒体 |
+| 同时生成网页 | `zhihu fetch --html URL` | Markdown + 离线 HTML + 下载媒体 |
+| 同时抓取评论 | `zhihu fetch --comments URL` | Markdown + 媒体 + 10×10 评论 |
+| 网页和评论都要 | `zhihu fetch --html --comments URL` | 同时开启两个可选能力 |
+| 不下载媒体 | `zhihu fetch --no-media URL` | Markdown 中保留远程媒体链接 |
+| 指定输出目录 | `zhihu fetch -o "/path/to/archive" URL` | 覆盖本次保存位置 |
+| 强制浏览器抓取 | `zhihu fetch --browser always URL` | 跳过 HTTP 内容路径 |
+
+第一次需要 Cookie 或希望长期保存选项时，再生成设置文件：
 
 ```bash
 zhihu init
@@ -112,16 +125,18 @@ zhihu check -s settings.toml
 zhihu fetch -s settings.toml "https://zhuanlan.zhihu.com/p/357892158"
 ```
 
-也可以不用设置文件，直接采用内置默认值：
+也可以完全不用设置文件，直接采用内置默认值：
 
 ```bash
 zhihu fetch "https://www.zhihu.com/zvideo/1666569497233207296"
 ```
 
-常用的单次覆盖：
+设置文件中的选项仍可被本次命令覆盖：
 
 ```bash
+zhihu fetch -s settings.toml --html URL
 zhihu fetch -s settings.toml --comments URL
+zhihu fetch -s settings.toml --no-html URL
 zhihu fetch -s settings.toml --no-media URL
 zhihu fetch -s settings.toml --browser always URL
 zhihu fetch -s settings.toml --cdp http://127.0.0.1:9222 URL
@@ -131,6 +146,7 @@ zhihu fetch -s settings.toml -o "/path/to/archive" URL
 查看完整命令：
 
 ```bash
+zhihu --version
 zhihu --help
 zhihu fetch --help
 zhihu check --help
@@ -183,7 +199,7 @@ macOS / Linux 可额外执行 `chmod 600 .local/cookies.json`。Cookie 等同于
 [archive]
 output_dir = "知乎归档"
 markdown = true
-html = true
+html = false
 pdf = false
 comments = false
 comment_roots = 10
@@ -203,7 +219,7 @@ headless = false
 # cdp_url = "http://127.0.0.1:9222"
 ```
 
-默认生成 Markdown 和 HTML，并下载媒体；PDF、评论和代理关闭。评论开启后，每个内容按知乎接口返回顺序保存最多 10 条一级评论，每条一级评论最多 10 条二级回复，不足时保存全部。可以在设置中调整 10/10 上限，也可以用 `--comments` 只开启一次。关闭评论表示本轮不请求评论，重复归档时文档只反映本轮结果；关闭媒体下载时不会下载新文件，正文中的远程媒体保留为普通链接。
+默认生成 Markdown 并下载媒体；HTML、PDF、评论和代理关闭。`--html` 只开启本次离线 HTML，也可以将 `html = true` 写入设置长期开启。评论开启后，每个内容按知乎接口返回顺序保存最多 10 条一级评论，每条一级评论最多 10 条二级回复，不足时保存全部。可以在设置中调整 10/10 上限，也可以用 `--comments` 只开启一次。关闭评论表示本轮不请求评论，重复归档时文档只反映本轮结果；关闭媒体下载时不会下载新文件，正文中的远程媒体保留为普通链接。
 
 `browser.fallback` 有三种模式：
 
@@ -217,39 +233,34 @@ headless = false
 
 ## 本地输出
 
-只有“整个专栏”创建 `内容/`：
+只有“整个专栏”创建 `内容/`。默认结构是：
 
 ```text
 知乎归档/
 └── 机器学习/
     ├── 机器学习.md
-    ├── 机器学习.html
     ├── 内容/
     │   ├── 一文归纳AI数据增强之法.md
-    │   ├── 一文归纳AI数据增强之法.html
     │   └── RNN_LSTM_BPTT详细推导.md
-    ├── media/
-    └── assets/
+    └── media/
 ```
 
 专栏同名文件是按年份分组的完整目录，使用“本栏目共 N 篇”；各文章页包含收录专栏、本次归档来源、返回目录和上一篇/下一篇导航。
 
-单篇文章、单个回答、整个问题和独立视频使用精简结构：
+单篇文章、单个回答、整个问题和独立视频默认使用精简结构：
 
 ```text
 知乎归档/
 └── 标题/
     ├── 标题.md
-    ├── 标题.html
-    ├── media/
-    └── assets/
+    └── media/
 ```
 
-问题下的回答作为多个章节合并进同一个问题文档，不创建 `内容/`。`media/` 只在确有可下载媒体时创建；`assets/` 在生成 HTML 时保存项目自己的本地阅读样式。HTML 由归一化内容重新生成，不复制知乎的 HTML、CSS 或 JavaScript。
+使用 `--html` 或 `html = true` 后，同级增加同名 `.html`，并创建保存本地阅读样式的 `assets/`；专栏 `内容/` 中的每篇文章也会增加对应 HTML。问题下的回答作为多个章节合并进同一个问题文档，不创建 `内容/`。`media/` 只在确有可下载媒体时创建。HTML 由归一化内容重新生成，不复制知乎的 HTML、CSS 或 JavaScript。
 
 公式会保留原始 TeX：Markdown 使用 `$…$` / `$$…$$`，HTML 则在生成归档时转换为浏览器原生可渲染的本地 MathML，并在 `data-tex` 中保留安全的可追溯表达式；无须联网加载 KaTeX 或 MathJax。生成的 MathML 会移除链接、事件和样式等危险属性，无法转换的表达式安全回退为可读 TeX。
 
-项目刻意不维护数据库、搜索索引或知识图谱。Markdown、HTML 和媒体文件就是完整归档，便于用户直接阅读、移动、备份或删除，不产生额外的隐藏状态。
+项目刻意不维护数据库、搜索索引或知识图谱。Markdown、媒体和按需生成的 HTML 就是完整归档，便于用户直接阅读、移动、备份或删除，不产生额外的隐藏状态。
 
 ## Python 调用
 
@@ -260,7 +271,7 @@ from zhihu_scraper import ArchiveSettings, archive_url
 
 report = archive_url(
     "https://zhuanlan.zhihu.com/p/357892158",
-    ArchiveSettings(output_dir=Path("知乎归档")),
+    ArchiveSettings(output_dir=Path("知乎归档"), html=True),
 )
 
 print(report.target.title)
@@ -292,11 +303,11 @@ uv lock --check
 uv run zhihu --help
 ```
 
-真实知乎烟雾测试默认跳过，只有显式提供本机 Cookie 文件时才运行：
+真实知乎烟雾测试是单独的显式测试套件，因此普通确定性测试不会再显示被跳过的联网测试：
 
 ```bash
 ZHIHU_LIVE=1 ZHIHU_COOKIE_FILE=/private/path/cookies.json \
-  uv run pytest tests/live/test_live_archive.py
+  uv run pytest tests/live/live_archive.py
 ```
 
 架构边界见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，已确认但延期的 PDF、内嵌视频和登录体验改进见 [docs/FEATURE_TODO.md](docs/FEATURE_TODO.md)。当前不提供数据库或原始 JSON 归档。
