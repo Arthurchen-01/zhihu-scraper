@@ -1,0 +1,18 @@
+{
+  "brands": [
+    "品牌名称",
+    "核心人物"
+  ],
+  "alias_keywords": [
+    "暗语",
+    "黑称",
+    "缩写"
+  ],
+  "negative_keywords": [
+    "虚假宣传",
+    "骗局",
+    "避雷",
+    "套路"
+  ],
+  "cookie": "z_c0=YOUR_ZHIHU_COOKIE_HERE"
+}

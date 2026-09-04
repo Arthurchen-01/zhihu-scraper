@@ -1,87 +1,108 @@
-# 🥋 知乎全网舆情监控、存证与黑子穿透系统 (Zhihu Scraper & Evidence Archiver)
-
-针对知乎平台的 **7x24小时全网舆情监控、黑粉恶意言论爬取、楼中楼评论树穿透、高保真现场截图与法务标准卷宗归档** 一体化系统。
+# 🥋 Zhihu Scraper & Target Investigator Toolkit
+> **知乎全维信息爬虫、定向资产排查与高保真法务存证架构**  
+> 纯净抓取内核 · 交互式Web自服务看板 · 跨环境 AI Skill (Codex / Cursor / Antigravity)
 
 ---
 
 ## 🌟 核心功能特性
 
-1. **双轨数据采集引擎**：
-   - **全网关键词地毯式扫描**：持续轮询品牌关键词、恶意暗语、缩写隐语；
-   - **重点黑号定向主页穿透**：地毯式监控重点黑号名下全部专栏文章、问答、想法与互动跟帖。
-2. **严密的安全白名单门禁**：
-   - 内置创办人、核心教练、文人格斗主力运动员及排查战友白名单，100% 豁免防护，杜绝误伤己方宣传文章。
-3. **闭环法务级存证取证**：
-   - **文章全文留底**：DOM 树 + 原生 HTML + 纯文本 Markdown 永久落盘；
-   - **盖楼评论树**：抓取并固化楼中楼全部嵌套回复 JSON；
-   - **Playwright 高保真长截图**：真实浏览器渲染，自动用红方框（Bounding Box）高亮标注侵权段落；
-   - **律师标准 Excel 出表**：自动对齐 8 列律师标准诉讼格式。
-4. **云端 24h 守护与 Web 交互大盘**：
-   - Linux 后台常驻 `systemd` 守护进程；
-   - 8770 端口实时 Web 看板，支持一键导出 Excel/CSV 报表。
+### 1. 全维知乎信息抓取内核 (`zhihu_scraper`)
+* 👤 **作者全资产编目 (`AuthorScraper`)**：输入任意知乎主页直链（如 `/people/xxx`），快速抓取其个人画像（获赞、粉丝、签名）并全量编目其名下的**所有专栏、所有文章、所有回答、所有想法**；
+* 📚 **专栏文章全量下载 (`ColumnScraper`)**：输入专栏链接（`/column/xxx`），自动枚举内部全部文章，一键保存 Markdown 与纯文本；
+* 📝 **正文格式洁净转换 (`ArticleScraper` / `AnswerScraper` / `PinScraper`)**：剥离噪音 DOM，保留排版、原图链接、代码块与元数据；
+* 💬 **楼中楼多级评论树抓取 (`CommentScraper`)**：递归爬取根评论与子回复，导出树状 JSON，确保法务跟帖证据链完整；
+* 📸 **Playwright 高保真长截图 (`VisualArchiver`)**：无头浏览器物理渲染，自动消除 Cookie 遮罩与弹窗，支持对目标敏感词自动添加**红色矩形方框（Bounding Box）**高亮标注。
+
+### 2. 交互式 Web 排查看板 (`zhihu_scraper.app.web`)
+专为团队协作与同学自服务设计：
+1. **输入目标**：粘贴任意知乎个人主页或专栏链接；
+2. **凭证隔离**：同学可粘贴自己的 Cookie 避开限流，亦可留空使用公共凭证；
+3. **资产清单即时展示（Checklist）**：秒级返回该作者名下的全部文章与专栏列表，支持全选或按需单选；
+4. **实时进度条与日志**：SSE 实时事件流，动态展示 `0% -> 100%` 进度与当前操作；
+5. **一键 ZIP 打包下载**：任务完成后自动生成 ZIP 压缩包，内含所有选定文章的 Markdown、评论 JSON 与现场截图。
+
+### 3. 通用 AI Agent Skill (`skills/zhihu-scraper-investigator`)
+无缝兼容并已注入到以下 AI 编程与代理环境：
+* **Antigravity** (`~/.gemini/config/skills/zhihu-scraper-investigator`)
+* **Codex** (`~/.codex/skills/zhihu-scraper-investigator`)
+* **Cursor** (`~/.cursor/skills-cursor/zhihu-scraper-investigator`)
+* **Agents** (`~/.agents/skills/zhihu-scraper-investigator`)
+
+> 换新电脑时，只需运行 `scripts/install_skills.bat`（Windows）或 `bash scripts/install_skills.sh`（Mac/Linux），一秒完成跨电脑 Skill 迁移！
 
 ---
 
-## 📂 仓库核心架构
+## 📂 项目结构概览
 
 ```text
 .
-├── cloud_daemon.py             # 云端 7x24 小时监控守护主程序 (SQLite持久化)
-├── cloud_web_server.py          # FastAPI 实时大盘看板 (端口 8770)
-├── zhihu_client.py              # 知乎 API 与页面 DOM 解析核心客户端
-├── nlp_classifier.py            # 语义负向分析与规则引擎
-├── author_tracer.py             # 攻击者人物画像与关联追踪
-├── ai_deep_audit.py             # AI 深度立场审计器
-├── evidence_archiver.py         # 证据归档与律师 8 列格式导出引擎
-├── batch_archive_fulltext_and_screenshots.py # Playwright 批量截图与全文留存
-├── cloud_sync_service.py        # 云端至本地一键增量同步服务
-├── zhihu-monitor.service        # Linux Systemd 爬虫守护单元
-├── zhihu-web.service            # Linux Systemd Web 服务单元
-├── config.json                  # 关键词、暗语、品牌词与 Cookie 配置
-├── data/
-│   ├── zhihu_monitor.db         # 【核心 SQLite 数据库】包含 567+ 条黑帖与 178 位嫌疑人画像
-│   ├── 1_官方核心团队与保护白名单.xlsx
-│   ├── 2_全网真实黑子与侵权人知乎主页总汇表.xlsx
-│   └── 和律师商定版-收集清黑文章链接汇总表-最终.xlsx
-└── install_cloud.sh             # Linux 服务器一键极速安装脚本
+├── zhihu_scraper/                      # 核心 Python 爬虫框架
+│   ├── client.py                       # 统一 HTTP 客户端（请求头轮换、重试、分页）
+│   ├── scrapers/
+│   │   ├── author.py                   # 作者信息与全资产枚举
+│   │   ├── column.py                   # 专栏与专栏文章批量下载
+│   │   ├── article.py                  # 单篇文章正文抓取
+│   │   ├── answer.py                   # 问答内容抓取
+│   │   ├── pin.py                      # 想法内容抓取
+│   │   └── comment.py                  # 楼中楼嵌套评论树抓取
+│   ├── visual/
+│   │   └── screenshot.py               # Playwright 高清长截图与红框标注
+│   └── app/
+│       └── web.py                      # 自服务 Web 看板与进度条交互应用 (端口 8775)
+├── skills/
+│   └── zhihu-scraper-investigator/     # 通用 Agent Skill
+│       ├── SKILL.md                    # 技能行为规范与指令提示词
+│       └── scripts/
+│           └── run_investigation.py    # Skill 命令行执行脚本
+├── scripts/
+│   ├── install_skills.bat              # Windows 一键将 Skill 注入全环境
+│   ├── install_skills.sh               # Linux/macOS 一键注入脚本
+│   └── run_web.bat                     # Windows 启动本地 Web 看板
+├── cloud_daemon.py                     # 云端 7x24h 持续监控守护引擎
+├── cloud_web_server.py                 # 云端监控大盘 (端口 8770)
+├── config.example.json                 # 关键词与凭证配置示例
+└── pyproject.toml                      # 依赖管理 (uv / pip)
 ```
 
 ---
 
-## 🚀 服务器一键部署指南
+## 🚀 快速上手
 
-### 1. 克隆代码
+### 1. 启动 Web 交互界面
 ```bash
-git clone https://github.com/Arthurchen-01/zhihu-scraper.git
-cd zhihu-scraper
+python -m zhihu_scraper.app.web
+# 浏览器访问 http://localhost:8775
 ```
 
-### 2. 环境初始化 (推荐 uv 或 Python 3.10+)
-```bash
-pip install -r pyproject.toml  # 或 uv sync
-playwright install chromium
-playwright install-deps
+### 2. Python 代码直接调用
+```python
+from zhihu_scraper import ZhihuClient, AuthorScraper, ArticleScraper, VisualArchiver
+from pathlib import Path
+
+client = ZhihuClient(cookie="YOUR_COOKIE_HERE")
+
+# 1. 检索作者名下所有专栏与文章
+author_scraper = AuthorScraper(client)
+catalog = author_scraper.catalog_all_assets("https://www.zhihu.com/people/shou-qi-hei")
+print(f"找到 {len(catalog['items'])} 篇内容")
+
+# 2. 抓取单篇文章正文与高清截图
+art_scraper = ArticleScraper(client)
+art_scraper.scrape("1931445943309427470", save_dir=Path("./outputs/articles"))
+
+visual = VisualArchiver(cookie="YOUR_COOKIE_HERE")
+visual.capture_screenshot(
+    "https://zhuanlan.zhihu.com/p/1931445943309427470",
+    output_path=Path("./outputs/screenshots/evidence.png"),
+    highlight_keywords=["违规", "造谣"]
+)
 ```
 
-### 3. 配置 Cookie 与关键词
-编辑 `config.json`，填入最新的有效知乎 Cookie。
-
-### 4. 启动后台常驻服务
+### 3. 跨电脑一键安装 Skill
+在任何新设备上克隆本仓库后执行：
 ```bash
-# 前台调试运行
-python cloud_web_server.py  # 启动 Web 大盘 (http://0.0.0.0:8770)
-python cloud_daemon.py      # 启动 24h 监控爬虫
-
-# 或使用 systemd 守护运行
-sudo cp zhihu-monitor.service /etc/systemd/system/
-sudo cp zhihu-web.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now zhihu-monitor zhihu-web
+scripts/install_skills.bat       # Windows
+# 或
+bash scripts/install_skills.sh   # Linux / macOS
 ```
-
----
-
-## 📊 当前数据库指标 (data/zhihu_monitor.db)
-- **侵权证据明细**：567 条
-- **锁定可疑黑号**：178 人
-- **诉讼标准报表**：已完全对齐
+Codex、Cursor 与 Antigravity 即可立刻识别并启用该 Skill！
