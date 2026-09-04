@@ -856,7 +856,7 @@ def index_ui():
 
             <!-- Download Button (Bouncing Emerald) -->
             <div v-if="activeJob.status === 'completed'" style="display: flex; justify-content: flex-end; margin-top: 16px;">
-                <a :href="'/api/jobs/' + activeJob.job_id + '/download'" target="_blank" class="btn btn-emerald bounce-btn" style="padding: 12px 24px; font-size: 15px;">
+                <a :href="'/api/jobs/' + activeJob.job_id + '/download'" class="btn btn-emerald bounce-btn" style="padding: 12px 24px; font-size: 15px;">
                     📦 点击下载完整证据压缩包 (ZIP)
                 </a>
             </div>

@@ -122,6 +122,18 @@ class ZhihuClient:
             logger.error("Failed to decode JSON from %s: %s", url, e)
             return {}
 
+    def get_html(self, url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 15) -> str:
+        """Perform GET request and return raw HTML safely."""
+        try:
+            resp = self.get(url, params=params, timeout=timeout)
+            if resp.status_code == 200:
+                return resp.text
+            logger.warning("GET HTML %s returned HTTP %d", url, resp.status_code)
+            return ""
+        except Exception as e:
+            logger.error("Failed to fetch HTML from %s: %s", url, e)
+            return ""
+
     def paginate(
         self,
         base_url: str,

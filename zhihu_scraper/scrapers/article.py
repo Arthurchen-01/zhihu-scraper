@@ -4,6 +4,7 @@ Scrapes full text, metadata, images, and raw HTML/Markdown of Zhihu Zhuanlan art
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -34,15 +35,45 @@ class ArticleScraper:
         return cleaned.split("?")[0].strip("/")
 
     def get_article(self, article_id: str) -> Dict[str, Any]:
-        """Fetch article JSON metadata and content."""
+        """Fetch article JSON metadata and content via Web SSR or API."""
         clean_id = self.extract_article_id(article_id)
+
+        # 1. Primary: Web Page SSR via js-initialData (Bypasses API 403 blocks)
+        page_url = f"https://zhuanlan.zhihu.com/p/{clean_id}"
+        html = self.client.get_html(page_url)
+        if html:
+            m = re.search(r'<script\s+id="js-initialData"\s+type="text/json">(.*?)</script>', html, re.DOTALL)
+            if m:
+                try:
+                    init_data = json.loads(m.group(1))
+                    articles = init_data.get("initialState", {}).get("entities", {}).get("articles", {})
+                    if clean_id in articles:
+                        art = articles[clean_id]
+                        author = art.get("author", {})
+                        return {
+                            "id": str(art.get("id", clean_id)),
+                            "title": art.get("title", f"文章_{clean_id}"),
+                            "content": art.get("content", ""),
+                            "author": {
+                                "name": author.get("name", ""),
+                                "url_token": author.get("urlToken") or author.get("url_token", ""),
+                                "avatar_url": author.get("avatarUrl", "")
+                            },
+                            "created": art.get("created", 0),
+                            "updated": art.get("updated", 0),
+                            "voteup_count": art.get("voteupCount", art.get("voteup_count", 0)),
+                            "comment_count": art.get("commentCount", art.get("comment_count", 0))
+                        }
+                except Exception as e:
+                    logger.warning("Failed to parse js-initialData for article %s: %s", clean_id, e)
+
+        # 2. Fallback: Official REST API
         api_url = f"https://api.zhihu.com/articles/{clean_id}"
         data = self.client.get_json(api_url)
         if not data or "id" not in data:
-            # Try v4
             v4_url = f"https://www.zhihu.com/api/v4/articles/{clean_id}"
             data = self.client.get_json(v4_url)
-        return data
+        return data or {}
 
     def scrape(self, article_id: str, save_dir: Optional[Path] = None) -> Dict[str, Any]:
         """Download article metadata, format markdown, and optionally save to disk."""
