@@ -30,6 +30,7 @@ if sys.platform == "win32":
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
@@ -54,6 +55,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # In-memory store for background scraping jobs
 JOBS: Dict[str, Dict[str, Any]] = {}
@@ -343,7 +348,6 @@ def index_ui():
             padding: 24px 16px;
         }
         .container { max-width: 1140px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
-        [v-cloak] { display: none; }
 
         /* Card Styles */
         .card {
@@ -589,11 +593,11 @@ def index_ui():
             60% { transform: translateY(-3px); }
         }
     </style>
-    <!-- Vue 3 Library -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <!-- Local Static Vue 3 with CDN Fallbacks -->
+    <script src="/static/vue.global.prod.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.js';"></script>
 </head>
 <body>
-    <div id="app" v-cloak class="container">
+    <div id="app" class="container">
         
         <!-- Header -->
         <header class="card">
@@ -861,169 +865,176 @@ def index_ui():
     </div>
 
     <script>
-        const { createApp, ref, computed, onMounted } = Vue;
+        function initApp() {
+            if (typeof Vue === 'undefined') {
+                setTimeout(initApp, 100);
+                return;
+            }
+            const { createApp, ref, computed } = Vue;
 
-        createApp({
-            setup() {
-                const targetUrl = ref('');
-                const cookie = ref(localStorage.getItem('zhihu_cookie') || '');
-                const options = ref({
-                    save_markdown: true,
-                    save_comments: true,
-                    save_screenshot: true,
-                    highlight_keywords: []
-                });
-                const inspecting = ref(false);
-                const scraping = ref(false);
-                const targetType = ref('');
-                const authorInfo = ref(null);
-                const currentColumn = ref(null);
-                const columnsList = ref([]);
-                const parentAuthor = ref(null);
-                const items = ref([]);
-                const activeJob = ref(null);
-
-                const isAllSelected = computed(() => {
-                    return items.value.length > 0 && items.value.every(i => i.selected);
-                });
-
-                const selectedCount = computed(() => {
-                    return items.value.filter(i => i.selected).length;
-                });
-
-                const toggleSelectAll = () => {
-                    const targetState = !isAllSelected.value;
-                    items.value.forEach(i => i.selected = targetState);
-                };
-
-                const selectTop = (count) => {
-                    items.value.forEach((it, idx) => {
-                        it.selected = idx < count;
+            createApp({
+                setup() {
+                    const targetUrl = ref('');
+                    const cookie = ref(localStorage.getItem('zhihu_cookie') || '');
+                    const options = ref({
+                        save_markdown: true,
+                        save_comments: true,
+                        save_screenshot: true,
+                        highlight_keywords: []
                     });
-                };
+                    const inspecting = ref(false);
+                    const scraping = ref(false);
+                    const targetType = ref('');
+                    const authorInfo = ref(null);
+                    const currentColumn = ref(null);
+                    const columnsList = ref([]);
+                    const parentAuthor = ref(null);
+                    const items = ref([]);
+                    const activeJob = ref(null);
 
-                const inspect = async (urlToInspect) => {
-                    const u = (urlToInspect || targetUrl.value).trim();
-                    if (!u) {
-                        alert('请输入知乎链接');
-                        return;
-                    }
-                    if (cookie.value) {
-                        localStorage.setItem('zhihu_cookie', cookie.value);
-                    }
-                    inspecting.value = true;
-                    try {
-                        const res = await fetch('/api/inspect', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                url: u,
-                                cookie: cookie.value,
-                                max_items: 300
-                            })
+                    const isAllSelected = computed(() => {
+                        return items.value.length > 0 && items.value.every(i => i.selected);
+                    });
+
+                    const selectedCount = computed(() => {
+                        return items.value.filter(i => i.selected).length;
+                    });
+
+                    const toggleSelectAll = () => {
+                        const targetState = !isAllSelected.value;
+                        items.value.forEach(i => i.selected = targetState);
+                    };
+
+                    const selectTop = (count) => {
+                        items.value.forEach((it, idx) => {
+                            it.selected = idx < count;
                         });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.detail || '解析失败');
-                        
-                        targetType.value = data.target_type || 'author';
+                    };
 
-                        if (data.target_type === 'column') {
-                            currentColumn.value = data.column;
-                            items.value = (data.items || []).map(i => ({ ...i, selected: true }));
-                        } else {
-                            authorInfo.value = data.author || null;
-                            columnsList.value = data.columns || (data.items || []).filter(i => i.type === 'column');
-                            currentColumn.value = null;
-                            items.value = (data.items || []).map(i => ({ ...i, selected: true }));
+                    const inspect = async (urlToInspect) => {
+                        const u = (urlToInspect || targetUrl.value).trim();
+                        if (!u) {
+                            alert('请输入知乎链接');
+                            return;
                         }
-                    } catch (e) {
-                        alert('检索出错: ' + e.message);
-                    } finally {
-                        inspecting.value = false;
-                    }
-                };
+                        if (cookie.value) {
+                            localStorage.setItem('zhihu_cookie', cookie.value);
+                        }
+                        inspecting.value = true;
+                        try {
+                            const res = await fetch('/api/inspect', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    url: u,
+                                    cookie: cookie.value,
+                                    max_items: 300
+                                })
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.detail || '解析失败');
+                            
+                            targetType.value = data.target_type || 'author';
 
-                const enterColumn = (col) => {
-                    if (authorInfo.value) {
-                        parentAuthor.value = { ...authorInfo.value, url: targetUrl.value };
-                    }
-                    targetUrl.value = col.url || ('https://www.zhihu.com/column/' + col.id);
-                    inspect(targetUrl.value);
-                };
+                            if (data.target_type === 'column') {
+                                currentColumn.value = data.column;
+                                items.value = (data.items || []).map(i => ({ ...i, selected: true }));
+                            } else {
+                                authorInfo.value = data.author || null;
+                                columnsList.value = data.columns || (data.items || []).filter(i => i.type === 'column');
+                                currentColumn.value = null;
+                                items.value = (data.items || []).map(i => ({ ...i, selected: true }));
+                            }
+                        } catch (e) {
+                            alert('检索出错: ' + e.message);
+                        } finally {
+                            inspecting.value = false;
+                        }
+                    };
 
-                const returnToAuthor = () => {
-                    if (parentAuthor.value) {
-                        targetUrl.value = parentAuthor.value.url || parentAuthor.value.profile_url;
-                        parentAuthor.value = null;
+                    const enterColumn = (col) => {
+                        if (authorInfo.value) {
+                            parentAuthor.value = { ...authorInfo.value, url: targetUrl.value };
+                        }
+                        targetUrl.value = col.url || ('https://www.zhihu.com/column/' + col.id);
                         inspect(targetUrl.value);
-                    }
-                };
+                    };
 
-                const startBatchScrape = async () => {
-                    const chosen = items.value.filter(i => i.selected);
-                    if (chosen.length === 0) return;
+                    const returnToAuthor = () => {
+                        if (parentAuthor.value) {
+                            targetUrl.value = parentAuthor.value.url || parentAuthor.value.profile_url;
+                            parentAuthor.value = null;
+                            inspect(targetUrl.value);
+                        }
+                    };
 
-                    scraping.value = true;
-                    try {
-                        const res = await fetch('/api/scrape/batch', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                cookie: cookie.value,
-                                items: chosen,
-                                options: options.value
-                            })
-                        });
-                        const data = await res.json();
-                        if (!res.ok) throw new Error(data.detail || '启动抓取失败');
-                        
-                        listenProgress(data.job_id);
-                    } catch (e) {
-                        alert('执行出错: ' + e.message);
-                        scraping.value = false;
-                    }
-                };
+                    const startBatchScrape = async () => {
+                        const chosen = items.value.filter(i => i.selected);
+                        if (chosen.length === 0) return;
 
-                const listenProgress = (jobId) => {
-                    const evtSource = new EventSource('/api/jobs/' + jobId + '/stream');
-                    evtSource.onmessage = (event) => {
-                        const data = JSON.parse(event.data);
-                        activeJob.value = data;
-                        if (data.status === 'completed' || data.status === 'error') {
-                            evtSource.close();
+                        scraping.value = true;
+                        try {
+                            const res = await fetch('/api/scrape/batch', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    cookie: cookie.value,
+                                    items: chosen,
+                                    options: options.value
+                                })
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.detail || '启动抓取失败');
+                            
+                            listenProgress(data.job_id);
+                        } catch (e) {
+                            alert('执行出错: ' + e.message);
                             scraping.value = false;
                         }
                     };
-                    evtSource.onerror = () => {
-                        evtSource.close();
-                        scraping.value = false;
-                    };
-                };
 
-                return {
-                    targetUrl,
-                    cookie,
-                    options,
-                    inspecting,
-                    scraping,
-                    targetType,
-                    authorInfo,
-                    currentColumn,
-                    columnsList,
-                    parentAuthor,
-                    items,
-                    activeJob,
-                    isAllSelected,
-                    selectedCount,
-                    toggleSelectAll,
-                    selectTop,
-                    inspect,
-                    enterColumn,
-                    returnToAuthor,
-                    startBatchScrape
-                };
-            }
-        }).mount('#app');
+                    const listenProgress = (jobId) => {
+                        const evtSource = new EventSource('/api/jobs/' + jobId + '/stream');
+                        evtSource.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            activeJob.value = data;
+                            if (data.status === 'completed' || data.status === 'error') {
+                                evtSource.close();
+                                scraping.value = false;
+                            }
+                        };
+                        evtSource.onerror = () => {
+                            evtSource.close();
+                            scraping.value = false;
+                        };
+                    };
+
+                    return {
+                        targetUrl,
+                        cookie,
+                        options,
+                        inspecting,
+                        scraping,
+                        targetType,
+                        authorInfo,
+                        currentColumn,
+                        columnsList,
+                        parentAuthor,
+                        items,
+                        activeJob,
+                        isAllSelected,
+                        selectedCount,
+                        toggleSelectAll,
+                        selectTop,
+                        inspect,
+                        enterColumn,
+                        returnToAuthor,
+                        startBatchScrape
+                    };
+                }
+            }).mount('#app');
+        }
+        initApp();
     </script>
 </body>
 </html>
