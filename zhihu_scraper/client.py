@@ -142,14 +142,16 @@ class ZhihuClient:
         max_items: Optional[int] = None,
         delay: float = 0.5
     ) -> Generator[Dict[str, Any], None, None]:
-        """Generic pagination generator supporting Zhihu standard cursor/offset pagination."""
+        """Generic pagination generator supporting both cursor-based (paging.next) and offset-based pagination."""
         params = dict(params or {})
         params.setdefault("limit", limit)
-        params.setdefault("offset", 0)
+        if "offset" not in params and "comment_v5" not in base_url:
+            params.setdefault("offset", 0)
 
+        current_url = base_url
         yielded = 0
-        while True:
-            data = self.get_json(base_url, params=params)
+        while current_url:
+            data = self.get_json(current_url, params=params if current_url == base_url else None)
             items = data.get("data", [])
             if not items:
                 break
@@ -164,6 +166,13 @@ class ZhihuClient:
             if paging.get("is_end", True):
                 break
 
-            params["offset"] += len(items)
+            next_url = paging.get("next")
+            if next_url and next_url != current_url:
+                current_url = next_url
+            elif "offset" in params and isinstance(params["offset"], int):
+                params["offset"] += len(items)
+            else:
+                break
+
             if delay:
                 time.sleep(delay)
