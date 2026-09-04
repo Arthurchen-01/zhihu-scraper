@@ -11,12 +11,20 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import time
 import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
