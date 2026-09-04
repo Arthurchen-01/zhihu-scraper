@@ -36,7 +36,7 @@ def html_to_markdown(html_content: str) -> str:
     """Convert HTML content into clean markdown text with links and images preserved."""
     if not html_content:
         return ""
-    soup = BeautifulSoup(html_content, "lxml")
+    soup = BeautifulSoup(html_content, "html.parser")
 
     # Replace <a> with markdown links
     for a in soup.find_all("a"):
