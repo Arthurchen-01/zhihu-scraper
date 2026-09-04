@@ -107,19 +107,21 @@ class ZhihuClient:
 
     def get(self, url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 15) -> requests.Response:
         """Perform GET request with headers and error logging."""
+        if url.startswith("http://"):
+            url = "https://" + url[7:]
         resp = self.session.get(url, params=params, timeout=timeout)
         return resp
 
-    def get_json(self, url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 15) -> Dict[str, Any]:
+    def get_json(self, url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 20) -> Dict[str, Any]:
         """Perform GET request and parse JSON response safely."""
-        resp = self.get(url, params=params, timeout=timeout)
-        if resp.status_code != 200:
-            logger.warning("GET %s returned HTTP %d: %s", url, resp.status_code, resp.text[:200])
-            return {}
         try:
+            resp = self.get(url, params=params, timeout=timeout)
+            if resp.status_code != 200:
+                logger.warning("GET %s returned HTTP %d: %s", url, resp.status_code, resp.text[:200])
+                return {}
             return resp.json()
         except Exception as e:
-            logger.error("Failed to decode JSON from %s: %s", url, e)
+            logger.error("Failed to fetch or decode JSON from %s: %s", url, e)
             return {}
 
     def get_html(self, url: str, params: Optional[Dict[str, Any]] = None, timeout: int = 15) -> str:
@@ -149,6 +151,9 @@ class ZhihuClient:
             params.setdefault("offset", 0)
 
         current_url = base_url
+        if current_url.startswith("http://"):
+            current_url = "https://" + current_url[7:]
+
         yielded = 0
         while current_url:
             data = self.get_json(current_url, params=params if current_url == base_url else None)
@@ -167,8 +172,13 @@ class ZhihuClient:
                 break
 
             next_url = paging.get("next")
-            if next_url and next_url != current_url:
-                current_url = next_url
+            if next_url:
+                if next_url.startswith("http://"):
+                    next_url = "https://" + next_url[7:]
+                if next_url != current_url:
+                    current_url = next_url
+                else:
+                    break
             elif "offset" in params and isinstance(params["offset"], int):
                 params["offset"] += len(items)
             else:
