@@ -4,58 +4,35 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.egg-info/
-dist/
-build/
-.eggs/
-
-# Virtual environments
-.venv*/
-venv/
 env/
-.env/
-.env
-
-# Tests and type checking
-.mypy_cache/
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-*.cover
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
 
-# Editors and local agents
-.vscode/
-.idea/
-.claude/
-.gemini/
-.cursor/
-.cursorrules
-.agent/
-.agents/
-_agent/
-_agents/
-*.swp
-*.swo
-*~
-.DS_Store
+# Virtual Environments
+.venv
+venv/
+ENV/
 
-# Local archives and sensitive state
-知乎归档/
-settings.toml
-.local/
-data/
+# Temporary and Large Archives
+*.tar.gz
+*.zip
+*.log
+~$*.xlsx
 
-# Debug artifacts
-debug_*.html
-debug_*.py
-debug_*/
-.bak
-.venv_tls_test/
-
-# External reference repositories are research material, not vendored source.
-references/
-
-# Local agent runtime.
-scripts/ralph/
+# Local Outputs (Keep reports, ignore bulky dynamic temp screenshots in repo)
+outputs/screenshots/*.png
+outputs/temp/
+.tempmediaStorage/

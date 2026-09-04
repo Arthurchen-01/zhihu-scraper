@@ -1,0 +1,16 @@
+[Unit]
+Description=Zhihu 24x7 Continuous Negative Reputation & Black PR Monitor Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/zhihu-monitor
+ExecStart=/opt/zhihu-monitor/.venv/bin/python /opt/zhihu-monitor/cloud_daemon.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/zhihu-monitor/logs/daemon.log
+StandardError=append:/opt/zhihu-monitor/logs/daemon_error.log
+
+[Install]
+WantedBy=multi-user.target

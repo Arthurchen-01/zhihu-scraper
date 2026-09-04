@@ -1,0 +1,16 @@
+[Unit]
+Description=Zhihu Cloud Monitor Web Console & Realtime Dashboard (Port 8770)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/zhihu-monitor
+ExecStart=/opt/zhihu-monitor/.venv/bin/uvicorn cloud_web_server:app --host 0.0.0.0 --port 8770
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/zhihu-monitor/logs/web.log
+StandardError=append:/opt/zhihu-monitor/logs/web_error.log
+
+[Install]
+WantedBy=multi-user.target

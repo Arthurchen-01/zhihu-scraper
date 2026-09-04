@@ -1,4 +1,32 @@
-# 🥋 知乎全网舆情监控、存证与黑子穿透系统 (Zhihu Scraper & Evidence Archiver)
+"""Copy Master Deliverables into repository and generate comprehensive README.md."""
+
+import shutil
+import sys
+from pathlib import Path
+
+sys.stdout.reconfigure(encoding="utf-8")
+
+ROOT = Path(r"C:\Users\25472\Desktop\AI brain storming\工具栏\zhihu-black")
+DESKTOP_SRC = Path(r"C:\Users\25472\Desktop\清一武道馆")
+DATA_DIR = ROOT / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# 复制核心报表
+copy_targets = [
+    "1_官方核心团队与保护白名单.xlsx",
+    "2_全网真实黑子与侵权人知乎主页总汇表.xlsx",
+    "和律师商定版-收集清黑文章链接汇总表-最终.xlsx"
+]
+
+for item in copy_targets:
+    src = DESKTOP_SRC / item
+    if src.exists():
+        dst = DATA_DIR / item
+        shutil.copyfile(src, dst)
+        print(f"✓ 复制核心资产到仓库: {item}")
+
+# 创建标准 README.md
+readme_content = """# 🥋 知乎全网舆情监控、存证与黑子穿透系统 (Zhihu Scraper & Evidence Archiver)
 
 针对知乎平台的 **7x24小时全网舆情监控、黑粉恶意言论爬取、楼中楼评论树穿透、高保真现场截图与法务标准卷宗归档** 一体化系统。
 
@@ -85,3 +113,7 @@ sudo systemctl enable --now zhihu-monitor zhihu-web
 - **侵权证据明细**：567 条
 - **锁定可疑黑号**：178 人
 - **诉讼标准报表**：已完全对齐
+"""
+
+(ROOT / "README.md").write_text(readme_content, encoding="utf-8")
+print("✅ README.md 编写完成！")

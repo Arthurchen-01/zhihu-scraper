@@ -1,0 +1,78 @@
+import json
+from pathlib import Path
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+
+blacklist_raw = [
+    {"name": "文成武德张", "bio": "", "known_role": "恶意攻击者", "is_friendly": False},
+    {"name": "来时路", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "小王", "bio": "职业打假20年，只做正确的事", "known_role": "打假人/黑公关", "is_friendly": False},
+    {"name": "宝石", "bio": "", "known_role": "谢先俊(兼听则明/攻击者)", "is_friendly": False},
+    {"name": "老百姓", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "忡忡", "bio": "我看小鸡吃米，鸡走了，我也走了。", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "守其黑", "bio": "知其白，守其黑。", "known_role": "郑婉芳(伪学术系统性抹黑)", "is_friendly": False},
+    {"name": "李文", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "铺路石", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "笑哈哈", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "大家管我叫牛哥", "bio": "爱太极拳，爱辩论爱中医～", "known_role": "武道/中医攻击者", "is_friendly": False},
+    {"name": "水云", "bio": "游民", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "慧心", "bio": "兴趣很杂，关注很多，所求很少", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "世间二两墨", "bio": "地球旅行者/人间寻道者", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "FAFN", "bio": "", "known_role": "核心攻击者(脏山长/非法学校造谣)", "is_friendly": False},
+    {"name": "随心", "bio": "心安自在", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "看客", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "结善缘做善事", "bio": "我可能不能干，但算是个好人。", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "非凡", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "守其心", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "唯心造", "bio": "二十年木匠，十年身心成长，一切唯心造！", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "五湖散人", "bio": "浮生若梦，为欢几何", "known_role": "许冰(转发寻衅造谣)", "is_friendly": False},
+    {"name": "赛博酸奶盖", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "知乎用户KUD8K9", "bio": "", "known_role": "匿名黑号", "is_friendly": False},
+    {"name": "陈小野", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "cici", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "cocucola", "bio": "社会闲散人员", "known_role": "王乐乐(连续发帖攻击新教育)", "is_friendly": False},
+    {"name": "莫不菲", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "爱丽丝泡泡", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "再也不见", "bio": "请关注事件本身", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "知乎用户pkz7cl", "bio": "", "known_role": "匿名黑号", "is_friendly": False},
+    {"name": "知乎用户wxRinB", "bio": "", "known_role": "匿名黑号", "is_friendly": False},
+    {"name": "木神深", "bio": "霜红罢舞，漫山色青青，雾朝烟暮。", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "xxXXX", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "逸尘", "bio": "", "known_role": "重点攻击者(指名道姓攻击张清一武术/林妹妹言论)", "is_friendly": False},
+    {"name": "行成于思", "bio": "业精于勤，荒于嬉；行成于思，毁于随。", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "ccxyz", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "档案管理", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "岭上观云", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "大王", "bio": "风林火山", "known_role": "周河川(核心攻击者/恶龙论/打败泰拳无价值论)", "is_friendly": False},
+    {"name": "健康产业观察者", "bio": "关注健康产业落地，发现体制之外的更多机会", "known_role": "医疗/健康攻击者", "is_friendly": False},
+    {"name": "精神空间", "bio": "最大的职业是母亲。四个宝", "known_role": "家长退费/恐慌叙事", "is_friendly": False},
+    {"name": "1900", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "凭栏远望", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "质衡", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "宁溪", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "所谓高人皆为凡人", "bio": "所谓捷径，要么骗局，要么非法；骗自己可笑，…", "known_role": "李海(投资/武术/骗局论)", "is_friendly": False},
+    {"name": "黄传科", "bio": "毕业于中科院，光学工程师，讲各科学习方法，…", "known_role": "伪科学/学习法贬损攻击者", "is_friendly": False},
+    {"name": "清风溪流", "bio": "正念", "known_role": "王秀兰(核心攻击者/鸡贼老张/概率骗局论)", "is_friendly": False},
+    {"name": "云海柏川", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "AAA建材顾总", "bio": "建材电脑相机编程", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "乐水乐山", "bio": "文化教育", "known_role": "杨永红(360度透视真相长文作者)", "is_friendly": False},
+    {"name": "依法不依人", "bio": "厚德载物", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "haidao", "bio": "", "known_role": "重点攻击者(反偶像崇拜/清黑专栏)", "is_friendly": False},
+    {"name": "放弃一切偶像崇拜", "bio": "吾爱吾师，吾更爱真理。拒绝崇拜，从我做起。", "known_role": "反偶像崇拜攻击者", "is_friendly": False},
+    {"name": "行云流水", "bio": "转递善良", "known_role": "李安心(核心攻击者/邪教论/粗暴辱骂)", "is_friendly": False},
+    {"name": "无妨", "bio": "", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "杰哥小号", "bio": "", "known_role": "可疑水军小号", "is_friendly": False},
+    {"name": "自知者明", "bio": "", "known_role": "李明静/李冬(高频攻击与污蔑)", "is_friendly": False},
+    {"name": "旺喜47", "bio": "心系传播，情牵公益。湖南桃江人驻长沙。", "known_role": "媒体/公益黑公关", "is_friendly": False},
+    {"name": "卡哇伊仑纳德", "bio": "职业篮球运动员", "known_role": "体育/运动贬损攻击者", "is_friendly": False},
+    {"name": "张秉风", "bio": "写小说的｜新教育公益文章，可任意转载，无需…", "known_role": "【白名单】新教育支持者/公益写手(严禁误杀)", "is_friendly": True},
+    {"name": "洛溪儿", "bio": "活动活动爪子！码字！", "known_role": "可疑攻击者", "is_friendly": False},
+    {"name": "江月诗", "bio": "百△必完结！（关注我必最富最美！）", "known_role": "重点攻击者/小说化编造抹黑", "is_friendly": False}
+]
+
+out_dir = Path("data")
+out_dir.mkdir(parents=True, exist_ok=True)
+out_file = out_dir / "blacklist_target_users.json"
+out_file.write_text(json.dumps(blacklist_raw, ensure_ascii=False, indent=2), encoding="utf-8")
+print(f"✅ 成功解析并结构化 64 位手机黑名单用户，已存入 {out_file}")
