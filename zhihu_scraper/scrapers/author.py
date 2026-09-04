@@ -53,7 +53,7 @@ class AuthorScraper:
                 "type": "column",
                 "id": col.get("id", ""),
                 "title": col.get("title", ""),
-                "url": col.get("url", f"https://www.zhihu.com/column/{col.get('id', '')}"),
+                "url": f"https://www.zhihu.com/column/{col.get('id', '')}" if col.get("id") else col.get("url", ""),
                 "description": col.get("description", ""),
                 "articles_count": col.get("articles_count", 0),
                 "author_name": col.get("author", {}).get("name", "")

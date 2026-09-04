@@ -26,10 +26,14 @@ class ColumnScraper:
     def extract_column_id(url_or_id: str) -> str:
         """Extract column ID or slug from URL or raw string."""
         cleaned = url_or_id.strip()
-        m = re.search(r"zhihu\.com/column/([^/?#]+)", cleaned)
-        if m:
+        m_c = re.search(r"(c_\d+)", cleaned)
+        if m_c:
+            return m_c.group(1)
+        m = re.search(r"(?:columns?|zhuanlan\.zhihu\.com)/([^/?#]+)", cleaned)
+        if m and m.group(1) not in ["api", "v4"]:
             return m.group(1)
-        return cleaned.split("?")[0].strip("/")
+        parts = cleaned.split("?")[0].strip("/").split("/")
+        return parts[-1] if parts else cleaned
 
     def get_column_info(self, column_id: str) -> Dict[str, Any]:
         """Fetch metadata about a column."""
