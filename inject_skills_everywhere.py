@@ -9,11 +9,12 @@ sys.stdout.reconfigure(encoding="utf-8")
 ROOT = Path(__file__).resolve().parent
 SKILL_SRC = ROOT / "skills" / "zhihu-scraper-investigator"
 
+HOME = Path.home()
 TARGET_DIRS = [
-    Path(r"C:\Users\25472\.gemini\config\skills\zhihu-scraper-investigator"),
-    Path(r"C:\Users\25472\.codex\skills\zhihu-scraper-investigator"),
-    Path(r"C:\Users\25472\.cursor\skills-cursor\zhihu-scraper-investigator"),
-    Path(r"C:\Users\25472\.agents\skills\zhihu-scraper-investigator")
+    HOME / ".gemini" / "config" / "skills" / "zhihu-scraper-investigator",
+    HOME / ".codex" / "skills" / "zhihu-scraper-investigator",
+    HOME / ".cursor" / "skills-cursor" / "zhihu-scraper-investigator",
+    HOME / ".agents" / "skills" / "zhihu-scraper-investigator"
 ]
 
 print("🚀 开始注入 zhihu-scraper-investigator Skill 到所有 IDE 与智能体环境...")
