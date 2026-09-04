@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -46,19 +47,28 @@ class ColumnScraper:
         return data
 
     def list_column_articles(self, column_id: str, max_items: Optional[int] = None) -> List[Dict[str, Any]]:
-        """List all article summaries inside a column."""
+        """List all article summaries inside a column with formatted datetime and timestamp."""
         slug = self.extract_column_id(column_id)
         url = f"https://www.zhihu.com/api/v4/columns/{slug}/items"
         items = []
-        for raw in self.client.paginate(url, limit=20, max_items=max_items):
+        fetch_limit = None if (max_items is None or max_items <= 0) else max_items
+        for raw in self.client.paginate(url, limit=20, max_items=fetch_limit):
             # Column items can be articles or pins
             art = raw.get("article", raw)
+            created_ts = int(art.get("created") or art.get("created_time") or 0)
+            updated_ts = int(art.get("updated") or art.get("updated_time") or 0)
+            created_str = datetime.fromtimestamp(created_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if created_ts else ""
+            created_date = created_str[:10] if created_str else ""
+
             items.append({
                 "type": "article",
                 "id": str(art.get("id")),
                 "title": art.get("title", "未命名文章"),
                 "url": f"https://zhuanlan.zhihu.com/p/{art.get('id')}",
-                "created_at": art.get("created", 0),
+                "created_at": created_str,
+                "created_date": created_date,
+                "created_timestamp": created_ts,
+                "updated_timestamp": updated_ts,
                 "voteup_count": art.get("voteup_count", 0),
                 "comment_count": art.get("comment_count", 0),
                 "excerpt": art.get("excerpt", "")

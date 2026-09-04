@@ -67,7 +67,7 @@ JOBS: Dict[str, Dict[str, Any]] = {}
 class InspectRequest(BaseModel):
     url: str
     cookie: Optional[str] = ""
-    max_items: Optional[int] = 100
+    max_items: Optional[int] = 0  # 0 or None means unlimited / all articles
 
 
 class BatchScrapeRequest(BaseModel):
@@ -101,8 +101,8 @@ def inspect_target(req: InspectRequest):
     if is_column:
         col_scraper = ColumnScraper(client)
         col_info = col_scraper.get_column_info(url)
-        # Allow retrieving up to 300 articles inside a column
-        limit = req.max_items if req.max_items and req.max_items > 100 else 300
+        # 0 or None means unlimited full pagination (download ALL articles)
+        limit = None if (req.max_items is None or req.max_items <= 0) else req.max_items
         articles = col_scraper.list_column_articles(url, max_items=limit)
         return {
             "target_type": "column",
@@ -121,13 +121,14 @@ def inspect_target(req: InspectRequest):
     # 2. Otherwise treat as author or general profile
     author_scraper = AuthorScraper(client)
     try:
+        limit = None if (req.max_items is not None and req.max_items <= 0) else (req.max_items or 50)
         catalog = author_scraper.catalog_all_assets(
             url,
             include_articles=True,
             include_answers=True,
             include_pins=True,
             include_columns=True,
-            max_per_category=min(req.max_items or 30, 30)
+            max_per_category=limit or 50
         )
         catalog["target_type"] = "author"
         return catalog
@@ -617,7 +618,7 @@ def index_ui():
                 ⚙️ 第一步：输入知乎链接与操作凭证
             </h2>
             
-            <div class="grid-2">
+            <div style="display: grid; grid-template-columns: 2fr 2fr 1.2fr; gap: 14px;">
                 <div>
                     <label>目标知乎主页或专栏链接 (必填)</label>
                     <input v-model="targetUrl" type="text" placeholder="例: https://www.zhihu.com/people/shan-chang-qing-yi 或 /column/c_xxx">
@@ -625,6 +626,15 @@ def index_ui():
                 <div>
                     <label>知乎 Cookie 凭证 (选填/粘贴本人 Cookie 避免限流)</label>
                     <input v-model="cookie" type="password" placeholder="粘贴你的知乎 Cookie (包含 z_c0=...)">
+                </div>
+                <div>
+                    <label>检索深度 / 数量上限</label>
+                    <select v-model="fetchLimit" style="width: 100%; height: 44px; background: #090e18; border: 1px solid #253352; color: #f8fafc; border-radius: 10px; padding: 0 10px; font-size: 13px;">
+                        <option :value="0">🔥 全量无上限 (全部加载)</option>
+                        <option :value="300">⚡ 深度拉取 (前300篇)</option>
+                        <option :value="100">📋 标准拉取 (前100篇)</option>
+                        <option :value="30">🚀 极速预览 (前30篇)</option>
+                    </select>
                 </div>
             </div>
 
@@ -751,29 +761,72 @@ def index_ui():
 
         <!-- Checklist Section -->
         <section v-if="items.length > 0" class="card">
-            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
+            <!-- Header with dynamic counts -->
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #1e293b;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <h2 style="font-size: 16px; font-weight: 600; color: #f1f5f9;">
-                        📋 第二步：勾选需要存证的条目 (共 {{ items.length }} 条)
+                        📋 第二步：勾选需要存证的条目
                     </h2>
-                    <span style="font-size: 12px; background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); padding: 2px 8px; border-radius: 9999px;">
-                        已选中 {{ selectedCount }} 项
+                    <span style="font-size: 12px; background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); padding: 2px 10px; border-radius: 9999px;">
+                        总资产 {{ items.length }} 条 | 时间线匹配 {{ filteredItems.length }} 条 | 已勾选 {{ selectedCount }} 项
                     </span>
                 </div>
 
-                <!-- Quick Selection Controls -->
-                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
-                    <button @click="toggleSelectAll" class="btn btn-outline">
-                        {{ isAllSelected ? '取消全选' : '全部全选' }}
-                    </button>
-                    <button @click="selectTop(5)" class="btn btn-outline">选前5篇</button>
-                    <button @click="selectTop(10)" class="btn btn-outline">选前10篇</button>
-                    <button @click="selectTop(20)" class="btn btn-outline">选前20篇</button>
-                    
-                    <button @click="startBatchScrape" :disabled="selectedCount === 0 || scraping" class="btn btn-emerald">
+                <!-- Scraping Action Button -->
+                <div>
+                    <button @click="startBatchScrape" :disabled="selectedCount === 0 || scraping" class="btn btn-emerald" style="padding: 10px 22px; font-size: 14px;">
                         <span v-if="scraping">⏳ 正在存证中...</span>
-                        <span v-else>🚀 开始批量存证已选项 ({{ selectedCount }}项)</span>
+                        <span v-else>🚀 开始批量存证已选项 (共 {{ selectedCount }} 项)</span>
                     </button>
+                </div>
+            </div>
+
+            <!-- Timeline Filter Toolbar -->
+            <div style="background: #090e18; border: 1px solid #1e293b; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+                    <!-- Date Inputs & Search -->
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+                        <span style="font-size: 13px; font-weight: 600; color: #38bdf8;">📅 时间线筛选:</span>
+                        <input type="date" v-model="filterStartDate" style="padding: 6px 10px; background: #151d30; border: 1px solid #2d3f66; color: #e2e8f0; border-radius: 6px; font-size: 12px;" title="起始日期">
+                        <span style="color: #64748b;">至</span>
+                        <input type="date" v-model="filterEndDate" style="padding: 6px 10px; background: #151d30; border: 1px solid #2d3f66; color: #e2e8f0; border-radius: 6px; font-size: 12px;" title="截止日期">
+                        <input type="text" v-model="searchKeyword" placeholder="🔍 标题/关键词实时过滤..." style="padding: 6px 12px; background: #151d30; border: 1px solid #2d3f66; color: #e2e8f0; border-radius: 6px; font-size: 12px; width: 180px;">
+                    </div>
+
+                    <!-- Sort Order Toggle -->
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button @click="toggleSortOrder" class="btn btn-outline" style="padding: 6px 12px; font-size: 12px;">
+                            {{ sortOrder === 'desc' ? '⬇️ 最新在前 (倒序)' : '⬆️ 最早在前 (正序)' }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick Date Presets -->
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px;">
+                    <span style="font-size: 12px; color: #94a3b8; margin-right: 4px;">快捷预设:</span>
+                    <button @click="setTimelinePreset('all')" :class="activePreset === 'all' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'">全部时间</button>
+                    <button @click="setTimelinePreset('2026')" :class="activePreset === '2026' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'">2026年 (最新)</button>
+                    <button @click="setTimelinePreset('2025')" :class="activePreset === '2025' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'">2025年</button>
+                    <button @click="setTimelinePreset('2024')" :class="activePreset === '2024' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'">2024年及以前</button>
+                    <button @click="setTimelinePreset('30d')" :class="activePreset === '30d' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'">近30天</button>
+                    <button @click="setTimelinePreset('90d')" :class="activePreset === '90d' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'">近90天</button>
+                    <button @click="setTimelinePreset('365d')" :class="activePreset === '365d' ? 'btn btn-primary btn-sm' : 'btn btn-outline btn-sm'">近1年</button>
+                </div>
+
+                <!-- Bulk Selection Buttons -->
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid #141f36;">
+                    <button @click="selectAllFiltered" class="btn btn-emerald btn-sm" style="font-weight: 600;">
+                        ✨ 勾选当前时间线全部 ({{ filteredItems.length }}篇)
+                    </button>
+                    <button @click="selectAllGlobal" class="btn btn-outline btn-sm">
+                        🌟 全选大盘所有文章 ({{ items.length }}篇)
+                    </button>
+                    <button @click="unselectAll" class="btn btn-outline btn-sm">❌ 取消全选</button>
+                    <span style="color: #334155; margin: 0 4px;">|</span>
+                    <button @click="selectTopN(20)" class="btn btn-outline btn-sm">选前20篇</button>
+                    <button @click="selectTopN(50)" class="btn btn-outline btn-sm">选前50篇</button>
+                    <button @click="selectTopN(100)" class="btn btn-outline btn-sm">选前100篇</button>
+                    <button @click="selectTopN(200)" class="btn btn-outline btn-sm">选前200篇</button>
                 </div>
             </div>
 
@@ -783,16 +836,19 @@ def index_ui():
                     <thead>
                         <tr>
                             <th style="width: 40px; text-align: center;">
-                                <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" style="width: 16px; height: 16px; accent-color: var(--cyan); cursor: pointer;">
+                                <input type="checkbox" :checked="isAllFilteredSelected" @change="toggleSelectAllFiltered" style="width: 16px; height: 16px; accent-color: var(--cyan); cursor: pointer;">
                             </th>
-                            <th style="width: 80px;">类型</th>
+                            <th style="width: 70px;">类型</th>
                             <th>标题 / 专栏名称 / 内容摘要</th>
-                            <th style="width: 140px; text-align: center;">互动数据</th>
-                            <th style="width: 100px; text-align: center;">操作</th>
+                            <th style="width: 150px; text-align: center; cursor: pointer;" @click="toggleSortOrder" title="点击切换时间正反序">
+                                📅 发布时间 {{ sortOrder === 'desc' ? '▼' : '▲' }}
+                            </th>
+                            <th style="width: 130px; text-align: center;">互动数据</th>
+                            <th style="width: 90px; text-align: center;">操作</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="it in items" :key="it.id">
+                        <tr v-for="it in filteredItems" :key="it.id">
                             <td style="text-align: center;">
                                 <input type="checkbox" v-model="it.selected" style="width: 16px; height: 16px; accent-color: var(--cyan); cursor: pointer;">
                             </td>
@@ -809,6 +865,9 @@ def index_ui():
                                     {{ it.excerpt }}
                                 </div>
                             </td>
+                            <td style="text-align: center; color: #cbd5e1; font-size: 12px; font-family: monospace;">
+                                {{ it.created_at || it.created_date || '—' }}
+                            </td>
                             <td style="text-align: center; color: #94a3b8; font-size: 12px;">
                                 <template v-if="it.type === 'column'">
                                     <span style="color: #c084fc;">📚 {{ it.articles_count || 0 }} 篇</span>
@@ -819,13 +878,17 @@ def index_ui():
                                 </template>
                             </td>
                             <td style="text-align: center;">
-                                <!-- Column Direct Enter Button in Row -->
                                 <button v-if="it.type === 'column'" @click="enterColumn(it)" class="btn btn-primary btn-sm">
                                     📂 进入
                                 </button>
                                 <a v-else :href="it.url" target="_blank" style="color: #38bdf8; font-size: 12px; text-decoration: none;">
                                     知乎 ↗
                                 </a>
+                            </td>
+                        </tr>
+                        <tr v-if="filteredItems.length === 0">
+                            <td colspan="6" style="text-align: center; color: #64748b; padding: 30px;">
+                                ⚠️ 在当前所选时间段 ({{ filterStartDate || '起' }} 至 {{ filterEndDate || '止' }}) 或关键词下未检索到匹配条目，请重置时间线或关键词。
                             </td>
                         </tr>
                     </tbody>
@@ -876,6 +939,13 @@ def index_ui():
                 setup() {
                     const targetUrl = ref('');
                     const cookie = ref(localStorage.getItem('zhihu_cookie') || '');
+                    const fetchLimit = ref(0);
+                    const filterStartDate = ref('');
+                    const filterEndDate = ref('');
+                    const searchKeyword = ref('');
+                    const sortOrder = ref('desc');
+                    const activePreset = ref('all');
+
                     const options = ref({
                         save_markdown: true,
                         save_comments: true,
@@ -892,23 +962,101 @@ def index_ui():
                     const items = ref([]);
                     const activeJob = ref(null);
 
-                    const isAllSelected = computed(() => {
-                        return items.value.length > 0 && items.value.every(i => i.selected);
+                    const setTimelinePreset = (preset) => {
+                        activePreset.value = preset;
+                        const now = new Date();
+                        const pad = (n) => String(n).padStart(2, '0');
+                        const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+                        if (preset === 'all') {
+                            filterStartDate.value = '';
+                            filterEndDate.value = '';
+                        } else if (preset === '2026') {
+                            filterStartDate.value = '2026-01-01';
+                            filterEndDate.value = '2026-12-31';
+                        } else if (preset === '2025') {
+                            filterStartDate.value = '2025-01-01';
+                            filterEndDate.value = '2025-12-31';
+                        } else if (preset === '2024') {
+                            filterStartDate.value = '1970-01-01';
+                            filterEndDate.value = '2024-12-31';
+                        } else if (preset === '30d') {
+                            const past = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+                            filterStartDate.value = fmt(past);
+                            filterEndDate.value = fmt(now);
+                        } else if (preset === '90d') {
+                            const past = new Date(now.getTime() - 90 * 24 * 3600 * 1000);
+                            filterStartDate.value = fmt(past);
+                            filterEndDate.value = fmt(now);
+                        } else if (preset === '365d') {
+                            const past = new Date(now.getTime() - 365 * 24 * 3600 * 1000);
+                            filterStartDate.value = fmt(past);
+                            filterEndDate.value = fmt(now);
+                        }
+                    };
+
+                    const filteredItems = computed(() => {
+                        let res = items.value.slice();
+                        if (searchKeyword.value.trim()) {
+                            const kw = searchKeyword.value.trim().toLowerCase();
+                            res = res.filter(i => 
+                                (i.title && i.title.toLowerCase().includes(kw)) ||
+                                (i.excerpt && i.excerpt.toLowerCase().includes(kw))
+                            );
+                        }
+                        if (filterStartDate.value) {
+                            res = res.filter(i => {
+                                const d = i.created_date || (i.created_at ? i.created_at.slice(0, 10) : '');
+                                return !d || d >= filterStartDate.value;
+                            });
+                        }
+                        if (filterEndDate.value) {
+                            res = res.filter(i => {
+                                const d = i.created_date || (i.created_at ? i.created_at.slice(0, 10) : '');
+                                return !d || d <= filterEndDate.value;
+                            });
+                        }
+                        res.sort((a, b) => {
+                            const ta = a.created_timestamp || 0;
+                            const tb = b.created_timestamp || 0;
+                            return sortOrder.value === 'desc' ? (tb - ta) : (ta - tb);
+                        });
+                        return res;
                     });
 
                     const selectedCount = computed(() => {
                         return items.value.filter(i => i.selected).length;
                     });
 
-                    const toggleSelectAll = () => {
-                        const targetState = !isAllSelected.value;
-                        items.value.forEach(i => i.selected = targetState);
+                    const isAllFilteredSelected = computed(() => {
+                        return filteredItems.value.length > 0 && filteredItems.value.every(i => i.selected);
+                    });
+
+                    const toggleSelectAllFiltered = () => {
+                        const targetState = !isAllFilteredSelected.value;
+                        filteredItems.value.forEach(i => i.selected = targetState);
                     };
 
-                    const selectTop = (count) => {
-                        items.value.forEach((it, idx) => {
-                            it.selected = idx < count;
+                    const selectAllFiltered = () => {
+                        filteredItems.value.forEach(i => i.selected = true);
+                    };
+
+                    const selectAllGlobal = () => {
+                        items.value.forEach(i => i.selected = true);
+                    };
+
+                    const unselectAll = () => {
+                        items.value.forEach(i => i.selected = false);
+                    };
+
+                    const selectTopN = (n) => {
+                        filteredItems.value.forEach((it, idx) => {
+                            it.selected = idx < n;
                         });
+                    };
+
+                    const toggleSortOrder = () => {
+                        sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc';
                     };
 
                     const inspect = async (urlToInspect) => {
@@ -928,7 +1076,7 @@ def index_ui():
                                 body: JSON.stringify({
                                     url: u,
                                     cookie: cookie.value,
-                                    max_items: 300
+                                    max_items: fetchLimit.value
                                 })
                             });
                             const data = await res.json();
@@ -1012,6 +1160,14 @@ def index_ui():
                     return {
                         targetUrl,
                         cookie,
+                        fetchLimit,
+                        filterStartDate,
+                        filterEndDate,
+                        searchKeyword,
+                        sortOrder,
+                        activePreset,
+                        setTimelinePreset,
+                        filteredItems,
                         options,
                         inspecting,
                         scraping,
@@ -1022,10 +1178,14 @@ def index_ui():
                         parentAuthor,
                         items,
                         activeJob,
-                        isAllSelected,
                         selectedCount,
-                        toggleSelectAll,
-                        selectTop,
+                        isAllFilteredSelected,
+                        toggleSelectAllFiltered,
+                        selectAllFiltered,
+                        selectAllGlobal,
+                        unselectAll,
+                        selectTopN,
+                        toggleSortOrder,
                         inspect,
                         enterColumn,
                         returnToAuthor,

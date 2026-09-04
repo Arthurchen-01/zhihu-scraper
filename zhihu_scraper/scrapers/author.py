@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -64,13 +65,19 @@ class AuthorScraper:
         """List all articles published by this author."""
         url = f"https://www.zhihu.com/api/v4/members/{url_token}/articles"
         articles = []
-        for item in self.client.paginate(url, limit=20, max_items=max_items):
+        fetch_limit = None if (max_items is None or max_items <= 0) else max_items
+        for item in self.client.paginate(url, limit=20, max_items=fetch_limit):
+            created_ts = int(item.get("created") or item.get("created_time") or 0)
+            created_str = datetime.fromtimestamp(created_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if created_ts else ""
+            created_date = created_str[:10] if created_str else ""
             articles.append({
                 "type": "article",
                 "id": str(item.get("id", "")),
                 "title": item.get("title", "未命名文章"),
                 "url": f"https://zhuanlan.zhihu.com/p/{item.get('id')}",
-                "created_at": item.get("created", 0),
+                "created_at": created_str,
+                "created_date": created_date,
+                "created_timestamp": created_ts,
                 "updated_at": item.get("updated", 0),
                 "voteup_count": item.get("voteup_count", 0),
                 "comment_count": item.get("comment_count", 0),
@@ -82,17 +89,23 @@ class AuthorScraper:
         """List all answers written by this author."""
         url = f"https://www.zhihu.com/api/v4/members/{url_token}/answers?include=question,created_time,updated_time,voteup_count,comment_count,excerpt"
         answers = []
-        for item in self.client.paginate(url, limit=20, max_items=max_items):
+        fetch_limit = None if (max_items is None or max_items <= 0) else max_items
+        for item in self.client.paginate(url, limit=20, max_items=fetch_limit):
             q = item.get("question", {})
             q_id = q.get("id", "")
             ans_id = item.get("id", "")
+            created_ts = int(item.get("created_time") or item.get("created") or 0)
+            created_str = datetime.fromtimestamp(created_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if created_ts else ""
+            created_date = created_str[:10] if created_str else ""
             answers.append({
                 "type": "answer",
                 "id": str(ans_id),
                 "question_id": str(q_id),
                 "title": q.get("title", "未命名问答"),
                 "url": f"https://www.zhihu.com/question/{q_id}/answer/{ans_id}",
-                "created_at": item.get("created_time", 0),
+                "created_at": created_str,
+                "created_date": created_date,
+                "created_timestamp": created_ts,
                 "updated_at": item.get("updated_time", 0),
                 "voteup_count": item.get("voteup_count", 0),
                 "comment_count": item.get("comment_count", 0),
@@ -104,15 +117,21 @@ class AuthorScraper:
         """List all pins (想法) posted by this author."""
         url = f"https://www.zhihu.com/api/v4/members/{url_token}/pins"
         pins = []
-        for item in self.client.paginate(url, limit=20, max_items=max_items):
+        fetch_limit = None if (max_items is None or max_items <= 0) else max_items
+        for item in self.client.paginate(url, limit=20, max_items=fetch_limit):
             pin_id = item.get("id", "")
             content_text = item.get("excerpt_title") or item.get("content", [{}])[0].get("content", "")
+            created_ts = int(item.get("created") or item.get("created_time") or 0)
+            created_str = datetime.fromtimestamp(created_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if created_ts else ""
+            created_date = created_str[:10] if created_str else ""
             pins.append({
                 "type": "pin",
                 "id": str(pin_id),
                 "title": content_text[:60] if content_text else f"想法_{pin_id}",
                 "url": f"https://www.zhihu.com/pin/{pin_id}",
-                "created_at": item.get("created", 0),
+                "created_at": created_str,
+                "created_date": created_date,
+                "created_timestamp": created_ts,
                 "voteup_count": item.get("reaction_count", 0),
                 "comment_count": item.get("comment_count", 0),
                 "excerpt": content_text
