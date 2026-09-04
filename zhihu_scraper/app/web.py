@@ -127,7 +127,7 @@ def inspect_target(req: InspectRequest):
             include_answers=True,
             include_pins=True,
             include_columns=True,
-            max_per_category=req.max_items or 60
+            max_per_category=min(req.max_items or 30, 30)
         )
         catalog["target_type"] = "author"
         return catalog
