@@ -138,6 +138,7 @@ class AuthorScraper:
         profile_url = f"https://www.zhihu.com/people/{token}"
 
         assets = []
+        cols = []
 
         if include_columns:
             try:
@@ -176,8 +177,10 @@ class AuthorScraper:
                 "profile_url": profile_url,
                 "articles_count": profile.get("articles_count", 0),
                 "answers_count": profile.get("answers_count", 0),
-                "pins_count": profile.get("pins_count", 0)
+                "pins_count": profile.get("pins_count", 0),
+                "columns_count": len(cols) or profile.get("columns_count", 0)
             },
+            "columns": cols,
             "total_items": len(assets),
             "items": assets
         }
