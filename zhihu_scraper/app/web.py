@@ -676,8 +676,8 @@ def get_favicon():
 def get_manifest():
     """Web App Manifest for browser identity recognition, PWA installation, and Omnibox search."""
     return {
-        "name": "Apex | 知乎创作者定向排查与批量存证系统",
-        "short_name": "Apex",
+        "name": "Scraper | 知乎创作者定向排查与批量存证系统",
+        "short_name": "Scraper",
         "description": "知乎创作者定向排查、专栏穿透、想法动态筛选、EPUB与ZIP双导出 (zh.samuraiguan.cloud)",
         "start_url": "/",
         "display": "standalone",
@@ -701,21 +701,21 @@ def index_ui():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Apex | 知乎创作者定向排查与批量存证系统 (zh.samuraiguan.cloud)</title>
+    <title>Scraper | 知乎创作者定向排查与批量存证系统 (zh.samuraiguan.cloud)</title>
     
     <!-- Brand Identity & Browser Omnibox Autocomplete Metadata -->
-    <meta name="application-name" content="Apex">
-    <meta name="apple-mobile-web-app-title" content="Apex">
+    <meta name="application-name" content="Scraper">
+    <meta name="apple-mobile-web-app-title" content="Scraper">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="description" content="Apex - 知乎创作者定向排查与批量存证系统。创作者资产与动态全息检索、专栏穿透、想法/动态独立筛选、ZIP 压缩包与 EPUB 电子书一键导出 (zh.samuraiguan.cloud)。">
-    <meta name="keywords" content="Apex, apex, zhihu, 知乎, 知乎存证, 批量下载, 知乎爬虫, zh.samuraiguan.cloud">
+    <meta name="description" content="Scraper - 知乎创作者定向排查与批量存证系统。创作者资产与动态全息检索、专栏穿透、想法/动态独立筛选、ZIP 压缩包与 EPUB 电子书一键导出 (zh.samuraiguan.cloud)。">
+    <meta name="keywords" content="Scraper, scraper, zhihu, 知乎, 知乎存证, 批量下载, 知乎爬虫, zh.samuraiguan.cloud">
     <meta name="theme-color" content="#06b6d4">
     
     <!-- Open Graph for Social, Omnibox, and Bookmarks -->
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="Apex">
-    <meta property="og:title" content="Apex | 知乎创作者定向排查与批量存证系统">
+    <meta property="og:site_name" content="Scraper">
+    <meta property="og:title" content="Scraper | 知乎创作者定向排查与批量存证系统">
     <meta property="og:description" content="创作者资产全息检索、专栏穿透、想法/动态独立筛选、ZIP 与 EPUB 一键导出。">
     <meta property="og:url" content="https://zh.samuraiguan.cloud">
     <meta property="og:image" content="/static/logo.svg">
@@ -1456,10 +1456,10 @@ def index_ui():
                     <span>{{ theme === 'dark' ? '☀️ 白天' : '🌙 暗黑' }}</span>
                 </button>
                 <div class="modal-logo-wrap">
-                    <img src="/static/logo.svg" alt="Apex Logo" class="modal-logo-img">
+                    <img src="/static/logo.svg" alt="Scraper Logo" class="modal-logo-img">
                 </div>
-                <div class="modal-title">Apex 系统安全访问门禁</div>
-                <div class="modal-desc">请输入系统访问密码以解锁 Apex 定向排查与批量存证系统</div>
+                <div class="modal-title">Scraper 系统安全访问门禁</div>
+                <div class="modal-desc">请输入系统访问密码以解锁 Scraper 定向排查与批量存证系统</div>
                 
                 <div style="margin-bottom: 16px;">
                     <input 
@@ -1475,7 +1475,7 @@ def index_ui():
 
                 <button @click="handleLogin" :disabled="loggingIn" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 14px;">
                     <span v-if="loggingIn">🔄 正在校验中...</span>
-                    <span v-else>🚀 验证并进入 Apex</span>
+                    <span v-else>🚀 验证并进入 Scraper</span>
                 </button>
             </div>
         </div>
@@ -1575,12 +1575,12 @@ def index_ui():
             <!-- Header -->
             <header class="card">
                 <div class="brand-left">
-                    <div class="brand-logo-wrap" title="Apex - 定向排查与批量存证系统">
-                        <img src="/static/logo.svg" alt="Apex Logo" class="brand-logo-img">
+                    <div class="brand-logo-wrap" title="Scraper - 定向排查与批量存证系统">
+                        <img src="/static/logo.svg" alt="Scraper Logo" class="brand-logo-img">
                     </div>
                     <div class="brand-text">
                         <div class="brand-title-row">
-                            <span class="brand-title-name">Apex</span>
+                            <span class="brand-title-name">Scraper</span>
                             <span class="brand-vault-badge">Z-VAULT</span>
                             <h1 class="brand-h1">知乎创作者定向排查与批量存证系统</h1>
                         </div>
@@ -1597,7 +1597,7 @@ def index_ui():
                     </button>
                     <div class="badge-status">
                         <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
-                        <span>系统就绪 (Apex Core)</span>
+                        <span>系统就绪 (Scraper Core)</span>
                     </div>
                     <button @click="handleLogout" class="btn btn-outline btn-sm" title="锁定并退出">
                         🔒 退出
