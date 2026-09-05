@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="apexGradMain" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe" />
+      <stop offset="50%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+    <linearGradient id="apexGradGlow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0.9" />
+    </linearGradient>
+    <linearGradient id="apexGradCore" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  
+  <!-- Outer subtle hexagon contour -->
+  <polygon points="64,8 116,36 116,92 64,120 12,92 12,36" fill="none" stroke="url(#apexGradMain)" stroke-width="2" stroke-opacity="0.35" stroke-dasharray="8 4" />
+  
+  <!-- Left Apex Wing -->
+  <polygon points="64,16 64,36 28,100 16,100" fill="url(#apexGradGlow)" />
+  
+  <!-- Right Apex Wing -->
+  <polygon points="64,16 64,36 100,100 112,100" fill="url(#apexGradMain)" filter="url(#neonGlow)" />
+  
+  <!-- Central Summit Triangle -->
+  <polygon points="64,32 40,78 88,78" fill="none" stroke="url(#apexGradMain)" stroke-width="4" stroke-linejoin="round" />
+  
+  <!-- Glowing Center Diamond Node -->
+  <polygon points="64,54 74,70 64,86 54,70" fill="url(#apexGradCore)" filter="url(#neonGlow)" />
+  
+  <!-- Cyber Crossbar -->
+  <rect x="34" y="86" width="60" height="4" rx="2" fill="url(#apexGradMain)" filter="url(#neonGlow)" />
+  
+  <!-- Data Anchors -->
+  <circle cx="64" cy="104" r="3.5" fill="#00f2fe" filter="url(#neonGlow)" />
+  <circle cx="48" cy="104" r="2.5" fill="#3b82f6" />
+  <circle cx="80" cy="104" r="2.5" fill="#10b981" />
+</svg>

@@ -68,7 +68,14 @@ async def auth_middleware(request: Request, call_next):
     path = request.url.path
     # Allow public endpoints
     if (
-        path in ["/", "/api/auth/login", "/api/auth/status", "/download/taiji.zip"]
+        path in [
+            "/",
+            "/api/auth/login",
+            "/api/auth/status",
+            "/download/taiji.zip",
+            "/favicon.ico",
+            "/manifest.json",
+        ]
         or path.startswith("/static/")
     ):
         return await call_next(request)
@@ -482,7 +489,34 @@ def download_taiji_public():
                 filename="清一太极武术理论与实践_全量专栏归档.zip",
                 media_type="application/zip"
             )
-    raise HTTPException(status_code=404, detail="文件尚未生成")
+@app.get("/favicon.ico", include_in_schema=False)
+def get_favicon():
+    """Serves the vector favicon for browser tabs and Omnibox autocomplete."""
+    fav = STATIC_DIR / "favicon.svg"
+    if fav.exists():
+        return FileResponse(path=str(fav), media_type="image/svg+xml")
+    raise HTTPException(status_code=404, detail="Favicon not found")
+
+
+@app.get("/manifest.json", include_in_schema=False)
+def get_manifest():
+    """Web App Manifest for browser identity recognition, PWA installation, and Omnibox search."""
+    return {
+        "name": "Apex | 知乎创作者定向排查与批量存证系统",
+        "short_name": "Apex",
+        "description": "知乎创作者定向排查、专栏穿透、想法动态筛选、EPUB与ZIP双导出 (zh.samuraiguan.cloud)",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0b0f19",
+        "theme_color": "#06b6d4",
+        "icons": [
+            {
+                "src": "/static/logo.svg",
+                "sizes": "any",
+                "type": "image/svg+xml"
+            }
+        ]
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -493,7 +527,30 @@ def index_ui():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>知乎创作者定向排查与批量存证工具箱</title>
+    <title>Apex | 知乎创作者定向排查与批量存证系统 (zh.samuraiguan.cloud)</title>
+    
+    <!-- Brand Identity & Browser Omnibox Autocomplete Metadata -->
+    <meta name="application-name" content="Apex">
+    <meta name="apple-mobile-web-app-title" content="Apex">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="description" content="Apex - 知乎创作者定向排查与批量存证系统。创作者资产与动态全息检索、专栏穿透、想法/动态独立筛选、ZIP 压缩包与 EPUB 电子书一键导出 (zh.samuraiguan.cloud)。">
+    <meta name="keywords" content="Apex, apex, zhihu, 知乎, 知乎存证, 批量下载, 知乎爬虫, zh.samuraiguan.cloud">
+    <meta name="theme-color" content="#06b6d4">
+    
+    <!-- Open Graph for Social, Omnibox, and Bookmarks -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Apex">
+    <meta property="og:title" content="Apex | 知乎创作者定向排查与批量存证系统">
+    <meta property="og:description" content="创作者资产全息检索、专栏穿透、想法/动态独立筛选、ZIP 与 EPUB 一键导出。">
+    <meta property="og:url" content="https://zh.samuraiguan.cloud">
+    <meta property="og:image" content="/static/logo.svg">
+    
+    <!-- Favicon & Touch Icons -->
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    <link rel="alternate icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/static/logo.svg">
+    <link rel="manifest" href="/manifest.json">
     <script>
         (function() {
             var theme = localStorage.getItem('theme_mode') || 'dark';
@@ -677,6 +734,89 @@ def index_ui():
             gap: 16px;
             background: var(--header-bg);
             border-color: var(--header-border);
+        }
+        .brand-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .brand-logo-wrap {
+            width: 48px;
+            height: 48px;
+            min-width: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
+            box-shadow: 0 4px 15px var(--cyan-glow);
+            transition: all 0.25s ease;
+            cursor: pointer;
+        }
+        .brand-logo-wrap:hover {
+            transform: scale(1.05) rotate(2deg);
+            box-shadow: 0 6px 20px var(--cyan-glow);
+        }
+        .brand-logo-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .brand-text {
+            display: flex;
+            flex-direction: column;
+        }
+        .brand-title-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .brand-title-name {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #38bdf8 0%, #34d399 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 2px 10px rgba(56, 189, 248, 0.25);
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        [data-theme="light"] .brand-title-name {
+            background: linear-gradient(135deg, #0284c7 0%, #059669 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: none;
+        }
+        .brand-vault-badge {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(6, 182, 212, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+        }
+        [data-theme="light"] .brand-vault-badge {
+            background: rgba(2, 132, 199, 0.12);
+            color: #0284c7;
+            border-color: rgba(2, 132, 199, 0.25);
+        }
+        .brand-h1 {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin: 0;
+            display: inline;
+        }
+        .brand-subtitle {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-top: 3px;
         }
         h1 { font-size: 22px; font-weight: 700; color: var(--h1-color); display: flex; align-items: center; gap: 10px; }
         .subtitle { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
@@ -976,15 +1116,35 @@ def index_ui():
             text-align: center;
             transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
         }
-        .modal-icon {
-            font-size: 42px;
-            margin-bottom: 12px;
+        .modal-logo-wrap {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px auto;
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.15) 0%, rgba(16, 185, 129, 0.15) 100%);
+            border: 1px solid rgba(6, 182, 212, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            box-shadow: 0 8px 25px var(--cyan-glow);
+            animation: pulseGlow 3s infinite alternate ease-in-out;
+        }
+        @keyframes pulseGlow {
+            0% { transform: scale(1); box-shadow: 0 4px 20px var(--cyan-glow); }
+            100% { transform: scale(1.04); box-shadow: 0 8px 30px rgba(6, 182, 212, 0.4); }
+        }
+        .modal-logo-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
         .modal-title {
-            font-size: 18px;
-            font-weight: 700;
+            font-size: 19px;
+            font-weight: 800;
             color: var(--modal-title-color);
             margin-bottom: 6px;
+            letter-spacing: 0.5px;
         }
         .modal-desc {
             font-size: 13px;
@@ -1014,9 +1174,11 @@ def index_ui():
                 >
                     <span>{{ theme === 'dark' ? '☀️ 白天' : '🌙 暗黑' }}</span>
                 </button>
-                <div class="modal-icon">🔒</div>
-                <div class="modal-title">知乎存证系统安全访问门禁</div>
-                <div class="modal-desc">请输入系统访问密码以解锁定向排查与批量存证工具箱</div>
+                <div class="modal-logo-wrap">
+                    <img src="/static/logo.svg" alt="Apex Logo" class="modal-logo-img">
+                </div>
+                <div class="modal-title">Apex 系统安全访问门禁</div>
+                <div class="modal-desc">请输入系统访问密码以解锁 Apex 定向排查与批量存证系统</div>
                 
                 <div style="margin-bottom: 16px;">
                     <input 
@@ -1032,7 +1194,7 @@ def index_ui():
 
                 <button @click="handleLogin" :disabled="loggingIn" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 14px;">
                     <span v-if="loggingIn">🔄 正在校验中...</span>
-                    <span v-else>🚀 验证并进入系统</span>
+                    <span v-else>🚀 验证并进入 Apex</span>
                 </button>
             </div>
         </div>
@@ -1042,21 +1204,30 @@ def index_ui():
             
             <!-- Header -->
             <header class="card">
-                <div>
-                    <h1>🎯 知乎创作者定向排查与批量存证工具箱</h1>
-                    <p class="subtitle">创作者资产与动态实时检索、专栏穿透、想法/动态独立筛选、ZIP 压缩包与 EPUB 电子书一键导出</p>
+                <div class="brand-left">
+                    <div class="brand-logo-wrap" title="Apex - 定向排查与批量存证系统">
+                        <img src="/static/logo.svg" alt="Apex Logo" class="brand-logo-img">
+                    </div>
+                    <div class="brand-text">
+                        <div class="brand-title-row">
+                            <span class="brand-title-name">Apex</span>
+                            <span class="brand-vault-badge">Z-VAULT</span>
+                            <h1 class="brand-h1">知乎创作者定向排查与批量存证系统</h1>
+                        </div>
+                        <p class="brand-subtitle">创作者资产全息检索 · 专栏穿透 · 想法/动态独立筛选 · EPUB与ZIP一键导出 (zh.samuraiguan.cloud)</p>
+                    </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <button 
                         @click="toggleTheme" 
                         class="theme-switch-btn" 
-                        :title="'切换到' + (theme === 'dark' ? '白天模式' : '暗黑模式')"
+                        :title="'切换到' + (theme === 'dark' ? '白天风格' : '暗黑风格')"
                     >
                         <span>{{ theme === 'dark' ? '☀️ 白天风格' : '🌙 暗黑风格' }}</span>
                     </button>
                     <div class="badge-status">
                         <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
-                        <span>系统就绪 (动态+想法+EPUB)</span>
+                        <span>系统就绪 (Apex Core)</span>
                     </div>
                     <button @click="handleLogout" class="btn btn-outline btn-sm" title="锁定并退出">
                         🔒 退出
