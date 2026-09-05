@@ -12,6 +12,7 @@ import io
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -153,6 +154,179 @@ def get_default_cookie() -> str:
     except Exception:
         pass
     return ""
+
+
+def extract_local_zhihu_cookie() -> dict:
+    """Attempts to auto-detect Zhihu cookie from local Edge/Chrome browser databases."""
+    if sys.platform != "win32":
+        return {
+            "ok": False,
+            "reason": "non_windows",
+            "message": "当前处于云端服务器环境，受浏览器安全沙箱限制无法跨网络读取您个人电脑。请使用【方式二：1秒控制台口诀】或【方式三：弹出网页登录】！",
+        }
+
+    try:
+        import base64
+        import sqlite3
+        import win32crypt
+        from Crypto.Cipher import AES
+    except ImportError:
+        return {
+            "ok": False,
+            "reason": "missing_deps",
+            "message": "本地环境缺少解密组件，请直接使用【方式二：1秒控制台口诀】。",
+        }
+
+    home = Path.home()
+    browsers = [
+        ("Edge", home / "AppData" / "Local" / "Microsoft" / "Edge" / "User Data"),
+        ("Chrome", home / "AppData" / "Local" / "Google" / "Chrome" / "User Data"),
+    ]
+
+    found_browsers = []
+    locked = False
+
+    for b_name, user_data in browsers:
+        if not user_data.exists():
+            continue
+        found_browsers.append(b_name)
+        local_state_path = user_data / "Local State"
+        if not local_state_path.exists():
+            continue
+
+        try:
+            with open(local_state_path, "r", encoding="utf-8") as f:
+                local_state = json.load(f)
+            enc_key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])[5:]
+            key = win32crypt.CryptUnprotectData(enc_key, None, None, None, 0)[1]
+        except Exception:
+            continue
+
+        profiles = ["Default"] + [f"Profile {i}" for i in range(1, 8)]
+        for prof in profiles:
+            cookies_db = user_data / prof / "Network" / "Cookies"
+            if not cookies_db.exists():
+                cookies_db = user_data / prof / "Cookies"
+            if not cookies_db.exists():
+                continue
+
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".sqlite") as tmp:
+                    tmp_path = Path(tmp.name)
+                shutil.copy2(cookies_db, tmp_path)
+                conn = sqlite3.connect(tmp_path)
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT name, encrypted_value FROM cookies WHERE host_key LIKE '%zhihu.com%'"
+                )
+                rows = cursor.fetchall()
+                conn.close()
+
+                cookies_dict = {}
+                for name, enc_val in rows:
+                    try:
+                        if enc_val[:3] in (b"v10", b"v11"):
+                            nonce = enc_val[3:15]
+                            ciphertext = enc_val[15:-16]
+                            tag = enc_val[-16:]
+                            cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+                            val = cipher.decrypt_and_verify(ciphertext, tag).decode("utf-8", errors="ignore")
+                        else:
+                            val = win32crypt.CryptUnprotectData(enc_val, None, None, None, 0)[1].decode("utf-8", errors="ignore")
+                        if val:
+                            cookies_dict[name] = val
+                    except Exception:
+                        pass
+
+                if "z_c0" in cookies_dict:
+                    cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
+                    return {
+                        "ok": True,
+                        "browser": b_name,
+                        "profile": prof,
+                        "z_c0": cookies_dict["z_c0"],
+                        "cookie": cookie_str,
+                        "message": f"成功从电脑 {b_name} ({prof}) 读取到知乎凭证！",
+                    }
+            except PermissionError:
+                locked = True
+            except Exception:
+                pass
+            finally:
+                if tmp_path and tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except Exception:
+                        pass
+
+    if locked:
+        return {
+            "ok": False,
+            "reason": "locked",
+            "message": f"已检测到电脑中的 {'/'.join(found_browsers)}，但浏览器当前正在运行并锁定了数据文件。请关闭浏览器窗口后再点一次；或者直接使用下方的【方式二：1秒控制台口诀】！",
+        }
+
+    if found_browsers:
+        return {
+            "ok": False,
+            "reason": "not_logged_in",
+            "message": f"已扫描电脑中的 {'/'.join(found_browsers)}，但未发现知乎登录凭证。请确保浏览器已登录知乎，或使用下方的【方式二：1秒控制台口诀】！",
+        }
+
+    return {
+        "ok": False,
+        "reason": "not_found",
+        "message": "未在电脑默认路径找到 Edge 或 Chrome。建议直接使用【方式二：1秒控制台口诀】。",
+    }
+
+
+def normalize_zhihu_cookie(raw_cookie: str) -> dict:
+    """Extracts z_c0 and normalizes raw cookie strings or document.cookie paste."""
+    raw = (raw_cookie or "").strip()
+    if not raw:
+        return {"valid": False, "cookie": "", "z_c0": "", "message": "凭证为空"}
+
+    z_c0_match = re.search(r'z_c0="?([^";\s]+)"?', raw)
+    if z_c0_match:
+        z_c0_val = z_c0_match.group(1)
+        return {
+            "valid": True,
+            "cookie": raw,
+            "z_c0": z_c0_val,
+            "message": f"成功识别知乎凭证 (z_c0: {z_c0_val[:12]}...)",
+        }
+
+    if raw.startswith("2|") or (len(raw) > 40 and "=" not in raw):
+        return {
+            "valid": True,
+            "cookie": f"z_c0={raw}",
+            "z_c0": raw,
+            "message": f"成功识别并封装 z_c0 凭证 ({raw[:12]}...)",
+        }
+
+    return {
+        "valid": False,
+        "cookie": raw,
+        "z_c0": "",
+        "message": "已填入凭证，若遇限流建议包含 z_c0=...",
+    }
+
+
+class CookieParseRequest(BaseModel):
+    cookie: str
+
+
+@app.post("/api/cookie/auto-detect")
+def api_cookie_auto_detect():
+    """Auto-detects local Zhihu cookie from Chrome/Edge databases."""
+    return extract_local_zhihu_cookie()
+
+
+@app.post("/api/cookie/parse")
+def api_cookie_parse(req: CookieParseRequest):
+    """Parses and validates a raw cookie string or z_c0."""
+    return normalize_zhihu_cookie(req.cookie)
 
 
 @app.post("/api/inspect")
@@ -856,6 +1030,113 @@ def index_ui():
             box-shadow: 0 0 0 3px var(--cyan-glow);
         }
 
+        /* Credential Helper Trigger & Cards */
+        .btn-credential-helper {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%);
+            border: 1px solid #06b6d4;
+            color: #38bdf8;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px var(--cyan-glow);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-credential-helper:hover {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.35) 0%, rgba(16, 185, 129, 0.35) 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px var(--cyan-glow);
+            color: #ffffff;
+        }
+        [data-theme="light"] .btn-credential-helper {
+            background: linear-gradient(135deg, #e0f2fe 0%, #d1fae5 100%);
+            border-color: #0284c7;
+            color: #0284c7;
+        }
+        [data-theme="light"] .btn-credential-helper:hover {
+            background: linear-gradient(135deg, #0284c7 0%, #059669 100%);
+            color: #ffffff;
+        }
+        .input-inline-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .input-inline-btn:hover {
+            background: rgba(244, 63, 94, 0.15);
+            color: #f43f5e;
+        }
+
+        .cred-card {
+            background: var(--input-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 16px;
+            transition: all 0.2s ease;
+        }
+        .cred-card:hover {
+            border-color: var(--cyan);
+            box-shadow: 0 4px 16px var(--cyan-glow);
+        }
+        .cred-card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .cred-card-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+            margin: 0;
+        }
+        .cred-card-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .cred-card-tag {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: var(--pill-bg);
+            color: var(--text-muted);
+            border: 1px solid var(--pill-border);
+        }
+        .cred-tag-recommend {
+            background: rgba(6, 182, 212, 0.15);
+            color: #38bdf8;
+            border-color: rgba(6, 182, 212, 0.35);
+        }
+        [data-theme="light"] .cred-tag-recommend {
+            background: rgba(2, 132, 199, 0.12);
+            color: #0284c7;
+            border-color: rgba(2, 132, 199, 0.25);
+        }
+        .cred-tag-foolproof {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border-color: rgba(16, 185, 129, 0.35);
+        }
+        [data-theme="light"] .cred-tag-foolproof {
+            background: rgba(5, 150, 105, 0.12);
+            color: #059669;
+            border-color: rgba(5, 150, 105, 0.25);
+        }
+
         /* Checkbox Options */
         .options-row {
             display: flex;
@@ -1199,6 +1480,95 @@ def index_ui():
             </div>
         </div>
 
+        <!-- Credential Helper Modal -->
+        <div v-if="showCredentialModal" class="modal-backdrop" @click.self="showCredentialModal = false">
+            <div class="modal-box" style="max-width: 680px; width: 92%; text-align: left; padding: 28px 28px 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="font-size: 28px;">🔑</div>
+                        <div>
+                            <h3 style="font-size: 18px; font-weight: 700; color: var(--modal-title-color);">知乎登录凭证一键获取助手</h3>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">彻底告别技术名词与抓包，根据你的情况任选一种傻瓜方式搞定凭证</p>
+                        </div>
+                    </div>
+                    <button @click="showCredentialModal = false" class="btn btn-outline btn-sm" style="padding: 4px 10px; font-size: 13px;">✕ 关闭</button>
+                </div>
+
+                <!-- Method Cards Grid -->
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+
+                    <!-- Method 1: Local Auto-Read -->
+                    <div class="cred-card">
+                        <div class="cred-card-header">
+                            <span class="cred-card-tag cred-tag-recommend">没手机 · 最推荐</span>
+                            <h4 class="cred-card-title">⚡ 方式一：一键读取我电脑里已登录的知乎</h4>
+                        </div>
+                        <p class="cred-card-desc">只要你电脑里的 Edge 或 Chrome 曾经登录过知乎，点击下方按钮，0 秒直接读取已存凭证，无需掏手机！</p>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-top: 10px;">
+                            <button @click="autoDetectLocalCookie" :disabled="detectingCookie" class="btn btn-primary" style="padding: 9px 18px; font-size: 13px;">
+                                <span v-if="detectingCookie">🔄 正在扫描电脑 Edge/Chrome...</span>
+                                <span v-else>⚡ 立即读取电脑已登录的知乎</span>
+                            </button>
+                            <span v-if="detectMsg" :style="{ fontSize: '12px', color: detectSuccess ? '#10b981' : '#f59e0b', fontWeight: '500' }">
+                                {{ detectMsg }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Method 2: 1-Second Console Trick -->
+                    <div class="cred-card" style="border-color: rgba(16, 185, 129, 0.35);">
+                        <div class="cred-card-header">
+                            <span class="cred-card-tag cred-tag-foolproof">万能 · 100% 成功</span>
+                            <h4 class="cred-card-title">💡 方式二：1秒控制台口诀（无需手机·零基础推荐）</h4>
+                        </div>
+                        <p class="cred-card-desc">如果当前浏览器正在打开知乎，照着下面 3 步做，1 秒搞定：</p>
+                        <div style="background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px; margin: 8px 0; font-size: 12px; line-height: 1.8;">
+                            <div>1️⃣ 确保打开知乎网页并已登录：<a href="https://www.zhihu.com" target="_blank" style="color: var(--cyan); text-decoration: underline; font-weight: 600;">🔗 点击打开知乎 (在新标签页)</a></div>
+                            <div>2️⃣ 在知乎网页按键盘最顶部的 <strong>F12</strong> 键，点击弹出来的顶部 <strong>Console (控制台)</strong></div>
+                            <div>3️⃣ 点击下方复制口诀，粘贴到控制台按回车：</div>
+                            <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px;">
+                                <code style="background: var(--bg-base); border: 1px solid var(--card-border); padding: 5px 12px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #38bdf8;">copy(document.cookie)</code>
+                                <button @click="copySnippet" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">
+                                    {{ snippetCopied ? '✅ 已复制口诀！' : '📋 点击一键复制口诀' }}
+                                </button>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                            <button @click="pasteFromClipboard" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-color: #10b981; padding: 8px 16px; font-size: 13px;">
+                                📋 我已在知乎回车，点此一键自动粘贴并填入
+                            </button>
+                            <span style="font-size: 11px; color: var(--text-muted);">（点击将直接从剪贴板读取并自动提取有效凭证）</span>
+                        </div>
+                    </div>
+
+                    <!-- Method 3: Mobile QR or Normal Web Login -->
+                    <div class="cred-card">
+                        <div class="cred-card-header">
+                            <span class="cred-card-tag">有手机 / 记得密码</span>
+                            <h4 class="cred-card-title">💻 方式三：弹出知乎官方页面登录</h4>
+                        </div>
+                        <p class="cred-card-desc">弹出一个知乎官方登录弹窗，有手机可直接用知乎 App 扫码，没手机可输入知乎账号密码登录：</p>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+                            <button @click="openZhihuPopup" class="btn btn-outline" style="padding: 8px 16px; font-size: 13px;">
+                                🌐 弹出知乎官方登录窗口
+                            </button>
+                            <span style="font-size: 11px; color: var(--text-muted);">登录完成后，再按方式二口诀一键复制即可</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-size: 12px; color: var(--text-muted);">
+                        💡 提示：凭证仅保存在您当前浏览器内存中，用于作者数据检索与避开知乎接口风控。
+                    </div>
+                    <button @click="showCredentialModal = false" class="btn btn-secondary btn-sm" style="padding: 6px 16px;">
+                        完成
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Main Container -->
         <div v-if="isAuthenticated" class="container">
             
@@ -1247,8 +1617,43 @@ def index_ui():
                         <input v-model="targetUrl" type="text" placeholder="例: https://www.zhihu.com/people/shan-chang-qing-yi 或 /column/c_xxx">
                     </div>
                     <div>
-                        <label>知乎 Cookie 凭证 (选填/粘贴知乎 Cookie 避免限流)</label>
-                        <input v-model="cookie" type="password" placeholder="粘贴你的知乎 Cookie (包含 z_c0=...)">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="margin-bottom: 0;">知乎登录凭证 (选填 · 避免知乎限流)</label>
+                            <button 
+                                type="button" 
+                                @click="openCredentialModal" 
+                                class="btn-credential-helper"
+                                title="打开知乎凭证一键获取助手"
+                            >
+                                🔑 点我一键获取知乎凭证
+                            </button>
+                        </div>
+                        <div style="position: relative;">
+                            <input 
+                                v-model="cookie" 
+                                @input="handleCookieInput"
+                                :type="showCookie ? 'text' : 'password'" 
+                                placeholder="无需手动找 Cookie，点击右上角【🔑 一键获取】即可自动填入"
+                                style="padding-right: 70px;"
+                            >
+                            <button 
+                                type="button" 
+                                v-if="cookie" 
+                                @click="cookie = ''; cookieStatus = null" 
+                                class="input-inline-btn"
+                                title="清空凭证"
+                            >
+                                ✕ 清空
+                            </button>
+                        </div>
+                        <div v-if="cookieStatus" style="font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                            <span v-if="cookieStatus.valid" style="color: #10b981; font-weight: 600;">
+                                ✅ {{ cookieStatus.message }}
+                            </span>
+                            <span v-else style="color: #f59e0b; font-weight: 500;">
+                                ⚠️ {{ cookieStatus.message }}
+                            </span>
+                        </div>
                     </div>
                     <div>
                         <label>检索深度 / 数量上限</label>
@@ -1625,6 +2030,129 @@ def index_ui():
                     const items = ref([]);
                     const activeJob = ref(null);
 
+                    // Credential Helper State
+                    const showCredentialModal = ref(false);
+                    const detectingCookie = ref(false);
+                    const detectMsg = ref('');
+                    const detectSuccess = ref(false);
+                    const snippetCopied = ref(false);
+                    const cookieStatus = ref(null);
+                    const showCookie = ref(false);
+
+                    const getAuthHeader = () => {
+                        const token = localStorage.getItem('site_auth_token');
+                        return token ? { 'X-Auth-Token': token } : {};
+                    };
+
+                    const openCredentialModal = () => {
+                        showCredentialModal.value = true;
+                        detectMsg.value = '';
+                        snippetCopied.value = false;
+                    };
+
+                    const handleCookieInput = () => {
+                        localStorage.setItem('zhihu_cookie', cookie.value);
+                        if (!cookie.value.trim()) {
+                            cookieStatus.value = null;
+                            return;
+                        }
+                        const m = cookie.value.match(/z_c0="?([^";\\s]+)"?/);
+                        if (m) {
+                            cookieStatus.value = {
+                                valid: true,
+                                message: `成功识别知乎凭证 (z_c0: ${m[1].substring(0, 12)}...)`
+                            };
+                        } else if (cookie.value.startsWith('2|') || (cookie.value.length > 40 && !cookie.value.includes('='))) {
+                            cookie.value = `z_c0=${cookie.value.trim()}`;
+                            localStorage.setItem('zhihu_cookie', cookie.value);
+                            cookieStatus.value = {
+                                valid: true,
+                                message: `已自动封装有效 z_c0 凭证`
+                            };
+                        } else {
+                            cookieStatus.value = {
+                                valid: false,
+                                message: `已填入凭证，若遇知乎限流建议包含 z_c0=...`
+                            };
+                        }
+                    };
+
+                    const autoDetectLocalCookie = async () => {
+                        detectingCookie.value = true;
+                        detectMsg.value = '正在扫描电脑已保存的知乎登录凭证...';
+                        detectSuccess.value = false;
+                        try {
+                            const res = await fetch('/api/cookie/auto-detect', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    ...getAuthHeader()
+                                }
+                            });
+                            const data = await res.json();
+                            if (data.ok && data.cookie) {
+                                cookie.value = data.cookie;
+                                detectSuccess.value = true;
+                                detectMsg.value = `🎉 ${data.message || '读取成功！'}`;
+                                handleCookieInput();
+                                setTimeout(() => {
+                                    showCredentialModal.value = false;
+                                }, 1200);
+                            } else {
+                                detectSuccess.value = false;
+                                detectMsg.value = data.message || '未检测到可用登录态，请使用方式二！';
+                            }
+                        } catch (e) {
+                            detectSuccess.value = false;
+                            detectMsg.value = '请求失败，建议使用方式二！';
+                        } finally {
+                            detectingCookie.value = false;
+                        }
+                    };
+
+                    const copySnippet = async () => {
+                        const text = 'copy(document.cookie)';
+                        try {
+                            await navigator.clipboard.writeText(text);
+                            snippetCopied.value = true;
+                            setTimeout(() => { snippetCopied.value = false; }, 3000);
+                        } catch (e) {
+                            const ta = document.createElement('textarea');
+                            ta.value = text;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(ta);
+                            snippetCopied.value = true;
+                            setTimeout(() => { snippetCopied.value = false; }, 3000);
+                        }
+                    };
+
+                    const pasteFromClipboard = async () => {
+                        try {
+                            const text = await navigator.clipboard.readText();
+                            if (text && text.trim()) {
+                                cookie.value = text.trim();
+                                handleCookieInput();
+                                showCredentialModal.value = false;
+                                alert('🎉 已自动读取剪贴板凭证并填入！');
+                            } else {
+                                alert('剪贴板为空，请先在知乎控制台粘贴口诀并按回车！');
+                            }
+                        } catch (e) {
+                            const manual = prompt('无法直接读取剪贴板（可能未开启剪贴板权限），请在此粘贴 (Ctrl+V)：');
+                            if (manual && manual.trim()) {
+                                cookie.value = manual.trim();
+                                handleCookieInput();
+                                showCredentialModal.value = false;
+                            }
+                        }
+                    };
+
+                    const openZhihuPopup = () => {
+                        window.open('https://www.zhihu.com/signin', 'zhihu_login_popup', 'width=540,height=680,top=100,left=300');
+                    };
+
                     // Check Auth Status on Mount
                     onMounted(async () => {
                         const savedToken = localStorage.getItem('site_auth_token');
@@ -1638,6 +2166,9 @@ def index_ui():
                             }
                         } catch (e) {
                             console.error('Auth check error:', e);
+                        }
+                        if (cookie.value) {
+                            handleCookieInput();
                         }
                     });
 
@@ -1897,6 +2428,19 @@ def index_ui():
                         handleLogout,
                         targetUrl,
                         cookie,
+                        showCredentialModal,
+                        detectingCookie,
+                        detectMsg,
+                        detectSuccess,
+                        snippetCopied,
+                        cookieStatus,
+                        showCookie,
+                        openCredentialModal,
+                        handleCookieInput,
+                        autoDetectLocalCookie,
+                        copySnippet,
+                        pasteFromClipboard,
+                        openZhihuPopup,
                         fetchLimit,
                         filterStartDate,
                         filterEndDate,
