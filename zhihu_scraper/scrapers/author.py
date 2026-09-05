@@ -138,6 +138,63 @@ class AuthorScraper:
             })
         return pins
 
+    def list_activities(self, url_token: str, max_items: Optional[int] = None) -> List[Dict[str, Any]]:
+        """List author's recent activities (动态全部), extracting underlying articles, answers, and pins."""
+        url = f"https://www.zhihu.com/api/v3/moments/{url_token}/activities?desktop=true"
+        activities = []
+        fetch_limit = None if (max_items is None or max_items <= 0) else max_items
+        for item in self.client.paginate(url, limit=10, max_items=fetch_limit):
+            action_text = item.get("action_text", "")
+            verb = item.get("verb", "")
+            target = item.get("target", {})
+            target_type = target.get("type", "activity")
+            target_id = str(target.get("id", ""))
+
+            created_ts = int(item.get("created_time") or target.get("created_time") or target.get("created") or 0)
+            created_str = datetime.fromtimestamp(created_ts, timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if created_ts else ""
+            created_date = created_str[:10] if created_str else ""
+
+            raw_title = target.get("title") or target.get("excerpt_title") or (target.get("question") or {}).get("title") or f"动态_{target_id}"
+            
+            raw_content = target.get("content")
+            if isinstance(raw_content, list) and raw_content:
+                excerpt = raw_content[0].get("content", "")
+            elif isinstance(raw_content, str):
+                excerpt = raw_content
+            else:
+                excerpt = target.get("excerpt", "")
+
+            item_url = ""
+            if target_type == "article":
+                item_url = f"https://zhuanlan.zhihu.com/p/{target_id}"
+            elif target_type == "answer":
+                q_id = target.get("question", {}).get("id", "")
+                item_url = f"https://www.zhihu.com/question/{q_id}/answer/{target_id}" if q_id else f"https://www.zhihu.com/answer/{target_id}"
+            elif target_type == "pin":
+                item_url = f"https://www.zhihu.com/pin/{target_id}"
+            else:
+                item_url = target.get("url") or f"https://www.zhihu.com/people/{url_token}"
+
+            display_title = f"[{action_text}] {raw_title}" if action_text else raw_title
+
+            activities.append({
+                "type": target_type if target_type in ["article", "answer", "pin"] else "activity",
+                "is_activity": True,
+                "action_text": action_text,
+                "verb": verb,
+                "id": target_id,
+                "title": display_title,
+                "raw_title": raw_title,
+                "url": item_url,
+                "created_at": created_str,
+                "created_date": created_date,
+                "created_timestamp": created_ts,
+                "voteup_count": target.get("voteup_count", target.get("reaction_count", 0)),
+                "comment_count": target.get("comment_count", 0),
+                "excerpt": str(excerpt)[:200]
+            })
+        return activities
+
     def catalog_all_assets(
         self,
         user_input: str,
@@ -145,6 +202,7 @@ class AuthorScraper:
         include_answers: bool = True,
         include_pins: bool = True,
         include_columns: bool = True,
+        include_activities: bool = True,
         max_per_category: int = 50
     ) -> Dict[str, Any]:
         """One-stop inspection method: resolves profile and returns all categorized assets."""
@@ -173,6 +231,13 @@ class AuthorScraper:
             except Exception as e:
                 logger.warning("Error fetching articles: %s", e)
 
+        if include_pins:
+            try:
+                pins = self.list_pins(token, max_items=max_per_category)
+                assets.extend(pins)
+            except Exception as e:
+                logger.warning("Error fetching pins: %s", e)
+
         if include_answers:
             try:
                 ans = self.list_answers(token, max_items=max_per_category)
@@ -180,12 +245,23 @@ class AuthorScraper:
             except Exception as e:
                 logger.warning("Error fetching answers: %s", e)
 
-        if include_pins:
+        if include_activities:
             try:
-                pins = self.list_pins(token, max_items=max_per_category)
-                assets.extend(pins)
+                acts = self.list_activities(token, max_items=max_per_category)
+                # Avoid duplicate IDs if already present from articles/pins
+                existing_ids = {str(a.get("id")) for a in assets}
+                for act in acts:
+                    if str(act.get("id")) not in existing_ids:
+                        assets.append(act)
+                        existing_ids.add(str(act.get("id")))
+                    else:
+                        # Mark existing asset with is_activity
+                        for a in assets:
+                            if str(a.get("id")) == str(act.get("id")):
+                                a["is_activity"] = True
+                                a["action_text"] = act.get("action_text", "")
             except Exception as e:
-                logger.warning("Error fetching pins: %s", e)
+                logger.warning("Error fetching activities: %s", e)
 
         return {
             "author": {
