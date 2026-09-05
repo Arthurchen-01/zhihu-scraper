@@ -839,7 +839,7 @@ def index_ui():
                         type="password" 
                         v-model="loginPassword" 
                         @keyup.enter="handleLogin" 
-                        placeholder="请输入访问密码 (默认: guanjun2026)" 
+                        placeholder="请输入系统访问密码" 
                         style="text-align: center; letter-spacing: 2px; font-size: 15px;"
                         autofocus
                     >
