@@ -1646,7 +1646,7 @@ def index_ui():
                                 ✕ 清空
                             </button>
                         </div>
-                        <div v-if="cookieStatus" style="font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                        <div v-if="cookieStatus" class="cookie-status-badge" style="font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
                             <span v-if="cookieStatus.valid" style="color: #10b981; font-weight: 600;">
                                 ✅ {{ cookieStatus.message }}
                             </span>
