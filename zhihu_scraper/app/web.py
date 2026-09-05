@@ -1372,12 +1372,12 @@ def index_ui():
             <!-- Real-time Progress & Dual Download Card -->
             <section v-if="activeJob" class="card progress-card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 8px;">
+                    <h3 style="font-size: 16px; font-weight: 700; color: var(--text-title); display: flex; align-items: center; gap: 8px;">
                         <span v-if="activeJob.status === 'running'">🔄</span>
                         <span v-else>✅</span>
                         <span>任务状态: {{ activeJob.message }}</span>
                     </h3>
-                    <span style="font-size: 16px; font-weight: 700; color: #38bdf8;">{{ activeJob.progress }}%</span>
+                    <span style="font-size: 16px; font-weight: 700; color: var(--cyan);">{{ activeJob.progress }}%</span>
                 </div>
 
                 <!-- Progress Bar -->
