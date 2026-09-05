@@ -314,6 +314,24 @@ def download_job_zip(job_id: str):
     )
 
 
+@app.get("/download/taiji.zip")
+def download_taiji_public():
+    """Public direct download endpoint for the complete martial arts column archive."""
+    candidates = [
+        Path("/opt/zhihu-scraper/data/清一太极武术理论与实践_全量专栏归档.zip"),
+        Path(r"C:\Users\25472\Desktop\清一太极武术理论与实践_全量专栏归档.zip"),
+        Path(r"C:\Users\25472\.gemini\antigravity\brain\96353930-0ede-48a8-be01-ea896847ab4c\清一太极武术理论与实践_全量专栏归档.zip")
+    ]
+    for p in candidates:
+        if p.exists():
+            return FileResponse(
+                path=str(p),
+                filename="清一太极武术理论与实践_全量专栏归档.zip",
+                media_type="application/zip"
+            )
+    raise HTTPException(status_code=404, detail="文件尚未生成")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index_ui():
     """Renders the comprehensive self-service Web UI with standalone, robust styling."""
