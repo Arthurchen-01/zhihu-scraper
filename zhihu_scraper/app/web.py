@@ -2039,11 +2039,6 @@ def index_ui():
                     const cookieStatus = ref(null);
                     const showCookie = ref(false);
 
-                    const getAuthHeader = () => {
-                        const token = localStorage.getItem('site_auth_token');
-                        return token ? { 'X-Auth-Token': token } : {};
-                    };
-
                     const openCredentialModal = () => {
                         showCredentialModal.value = true;
                         detectMsg.value = '';
