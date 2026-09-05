@@ -494,13 +494,75 @@ def index_ui():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>知乎创作者定向排查与批量存证工具箱</title>
+    <script>
+        (function() {
+            var theme = localStorage.getItem('theme_mode') || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
     <style>
-        :root {
+        :root, [data-theme="dark"] {
             --bg-base: #0b0f19;
             --card-bg: #151d30;
             --card-border: #222f4c;
+            --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            --header-bg: linear-gradient(135deg, #151d30 0%, #1a2540 100%);
+            --header-border: #2a3b61;
+            --h1-color: #38bdf8;
+            --h2-color: #f1f5f9;
             --text-main: #e2e8f0;
             --text-muted: #94a3b8;
+            --text-subtle: #64748b;
+            --input-bg: #090e18;
+            --input-border: #253352;
+            --input-color: #f8fafc;
+            --input-date-bg: #151d30;
+            --input-date-border: #2d3f66;
+            --toolbar-bg: #090e18;
+            --toolbar-border: #1e293b;
+            --toolbar-divider: #141f36;
+            --checkbox-color: #cbd5e1;
+            --pill-bg: #131b2e;
+            --pill-border: #233252;
+            --pill-color: #94a3b8;
+            --pill-hover-border: #38bdf8;
+            --pill-hover-color: #f1f5f9;
+            --pill-active-bg: rgba(6, 182, 212, 0.15);
+            --pill-active-border: #06b6d4;
+            --pill-active-color: #38bdf8;
+            --profile-bg: #131b2e;
+            --profile-border: #233252;
+            --profile-name-color: #ffffff;
+            --col-card-bg: #0d1424;
+            --col-card-border: #212e4a;
+            --col-card-title: #e0f2fe;
+            --col-card-desc: #94a3b8;
+            --table-wrap-bg: #090e18;
+            --table-wrap-border: #1e293b;
+            --th-bg: #0f172a;
+            --th-color: #94a3b8;
+            --th-border: #1e293b;
+            --tr-border: #141f36;
+            --tr-hover: rgba(30, 41, 59, 0.5);
+            --tr-title: #f8fafc;
+            --tr-date: #cbd5e1;
+            --btn-outline-bg: #1e293b;
+            --btn-outline-color: #cbd5e1;
+            --btn-outline-border: #334155;
+            --btn-outline-hover-bg: #334155;
+            --btn-outline-hover-color: #ffffff;
+            --progress-card-bg: linear-gradient(180deg, #111b2e 0%, #0d1527 100%);
+            --progress-card-border: #0284c7;
+            --progress-bar-bg: #090e18;
+            --terminal-bg: #050811;
+            --terminal-border: #141f36;
+            --terminal-color: #94a3b8;
+            --modal-backdrop: rgba(5, 9, 17, 0.85);
+            --modal-box-bg: #111827;
+            --modal-box-border: #1f293d;
+            --modal-box-shadow: 0 20px 40px -10px rgba(0,0,0,0.6);
+            --modal-title-color: #38bdf8;
+            --modal-desc-color: #94a3b8;
             --cyan: #06b6d4;
             --cyan-glow: rgba(6, 182, 212, 0.25);
             --emerald: #10b981;
@@ -511,6 +573,80 @@ def index_ui():
             --amber: #f59e0b;
             --rose: #f43f5e;
         }
+
+        [data-theme="light"] {
+            --bg-base: #f8fafc;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+            --header-bg: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+            --header-border: #cbd5e1;
+            --h1-color: #0284c7;
+            --h2-color: #0f172a;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --text-subtle: #94a3b8;
+            --input-bg: #f8fafc;
+            --input-border: #cbd5e1;
+            --input-color: #0f172a;
+            --input-date-bg: #ffffff;
+            --input-date-border: #cbd5e1;
+            --toolbar-bg: #f8fafc;
+            --toolbar-border: #e2e8f0;
+            --toolbar-divider: #e2e8f0;
+            --checkbox-color: #334155;
+            --pill-bg: #f1f5f9;
+            --pill-border: #e2e8f0;
+            --pill-color: #475569;
+            --pill-hover-border: #0284c7;
+            --pill-hover-color: #0284c7;
+            --pill-active-bg: rgba(2, 132, 199, 0.12);
+            --pill-active-border: #0284c7;
+            --pill-active-color: #0284c7;
+            --profile-bg: #f8fafc;
+            --profile-border: #e2e8f0;
+            --profile-name-color: #0f172a;
+            --col-card-bg: #ffffff;
+            --col-card-border: #e2e8f0;
+            --col-card-title: #0f172a;
+            --col-card-desc: #64748b;
+            --table-wrap-bg: #ffffff;
+            --table-wrap-border: #e2e8f0;
+            --th-bg: #f8fafc;
+            --th-color: #475569;
+            --th-border: #e2e8f0;
+            --tr-border: #f1f5f9;
+            --tr-hover: #f8fafc;
+            --tr-title: #0f172a;
+            --tr-date: #475569;
+            --btn-outline-bg: #f1f5f9;
+            --btn-outline-color: #334155;
+            --btn-outline-border: #cbd5e1;
+            --btn-outline-hover-bg: #e2e8f0;
+            --btn-outline-hover-color: #0f172a;
+            --progress-card-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            --progress-card-border: #0284c7;
+            --progress-bar-bg: #e2e8f0;
+            --terminal-bg: #0f172a;
+            --terminal-border: #cbd5e1;
+            --terminal-color: #cbd5e1;
+            --modal-backdrop: rgba(15, 23, 42, 0.45);
+            --modal-box-bg: #ffffff;
+            --modal-box-border: #e2e8f0;
+            --modal-box-shadow: 0 20px 40px -10px rgba(0,0,0,0.12);
+            --modal-title-color: #0284c7;
+            --modal-desc-color: #64748b;
+            --cyan: #0284c7;
+            --cyan-glow: rgba(2, 132, 199, 0.2);
+            --emerald: #059669;
+            --emerald-glow: rgba(5, 150, 105, 0.2);
+            --purple: #7c3aed;
+            --purple-glow: rgba(124, 58, 237, 0.2);
+            --blue: #2563eb;
+            --amber: #d97706;
+            --rose: #e11d48;
+        }
+
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             background-color: var(--bg-base);
@@ -518,6 +654,7 @@ def index_ui():
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             line-height: 1.5;
             padding: 24px 16px;
+            transition: background-color 0.25s ease, color 0.25s ease;
         }
         .container { max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 
@@ -527,7 +664,8 @@ def index_ui():
             border: 1px solid var(--card-border);
             border-radius: 16px;
             padding: 24px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            box-shadow: var(--card-shadow);
+            transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
         }
 
         /* Header */
@@ -537,15 +675,15 @@ def index_ui():
             justify-content: space-between;
             align-items: center;
             gap: 16px;
-            background: linear-gradient(135deg, #151d30 0%, #1a2540 100%);
-            border-color: #2a3b61;
+            background: var(--header-bg);
+            border-color: var(--header-border);
         }
-        h1 { font-size: 22px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 10px; }
+        h1 { font-size: 22px; font-weight: 700; color: var(--h1-color); display: flex; align-items: center; gap: 10px; }
         .subtitle { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
         .badge-status {
             font-size: 12px;
             background: rgba(16, 185, 129, 0.15);
-            color: #34d399;
+            color: #10b981;
             border: 1px solid rgba(16, 185, 129, 0.3);
             padding: 6px 14px;
             border-radius: 9999px;
@@ -554,21 +692,26 @@ def index_ui():
             gap: 6px;
             font-weight: 500;
         }
+        [data-theme="light"] .badge-status {
+            background: rgba(5, 150, 105, 0.1);
+            color: #059669;
+            border-color: rgba(5, 150, 105, 0.25);
+        }
 
         /* Form Inputs */
         label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 500; }
-        input[type="text"], input[type="password"] {
+        input[type="text"], input[type="password"], select {
             width: 100%;
-            background: #090e18;
-            border: 1px solid #253352;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
             border-radius: 10px;
             padding: 12px 16px;
-            color: #f8fafc;
+            color: var(--input-color);
             font-size: 14px;
             outline: none;
-            transition: border-color 0.2s, box-shadow 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s, background-color 0.25s ease, color 0.25s ease;
         }
-        input[type="text"]:focus, input[type="password"]:focus {
+        input[type="text"]:focus, input[type="password"]:focus, select:focus {
             border-color: var(--cyan);
             box-shadow: 0 0 0 3px var(--cyan-glow);
         }
@@ -582,9 +725,9 @@ def index_ui():
             gap: 16px;
             margin-top: 12px;
             padding-top: 12px;
-            border-top: 1px solid #1e293b;
+            border-top: 1px solid var(--options-border);
         }
-        .checkbox-group { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: #cbd5e1; }
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--checkbox-color); }
         .checkbox-label { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
         .checkbox-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--cyan); cursor: pointer; }
 
@@ -631,15 +774,37 @@ def index_ui():
             transform: translateY(-1px);
         }
         .btn-outline {
-            background: #1e293b;
-            color: #cbd5e1;
-            border: 1px solid #334155;
+            background: var(--btn-outline-bg);
+            color: var(--btn-outline-color);
+            border: 1px solid var(--btn-outline-border);
             padding: 6px 12px;
             font-size: 12px;
         }
-        .btn-outline:hover { background: #334155; color: #ffffff; }
+        .btn-outline:hover { background: var(--btn-outline-hover-bg); color: var(--btn-outline-hover-color); }
         .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+        /* Theme Toggle Button */
+        .theme-switch-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--btn-outline-bg);
+            border: 1px solid var(--btn-outline-border);
+            color: var(--btn-outline-color);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s ease;
+        }
+        .theme-switch-btn:hover {
+            background: var(--btn-outline-hover-bg);
+            color: var(--btn-outline-hover-color);
+            border-color: var(--cyan);
+        }
 
         /* Filter Pills */
         .filter-pills {
@@ -649,9 +814,9 @@ def index_ui():
             margin-top: 6px;
         }
         .filter-pill {
-            background: #131b2e;
-            border: 1px solid #233252;
-            color: #94a3b8;
+            background: var(--pill-bg);
+            border: 1px solid var(--pill-border);
+            color: var(--pill-color);
             padding: 6px 14px;
             border-radius: 9999px;
             font-size: 12px;
@@ -660,13 +825,13 @@ def index_ui():
             transition: all 0.15s ease;
         }
         .filter-pill:hover {
-            border-color: #38bdf8;
-            color: #f1f5f9;
+            border-color: var(--pill-hover-border);
+            color: var(--pill-hover-color);
         }
         .filter-pill.active {
-            background: rgba(6, 182, 212, 0.15);
-            border-color: var(--cyan);
-            color: #38bdf8;
+            background: var(--pill-active-bg);
+            border-color: var(--pill-active-border);
+            color: var(--pill-active-color);
             font-weight: 600;
         }
 
@@ -677,30 +842,31 @@ def index_ui():
             align-items: center;
             justify-content: space-between;
             gap: 20px;
-            background: #131b2e;
-            border: 1px solid #233252;
+            background: var(--profile-bg);
+            border: 1px solid var(--profile-border);
             border-radius: 14px;
             padding: 20px;
+            transition: background-color 0.25s ease, border-color 0.25s ease;
         }
         .profile-left { display: flex; align-items: center; gap: 16px; }
-        .profile-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid #38bdf8; object-fit: cover; }
-        .profile-name { font-size: 18px; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 8px; }
+        .profile-avatar { width: 60px; height: 60px; border-radius: 50%; border: 2px solid var(--cyan); object-fit: cover; }
+        .profile-name { font-size: 18px; font-weight: 700; color: var(--profile-name-color); display: flex; align-items: center; gap: 8px; }
         .profile-headline { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
         .profile-stats { display: flex; gap: 24px; text-align: center; }
         .stat-label { font-size: 11px; color: var(--text-muted); }
-        .stat-value { font-size: 17px; font-weight: 700; color: #38bdf8; }
+        .stat-value { font-size: 17px; font-weight: 700; color: var(--cyan); }
 
         /* Column Grid */
         .columns-container { margin-top: 16px; }
-        .columns-header { font-size: 14px; font-weight: 600; color: #cbd5e1; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        .columns-header { font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
         .columns-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
             gap: 14px;
         }
         .column-card {
-            background: #0d1424;
-            border: 1px solid #212e4a;
+            background: var(--col-card-bg);
+            border: 1px solid var(--col-card-border);
             border-radius: 12px;
             padding: 16px;
             display: flex;
@@ -709,34 +875,35 @@ def index_ui():
             transition: all 0.2s ease;
         }
         .column-card:hover {
-            border-color: #38bdf8;
+            border-color: var(--cyan);
             box-shadow: 0 4px 20px var(--cyan-glow);
             transform: translateY(-2px);
         }
-        .column-card-title { font-size: 14px; font-weight: 700; color: #e0f2fe; margin-bottom: 6px; }
-        .column-card-desc { font-size: 12px; color: #94a3b8; line-height: 1.4; margin-bottom: 12px; flex-grow: 1; }
+        .column-card-title { font-size: 14px; font-weight: 700; color: var(--col-card-title); margin-bottom: 6px; }
+        .column-card-desc { font-size: 12px; color: var(--col-card-desc); line-height: 1.4; margin-bottom: 12px; flex-grow: 1; }
         .column-card-footer { display: flex; justify-content: space-between; align-items: center; }
-        .column-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+        .column-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; background: rgba(168, 85, 247, 0.15); color: #a855f7; border: 1px solid rgba(168, 85, 247, 0.3); }
 
         /* Table */
         .table-wrap {
             overflow-x: auto;
-            border: 1px solid #1e293b;
+            border: 1px solid var(--table-wrap-border);
             border-radius: 12px;
-            background: #090e18;
+            background: var(--table-wrap-bg);
             margin-top: 14px;
+            transition: background-color 0.25s ease, border-color 0.25s ease;
         }
         table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
         thead th {
-            background: #0f172a;
-            color: #94a3b8;
+            background: var(--th-bg);
+            color: var(--th-color);
             padding: 12px 14px;
             font-weight: 600;
-            border-bottom: 1px solid #1e293b;
+            border-bottom: 1px solid var(--th-border);
             white-space: nowrap;
         }
-        tbody tr { border-bottom: 1px solid #141f36; transition: background 0.15s; }
-        tbody tr:hover { background: rgba(30, 41, 59, 0.5); }
+        tbody tr { border-bottom: 1px solid var(--tr-border); transition: background 0.15s; }
+        tbody tr:hover { background: var(--tr-hover); }
         td { padding: 12px 14px; vertical-align: middle; }
 
         /* Badges */
@@ -748,19 +915,24 @@ def index_ui():
             border-radius: 6px;
             white-space: nowrap;
         }
-        .badge-article { background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); }
-        .badge-answer { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
-        .badge-column { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
-        .badge-pin { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
-        .badge-act { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 11px; margin-right: 6px; }
+        .badge-article { background: rgba(6, 182, 212, 0.15); color: #0284c7; border: 1px solid rgba(6, 182, 212, 0.3); }
+        [data-theme="dark"] .badge-article { color: #22d3ee; }
+        .badge-answer { background: rgba(59, 130, 246, 0.15); color: #2563eb; border: 1px solid rgba(59, 130, 246, 0.3); }
+        [data-theme="dark"] .badge-answer { color: #60a5fa; }
+        .badge-column { background: rgba(168, 85, 247, 0.15); color: #7c3aed; border: 1px solid rgba(168, 85, 247, 0.3); }
+        [data-theme="dark"] .badge-column { color: #c084fc; }
+        .badge-pin { background: rgba(245, 158, 11, 0.15); color: #d97706; border: 1px solid rgba(245, 158, 11, 0.3); }
+        [data-theme="dark"] .badge-pin { color: #fbbf24; }
+        .badge-act { background: rgba(16, 185, 129, 0.15); color: #059669; border: 1px solid rgba(16, 185, 129, 0.3); font-size: 11px; margin-right: 6px; }
+        [data-theme="dark"] .badge-act { color: #34d399; }
 
         /* Progress Card */
         .progress-card {
-            border-color: #0284c7;
-            background: linear-gradient(180deg, #111b2e 0%, #0d1527 100%);
-            box-shadow: 0 10px 35px rgba(2, 132, 199, 0.25);
+            border-color: var(--progress-card-border);
+            background: var(--progress-card-bg);
+            box-shadow: 0 10px 35px rgba(2, 132, 199, 0.2);
         }
-        .progress-bar-bg { width: 100%; height: 12px; background: #090e18; border-radius: 9999px; overflow: hidden; border: 1px solid #1e293b; margin: 12px 0; }
+        .progress-bar-bg { width: 100%; height: 12px; background: var(--progress-bar-bg); border-radius: 9999px; overflow: hidden; border: 1px solid var(--card-border); margin: 12px 0; }
         .progress-bar-fill {
             height: 100%;
             background: linear-gradient(90deg, #06b6d4 0%, #10b981 100%);
@@ -768,13 +940,13 @@ def index_ui():
             transition: width 0.3s ease;
         }
         .terminal-log {
-            background: #050811;
-            border: 1px solid #141f36;
+            background: var(--terminal-bg);
+            border: 1px solid var(--terminal-border);
             border-radius: 10px;
             padding: 12px;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
             font-size: 11px;
-            color: #94a3b8;
+            color: var(--terminal-color);
             height: 150px;
             overflow-y: auto;
             line-height: 1.6;
@@ -784,22 +956,25 @@ def index_ui():
         .modal-backdrop {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(5, 9, 17, 0.85);
+            background: var(--modal-backdrop);
             backdrop-filter: blur(8px);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 9999;
+            transition: background 0.25s ease;
         }
         .modal-box {
+            position: relative;
             width: 90%;
             max-width: 440px;
-            background: #111827;
-            border: 1px solid #1f293d;
+            background: var(--modal-box-bg);
+            border: 1px solid var(--modal-box-border);
             border-radius: 20px;
-            padding: 32px;
-            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.6);
+            padding: 36px 32px 32px;
+            box-shadow: var(--modal-box-shadow);
             text-align: center;
+            transition: background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
         }
         .modal-icon {
             font-size: 42px;
@@ -808,12 +983,12 @@ def index_ui():
         .modal-title {
             font-size: 18px;
             font-weight: 700;
-            color: #38bdf8;
+            color: var(--modal-title-color);
             margin-bottom: 6px;
         }
         .modal-desc {
             font-size: 13px;
-            color: #94a3b8;
+            color: var(--modal-desc-color);
             margin-bottom: 24px;
         }
         .error-tip {
@@ -830,6 +1005,15 @@ def index_ui():
         <!-- Password Gate Modal -->
         <div v-if="!isAuthenticated" class="modal-backdrop">
             <div class="modal-box">
+                <!-- Theme Toggle Button on Modal -->
+                <button 
+                    @click="toggleTheme" 
+                    class="theme-switch-btn" 
+                    style="position: absolute; top: 16px; right: 16px; font-size: 11px; padding: 4px 10px;"
+                    :title="'切换到' + (theme === 'dark' ? '白天风格' : '暗黑风格')"
+                >
+                    <span>{{ theme === 'dark' ? '☀️ 白天' : '🌙 暗黑' }}</span>
+                </button>
                 <div class="modal-icon">🔒</div>
                 <div class="modal-title">知乎存证系统安全访问门禁</div>
                 <div class="modal-desc">请输入系统访问密码以解锁定向排查与批量存证工具箱</div>
@@ -863,8 +1047,15 @@ def index_ui():
                     <p class="subtitle">创作者资产与动态实时检索、专栏穿透、想法/动态独立筛选、ZIP 压缩包与 EPUB 电子书一键导出</p>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
+                    <button 
+                        @click="toggleTheme" 
+                        class="theme-switch-btn" 
+                        :title="'切换到' + (theme === 'dark' ? '白天模式' : '暗黑模式')"
+                    >
+                        <span>{{ theme === 'dark' ? '☀️ 白天风格' : '🌙 暗黑风格' }}</span>
+                    </button>
                     <div class="badge-status">
-                        <span style="width: 8px; height: 8px; border-radius: 50%; background: #34d399; display: inline-block;"></span>
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
                         <span>系统就绪 (动态+想法+EPUB)</span>
                     </div>
                     <button @click="handleLogout" class="btn btn-outline btn-sm" title="锁定并退出">
@@ -875,7 +1066,7 @@ def index_ui():
 
             <!-- Configuration Form Card -->
             <section class="card">
-                <h2 style="font-size: 16px; font-weight: 600; color: #f1f5f9; margin-bottom: 16px;">
+                <h2 style="font-size: 16px; font-weight: 600; color: var(--h2-color); margin-bottom: 16px;">
                     ⚙️ 第一步：输入知乎链接与操作凭证
                 </h2>
                 
@@ -890,7 +1081,7 @@ def index_ui():
                     </div>
                     <div>
                         <label>检索深度 / 数量上限</label>
-                        <select v-model="fetchLimit" style="width: 100%; height: 44px; background: #090e18; border: 1px solid #253352; color: #f8fafc; border-radius: 10px; padding: 0 10px; font-size: 13px;">
+                        <select v-model="fetchLimit" style="width: 100%; height: 44px; border-radius: 10px; padding: 0 10px; font-size: 13px;">
                             <option :value="0">🔥 全量无上限 (全部加载)</option>
                             <option :value="300">⚡ 深度拉取 (前300篇)</option>
                             <option :value="100">📋 标准拉取 (前100篇)</option>
@@ -928,10 +1119,10 @@ def index_ui():
 
             <!-- Breadcrumb Bar -->
             <div v-if="parentAuthor && targetType === 'column'" class="card" style="padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
-                <div style="font-size: 13px; color: #94a3b8;">
-                    <span>创作者: <strong style="color: #e2e8f0;">{{ parentAuthor.name }}</strong></span>
+                <div style="font-size: 13px; color: var(--text-muted);">
+                    <span>创作者: <strong style="color: var(--profile-name-color);">{{ parentAuthor.name }}</strong></span>
                     <span style="margin: 0 8px;">➔</span>
-                    <span style="color: #38bdf8; font-weight: 600;">专栏: 《{{ currentColumn ? currentColumn.title : '专栏文章' }}》</span>
+                    <span style="color: var(--cyan); font-weight: 600;">专栏: 《{{ currentColumn ? currentColumn.title : '专栏文章' }}》</span>
                 </div>
                 <button @click="returnToAuthor" class="btn btn-outline btn-sm">
                     ⬅️ 返回创作者全量列表
@@ -946,7 +1137,7 @@ def index_ui():
                         <div>
                             <div class="profile-name">
                                 <span>{{ authorInfo.name }}</span>
-                                <a :href="authorInfo.profile_url" target="_blank" style="color: #38bdf8; font-size: 13px; text-decoration: none;">🔗 主页</a>
+                                <a :href="authorInfo.profile_url" target="_blank" style="color: var(--cyan); font-size: 13px; text-decoration: none;">🔗 主页</a>
                             </div>
                             <div class="profile-headline">{{ authorInfo.headline || '暂无签名' }}</div>
                         </div>
@@ -986,7 +1177,7 @@ def index_ui():
                                 <div class="column-card-desc">{{ col.description || '暂无专栏简介' }}</div>
                             </div>
                             <div class="column-card-footer">
-                                <a :href="col.url" target="_blank" style="color: #64748b; font-size: 12px; text-decoration: none;">知乎原文 ↗</a>
+                                <a :href="col.url" target="_blank" style="color: var(--text-subtle); font-size: 12px; text-decoration: none;">知乎原文 ↗</a>
                                 <button @click="enterColumn(col)" class="btn btn-primary btn-sm">
                                     📂 进入此专栏下载 ➔
                                 </button>
@@ -1018,7 +1209,7 @@ def index_ui():
                         </div>
                         <div v-if="currentColumn.author && currentColumn.author.name">
                             <div class="stat-label">创建者</div>
-                            <div class="stat-value" style="color: #cbd5e1; font-size: 14px;">{{ currentColumn.author.name }}</div>
+                            <div class="stat-value" style="color: var(--text-main); font-size: 14px;">{{ currentColumn.author.name }}</div>
                         </div>
                     </div>
                 </div>
@@ -1027,12 +1218,12 @@ def index_ui():
             <!-- Checklist & Filter Section -->
             <section v-if="items.length > 0" class="card">
                 <!-- Header with Action -->
-                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #1e293b;">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--toolbar-border);">
                     <div style="display: flex; align-items: center; gap: 12px;">
-                        <h2 style="font-size: 16px; font-weight: 600; color: #f1f5f9;">
+                        <h2 style="font-size: 16px; font-weight: 600; color: var(--h2-color);">
                             📋 第二步：分类过滤与批量勾选存证
                         </h2>
-                        <span style="font-size: 12px; background: rgba(6, 182, 212, 0.2); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3); padding: 2px 10px; border-radius: 9999px;">
+                        <span style="font-size: 12px; background: rgba(6, 182, 212, 0.15); color: var(--cyan); border: 1px solid rgba(6, 182, 212, 0.3); padding: 2px 10px; border-radius: 9999px;">
                             总条目 {{ items.length }} 条 | 当前匹配 {{ filteredItems.length }} 条 | 已勾选 {{ selectedCount }} 项
                         </span>
                     </div>
@@ -1046,11 +1237,11 @@ def index_ui():
                 </div>
 
                 <!-- Category Filtering Toolbar -->
-                <div style="background: #090e18; border: 1px solid #1e293b; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <div style="background: var(--toolbar-bg); border: 1px solid var(--toolbar-border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 12px;">
                     
                     <!-- Type Pills -->
                     <div>
-                        <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">🏷️ 内容分类独立筛选：</span>
+                        <span style="font-size: 12px; color: var(--text-muted); font-weight: 600;">🏷️ 内容分类独立筛选：</span>
                         <div class="filter-pills">
                             <button @click="activeCategory = 'all'" :class="['filter-pill', activeCategory === 'all' ? 'active' : '']">
                                 🌟 全部 ({{ items.length }})
@@ -1077,13 +1268,13 @@ def index_ui():
                     </div>
 
                     <!-- Date & Keyword Filter -->
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid #141f36;">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--toolbar-divider);">
                         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
-                            <span style="font-size: 13px; font-weight: 600; color: #38bdf8;">📅 时间线:</span>
-                            <input type="date" v-model="filterStartDate" style="padding: 6px 10px; background: #151d30; border: 1px solid #2d3f66; color: #e2e8f0; border-radius: 6px; font-size: 12px;" title="起始日期">
-                            <span style="color: #64748b;">至</span>
-                            <input type="date" v-model="filterEndDate" style="padding: 6px 10px; background: #151d30; border: 1px solid #2d3f66; color: #e2e8f0; border-radius: 6px; font-size: 12px;" title="截止日期">
-                            <input type="text" v-model="searchKeyword" placeholder="🔍 关键词实时过滤..." style="padding: 6px 12px; background: #151d30; border: 1px solid #2d3f66; color: #e2e8f0; border-radius: 6px; font-size: 12px; width: 180px;">
+                            <span style="font-size: 13px; font-weight: 600; color: var(--cyan);">📅 时间线:</span>
+                            <input type="date" v-model="filterStartDate" style="padding: 6px 10px; background: var(--input-date-bg); border: 1px solid var(--input-date-border); color: var(--text-main); border-radius: 6px; font-size: 12px;" title="起始日期">
+                            <span style="color: var(--text-subtle);">至</span>
+                            <input type="date" v-model="filterEndDate" style="padding: 6px 10px; background: var(--input-date-bg); border: 1px solid var(--input-date-border); color: var(--text-main); border-radius: 6px; font-size: 12px;" title="截止日期">
+                            <input type="text" v-model="searchKeyword" placeholder="🔍 关键词实时过滤..." style="padding: 6px 12px; background: var(--input-date-bg); border: 1px solid var(--input-date-border); color: var(--text-main); border-radius: 6px; font-size: 12px; width: 180px;">
                         </div>
 
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -1094,7 +1285,7 @@ def index_ui():
                     </div>
 
                     <!-- Bulk Selection Actions -->
-                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid #141f36;">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--toolbar-divider);">
                         <button @click="selectAllFiltered" class="btn btn-emerald btn-sm" style="font-weight: 600;">
                             ✨ 勾选当前筛选分类全部 ({{ filteredItems.length }}项)
                         </button>
@@ -1102,7 +1293,7 @@ def index_ui():
                             🌟 全选所有内容 ({{ items.length }}项)
                         </button>
                         <button @click="unselectAll" class="btn btn-outline btn-sm">❌ 取消全选</button>
-                        <span style="color: #334155; margin: 0 4px;">|</span>
+                        <span style="color: var(--text-subtle); margin: 0 4px;">|</span>
                         <button @click="selectTopN(20)" class="btn btn-outline btn-sm">选前20项</button>
                         <button @click="selectTopN(50)" class="btn btn-outline btn-sm">选前50项</button>
                         <button @click="selectTopN(100)" class="btn btn-outline btn-sm">选前100项</button>
@@ -1140,17 +1331,17 @@ def index_ui():
                                     </span>
                                 </td>
                                 <td>
-                                    <div style="font-weight: 600; color: #f8fafc; margin-bottom: 2px;">
+                                    <div style="font-weight: 600; color: var(--tr-title); margin-bottom: 2px;">
                                         <a :href="it.url" target="_blank" style="color: inherit; text-decoration: none;">{{ it.raw_title || it.title }}</a>
                                     </div>
-                                    <div v-if="it.excerpt" style="font-size: 12px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 650px;">
+                                    <div v-if="it.excerpt" style="font-size: 12px; color: var(--text-subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 650px;">
                                         {{ it.excerpt }}
                                     </div>
                                 </td>
-                                <td style="text-align: center; color: #cbd5e1; font-size: 12px; font-family: monospace;">
+                                <td style="text-align: center; color: var(--tr-date); font-size: 12px; font-family: monospace;">
                                     {{ it.created_at || it.created_date || '—' }}
                                 </td>
-                                <td style="text-align: center; color: #94a3b8; font-size: 12px;">
+                                <td style="text-align: center; color: var(--text-muted); font-size: 12px;">
                                     <template v-if="it.type === 'column'">
                                         <span style="color: #c084fc;">📚 {{ it.articles_count || 0 }} 篇</span>
                                     </template>
@@ -1223,6 +1414,16 @@ def index_ui():
 
             createApp({
                 setup() {
+                    const theme = ref(localStorage.getItem('theme_mode') || 'dark');
+                    const applyTheme = (t) => {
+                        theme.value = t;
+                        localStorage.setItem('theme_mode', t);
+                        document.documentElement.setAttribute('data-theme', t);
+                    };
+                    const toggleTheme = () => {
+                        applyTheme(theme.value === 'dark' ? 'light' : 'dark');
+                    };
+
                     const isAuthenticated = ref(false);
                     const loginPassword = ref('');
                     const loggingIn = ref(false);
@@ -1515,6 +1716,8 @@ def index_ui():
                     };
 
                     return {
+                        theme,
+                        toggleTheme,
                         isAuthenticated,
                         loginPassword,
                         loggingIn,
