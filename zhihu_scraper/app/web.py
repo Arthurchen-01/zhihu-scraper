@@ -45,6 +45,7 @@ from ..scrapers.pin import PinScraper
 from ..scrapers.comment import CommentScraper
 from ..visual.screenshot import VisualArchiver
 from ..epub_builder import ZhihuEpubBuilder
+from ..pdf_builder import ZhihuPdfBuilder
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("zhihu_scraper.web")
@@ -377,7 +378,7 @@ def inspect_target(req: InspectRequest):
             include_pins=True,
             include_columns=True,
             include_activities=True,
-            max_per_category=limit or 50
+            max_per_category=limit
         )
         catalog["target_type"] = "author"
         return catalog
@@ -418,15 +419,27 @@ def run_batch_job(job_id: str, cookie: str, items: List[Dict[str, Any]], options
     comments_dir.mkdir(parents=True, exist_ok=True)
     screenshots_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prepare EPUB builder
+    export_formats = options.get("export_formats") or ["zip", "epub", "pdf"]
+    job["export_formats"] = export_formats
+
     author_guess = "知乎创作者"
     if items:
         author_guess = items[0].get("author_name") or items[0].get("author", {}).get("name") or "知乎创作者"
+
+    # Prepare EPUB builder
     epub_builder = ZhihuEpubBuilder(title=f"知乎精选存证合集 (共{len(items)}篇)", author=author_guess)
     epub_builder.add_cover_page(subtitle=f"归档批次 ID: {job_id}", extra_info={
         "收录条目数": f"{len(items)} 条",
         "生成时间": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "归档引擎": "Zhihu Scraper & Investigator"
+        "归档引擎": "Scraper Core & Investigator"
+    })
+
+    # Prepare PDF builder
+    pdf_builder = ZhihuPdfBuilder(title=f"知乎精选存证合集 (共{len(items)}篇)", author=author_guess)
+    pdf_builder.add_cover_page(subtitle=f"归档批次 ID: {job_id}", extra_info={
+        "收录条目数": f"{len(items)} 条",
+        "生成时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "归档引擎": "Scraper Core & Investigator"
     })
 
     total = len(items)
@@ -466,6 +479,19 @@ def run_batch_job(job_id: str, cookie: str, items: List[Dict[str, Any]], options
                                 voteup_count=s_art.get("voteup_count", 0),
                                 comment_count=s_art.get("comment_count", 0),
                                 item_type="专栏文章"
+                            )
+                            pdf_builder.add_chapter(
+                                s_art.get("title", f"专栏文章_{s_id}"),
+                                art_res.get("content", ""),
+                                meta={
+                                    "author_name": author_guess,
+                                    "created_at": s_art.get("created_at", ""),
+                                    "url": f"https://zhuanlan.zhihu.com/p/{s_id}",
+                                    "voteup_count": s_art.get("voteup_count", 0),
+                                    "comment_count": s_art.get("comment_count", 0),
+                                    "item_type": "专栏文章"
+                                },
+                                is_markdown=True
                             )
                     if save_comments:
                         c_path = comments_dir / f"comments_article_{s_id}.json"
@@ -519,6 +545,24 @@ def run_batch_job(job_id: str, cookie: str, items: List[Dict[str, Any]], options
         except Exception as e:
             logger.warning("Failed to add chapter to EPUB: %s", e)
 
+        # Add to PDF
+        try:
+            pdf_builder.add_chapter(
+                raw_title,
+                scraped_content,
+                meta={
+                    "author_name": author_guess,
+                    "created_at": created_at,
+                    "url": url,
+                    "voteup_count": voteup,
+                    "comment_count": comment_cnt,
+                    "item_type": item_type
+                },
+                is_markdown=True
+            )
+        except Exception as e:
+            logger.warning("Failed to add chapter to PDF: %s", e)
+
         # 2. Scrape Comments
         if save_comments and item_type in ["article", "answer", "pin"]:
             try:
@@ -541,33 +585,50 @@ def run_batch_job(job_id: str, cookie: str, items: List[Dict[str, Any]], options
 
         time.sleep(0.2)
 
-    # 4. Build Standalone EPUB
-    epub_path = temp_dir / f"zhihu_archive_{job_id}.epub"
-    try:
-        epub_builder.build(epub_path)
-        job["epub_path"] = str(epub_path)
-        job["epub_size"] = epub_path.stat().st_size
-        job["logs"].append(f"{time.strftime('%H:%M:%S')} - 📖 EPUB 电子书已生成 ({job['epub_size'] / (1024*1024):.2f} MB)。")
-    except Exception as e:
-        logger.error("EPUB build error: %s", e)
-        job["logs"].append(f"{time.strftime('%H:%M:%S')} - ⚠️ EPUB 生成异常: {e}")
+    # 4. Build Standalone EPUB (if requested or zip bundle)
+    if "epub" in export_formats or "zip" in export_formats:
+        epub_path = temp_dir / f"zhihu_archive_{job_id}.epub"
+        try:
+            epub_builder.build(epub_path)
+            job["epub_path"] = str(epub_path)
+            job["epub_size"] = epub_path.stat().st_size
+            job["logs"].append(f"{time.strftime('%H:%M:%S')} - 📖 EPUB 电子书已生成 ({job['epub_size'] / (1024*1024):.2f} MB)。")
+        except Exception as e:
+            logger.error("EPUB build error: %s", e)
+            job["logs"].append(f"{time.strftime('%H:%M:%S')} - ⚠️ EPUB 生成异常: {e}")
 
-    # 5. Package as Physical ZIP
-    zip_path = temp_dir / f"zhihu_archive_{job_id}.zip"
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, _, files in os.walk(temp_dir):
-            for file in files:
-                if file.endswith(".zip"):
-                    continue
-                full_p = Path(root) / file
-                rel_p = full_p.relative_to(temp_dir)
-                zf.write(full_p, arcname=str(rel_p))
+    # 5. Build Standalone PDF (if requested or zip bundle)
+    if "pdf" in export_formats or "zip" in export_formats:
+        pdf_path = temp_dir / f"zhihu_archive_{job_id}.pdf"
+        try:
+            pdf_builder.save_pdf(pdf_path)
+            job["pdf_path"] = str(pdf_path)
+            job["pdf_size"] = pdf_path.stat().st_size
+            job["logs"].append(f"{time.strftime('%H:%M:%S')} - 📄 PDF 高清文档已生成 ({job['pdf_size'] / (1024*1024):.2f} MB)。")
+        except Exception as e:
+            logger.error("PDF build error: %s", e)
+            job["logs"].append(f"{time.strftime('%H:%M:%S')} - ⚠️ PDF 生成异常: {e}")
 
-    job["zip_path"] = str(zip_path)
-    job["zip_size"] = zip_path.stat().st_size
+    # 6. Package as Physical ZIP (if requested)
+    if "zip" in export_formats:
+        zip_path = temp_dir / f"zhihu_archive_{job_id}.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, _, files in os.walk(temp_dir):
+                for file in files:
+                    if file.endswith(".zip"):
+                        continue
+                    full_p = Path(root) / file
+                    rel_p = full_p.relative_to(temp_dir)
+                    zf.write(full_p, arcname=str(rel_p))
+
+        job["zip_path"] = str(zip_path)
+        job["zip_size"] = zip_path.stat().st_size
+        job["logs"].append(f"{time.strftime('%H:%M:%S')} - 📦 完整证据包已打包 ({job['zip_size'] / (1024*1024):.2f} MB)。")
+
     job["status"] = "completed"
-    job["current_message"] = "🎉 全部选定任务存证完毕！支持下载 ZIP 压缩包或 EPUB 电子书。"
-    job["logs"].append(f"{time.strftime('%H:%M:%S')} - 📦 全部完成！ZIP 文件已生成 ({job['zip_size'] / (1024*1024):.2f} MB)。")
+    formats_str = "、".join([f.upper() for f in export_formats])
+    job["current_message"] = f"🎉 全部选定任务存证完毕！支持下载所选格式 ({formats_str})。"
+    job["logs"].append(f"{time.strftime('%H:%M:%S')} - 🚀 全部完成！已生成所选格式 ({formats_str})。")
 
 
 @app.post("/api/scrape/batch")
@@ -613,7 +674,10 @@ async def stream_job_progress(job_id: str):
                 "total": job.get("total", 0),
                 "message": job.get("current_message", ""),
                 "logs": job.get("logs", [])[-20:],
-                "has_epub": bool(job.get("epub_path"))
+                "has_epub": bool(job.get("epub_path")),
+                "has_pdf": bool(job.get("pdf_path")),
+                "has_zip": bool(job.get("zip_path")),
+                "export_formats": job.get("export_formats", ["zip", "epub", "pdf"])
             }
             yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
             if job["status"] in ["completed", "error"]:
@@ -654,6 +718,23 @@ def download_job_epub(job_id: str):
         path=epub_path_str,
         media_type="application/epub+zip",
         filename=f"zhihu_archive_{job_id}.epub"
+    )
+
+
+@app.get("/api/jobs/{job_id}/download_pdf")
+def download_job_pdf(job_id: str):
+    """Download the finalized PDF document directly."""
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    pdf_path_str = job.get("pdf_path")
+    if not pdf_path_str or not os.path.exists(pdf_path_str):
+        raise HTTPException(status_code=400, detail="PDF 文档尚未生成或数据不可用")
+
+    return FileResponse(
+        path=pdf_path_str,
+        media_type="application/pdf",
+        filename=f"zhihu_archive_{job_id}.pdf"
     )
 
 
@@ -736,85 +817,85 @@ def index_ui():
     <link rel="manifest" href="/manifest.json">
     <script>
         (function() {
-            var theme = localStorage.getItem('theme_mode') || 'dark';
+            var theme = localStorage.getItem('theme_mode') || 'light';
             document.documentElement.setAttribute('data-theme', theme);
         })();
     </script>
     <style>
-        :root, [data-theme="dark"] {
-            --bg-base: #0b0f19;
-            --card-bg: #151d30;
-            --card-border: #222f4c;
-            --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
-            --header-bg: linear-gradient(135deg, #151d30 0%, #1a2540 100%);
-            --header-border: #2a3b61;
-            --h1-color: #38bdf8;
-            --h2-color: #f1f5f9;
-            --text-main: #e2e8f0;
-            --text-muted: #94a3b8;
-            --text-subtle: #64748b;
-            --input-bg: #090e18;
-            --input-border: #253352;
-            --input-color: #f8fafc;
-            --input-date-bg: #151d30;
-            --input-date-border: #2d3f66;
-            --toolbar-bg: #090e18;
-            --toolbar-border: #1e293b;
-            --toolbar-divider: #141f36;
-            --checkbox-color: #cbd5e1;
-            --pill-bg: #131b2e;
-            --pill-border: #233252;
-            --pill-color: #94a3b8;
-            --pill-hover-border: #38bdf8;
-            --pill-hover-color: #f1f5f9;
-            --pill-active-bg: rgba(6, 182, 212, 0.15);
-            --pill-active-border: #06b6d4;
-            --pill-active-color: #38bdf8;
-            --profile-bg: #131b2e;
-            --profile-border: #233252;
-            --profile-name-color: #ffffff;
-            --col-card-bg: #0d1424;
-            --col-card-border: #212e4a;
-            --col-card-title: #e0f2fe;
-            --col-card-desc: #94a3b8;
-            --table-wrap-bg: #090e18;
-            --table-wrap-border: #1e293b;
-            --th-bg: #0f172a;
-            --th-color: #94a3b8;
-            --th-border: #1e293b;
-            --tr-border: #141f36;
-            --tr-hover: rgba(30, 41, 59, 0.5);
-            --tr-title: #f8fafc;
-            --tr-date: #cbd5e1;
-            --btn-outline-bg: #1e293b;
-            --btn-outline-color: #cbd5e1;
-            --btn-outline-border: #334155;
-            --btn-outline-hover-bg: #334155;
-            --btn-outline-hover-color: #ffffff;
-            --progress-card-bg: linear-gradient(180deg, #111b2e 0%, #0d1527 100%);
-            --progress-card-border: #0284c7;
-            --progress-bar-bg: #090e18;
-            --terminal-bg: #050811;
-            --terminal-border: #141f36;
-            --terminal-color: #94a3b8;
-            --modal-backdrop: rgba(5, 9, 17, 0.85);
-            --modal-box-bg: #111827;
-            --modal-box-border: #1f293d;
-            --modal-box-shadow: 0 20px 40px -10px rgba(0,0,0,0.6);
-            --modal-title-color: #38bdf8;
-            --modal-desc-color: #94a3b8;
-            --cyan: #06b6d4;
-            --cyan-glow: rgba(6, 182, 212, 0.25);
-            --emerald: #10b981;
-            --emerald-glow: rgba(16, 185, 129, 0.25);
-            --purple: #a855f7;
-            --purple-glow: rgba(168, 85, 247, 0.25);
-            --blue: #3b82f6;
-            --amber: #f59e0b;
-            --rose: #f43f5e;
+        :root, [data-theme="light"] {
+            --bg-base: #f8fafc;
+            --card-bg: #ffffff;
+            --card-border: #e2e8f0;
+            --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06);
+            --header-bg: linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%);
+            --header-border: #cbd5e1;
+            --h1-color: #0284c7;
+            --h2-color: #0f172a;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --text-subtle: #94a3b8;
+            --input-bg: #f8fafc;
+            --input-border: #cbd5e1;
+            --input-color: #0f172a;
+            --input-date-bg: #ffffff;
+            --input-date-border: #cbd5e1;
+            --toolbar-bg: #f8fafc;
+            --toolbar-border: #e2e8f0;
+            --toolbar-divider: #e2e8f0;
+            --checkbox-color: #334155;
+            --pill-bg: #f1f5f9;
+            --pill-border: #e2e8f0;
+            --pill-color: #475569;
+            --pill-hover-border: #0284c7;
+            --pill-hover-color: #0284c7;
+            --pill-active-bg: rgba(2, 132, 199, 0.12);
+            --pill-active-border: #0284c7;
+            --pill-active-color: #0284c7;
+            --profile-bg: #f1f5f9;
+            --profile-border: #e2e8f0;
+            --profile-name-color: #0f172a;
+            --col-card-bg: #f8fafc;
+            --col-card-border: #e2e8f0;
+            --col-card-title: #0f172a;
+            --col-card-desc: #64748b;
+            --table-wrap-bg: #ffffff;
+            --table-wrap-border: #e2e8f0;
+            --th-bg: #f8fafc;
+            --th-color: #475569;
+            --th-border: #e2e8f0;
+            --tr-border: #f1f5f9;
+            --tr-hover: rgba(241, 245, 249, 0.8);
+            --tr-title: #0f172a;
+            --tr-date: #475569;
+            --btn-outline-bg: #f1f5f9;
+            --btn-outline-color: #334155;
+            --btn-outline-border: #cbd5e1;
+            --btn-outline-hover-bg: #e2e8f0;
+            --btn-outline-hover-color: #0f172a;
+            --progress-card-bg: linear-gradient(180deg, #f0f9ff 0%, #ffffff 100%);
+            --progress-card-border: #0ea5e9;
+            --progress-bar-bg: #e2e8f0;
+            --terminal-bg: #0f172a;
+            --terminal-border: #cbd5e1;
+            --terminal-color: #e2e8f0;
+            --modal-backdrop: rgba(15, 23, 42, 0.6);
+            --modal-box-bg: #ffffff;
+            --modal-box-border: #e2e8f0;
+            --modal-box-shadow: 0 20px 40px -10px rgba(0,0,0,0.15);
+            --modal-title-color: #0284c7;
+            --modal-desc-color: #64748b;
+            --cyan: #0284c7;
+            --cyan-glow: rgba(2, 132, 199, 0.2);
+            --emerald: #059669;
+            --emerald-glow: rgba(5, 150, 105, 0.2);
+            --purple: #9333ea;
+            --purple-glow: rgba(147, 51, 234, 0.2);
+            --blue: #2563eb;
+            --amber: #d97706;
+            --rose: #e11d48;
         }
 
-        [data-theme="light"] {
+        [data-theme="dark"] {
             --bg-base: #f8fafc;
             --card-bg: #ffffff;
             --card-border: #e2e8f0;
@@ -1446,6 +1527,47 @@ def index_ui():
             font-size: 12px;
             margin-top: 8px;
         }
+    
+        .btn-rose {
+            background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);
+            color: #ffffff !important;
+            border: none;
+            box-shadow: 0 4px 14px rgba(244, 63, 94, 0.35);
+        }
+        .btn-rose:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(244, 63, 94, 0.45);
+        }
+        .format-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 16px;
+            background: var(--toolbar-bg);
+            border: 1.5px solid var(--toolbar-border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+        .format-card:hover {
+            border-color: var(--cyan);
+            transform: translateY(-1px);
+        }
+        .format-card-selected {
+            border-color: var(--cyan);
+            background: rgba(6, 182, 212, 0.08);
+            box-shadow: 0 4px 12px rgba(6, 182, 212, 0.12);
+        }
+        .format-pill-tag {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            letter-spacing: 0.5px;
+        }
+
     </style>
     <script src="/static/vue.global.prod.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.js';"></script>
 </head>
@@ -1613,6 +1735,84 @@ def index_ui():
                     </button>
                 </div>
             </header>
+
+        <!-- Batch Export Format Selection Modal -->
+        <div v-if="showFormatModal" class="modal-backdrop" @click.self="showFormatModal = false">
+            <div class="modal-box" style="max-width: 500px; text-align: left; padding: 28px 26px 22px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(14, 165, 233, 0.15); border: 1px solid rgba(14, 165, 233, 0.3); display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                            📦
+                        </div>
+                        <div>
+                            <h3 style="font-size: 17px; font-weight: 700; color: var(--text-title); margin: 0 0 4px 0;">选择存证导出格式 (可多选)</h3>
+                            <p style="font-size: 12.5px; color: var(--text-muted); margin: 0;">
+                                已勾选 <strong>{{ selectedCount }}</strong> 项，请选择需要生成的交付物格式：
+                            </p>
+                        </div>
+                    </div>
+                    <button @click="showFormatModal = false" style="background: none; border: none; font-size: 20px; color: var(--text-subtle); cursor: pointer; padding: 0 4px;">✕</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
+                    <!-- Format Card 1: ZIP -->
+                    <label class="format-card" :class="{ 'format-card-selected': selectedFormats.includes('zip') }">
+                        <input type="checkbox" value="zip" v-model="selectedFormats" style="margin-top: 3px; width: 18px; height: 18px; accent-color: #10b981;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                <strong style="color: var(--text-title); font-size: 13.5px;">📦 完整存证包 (.zip)</strong>
+                                <span class="format-pill-tag" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">底层留痕</span>
+                            </div>
+                            <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5;">
+                                包含正文 Markdown、评论 JSON 树、网页原生截图，并打包内嵌选中的电子书。
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Format Card 2: EPUB -->
+                    <label class="format-card" :class="{ 'format-card-selected': selectedFormats.includes('epub') }">
+                        <input type="checkbox" value="epub" v-model="selectedFormats" style="margin-top: 3px; width: 18px; height: 18px; accent-color: #a855f7;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                <strong style="color: var(--text-title); font-size: 13.5px;">📖 精美电子书 (.epub)</strong>
+                                <span class="format-pill-tag" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">移动畅读</span>
+                            </div>
+                            <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5;">
+                                标准 EPUB 3.0 格式，内置封面与完整目录树，原生完美适配 Apple Books、微信读书、Kindle。
+                            </div>
+                        </div>
+                    </label>
+
+                    <!-- Format Card 3: PDF -->
+                    <label class="format-card" :class="{ 'format-card-selected': selectedFormats.includes('pdf') }">
+                        <input type="checkbox" value="pdf" v-model="selectedFormats" style="margin-top: 3px; width: 18px; height: 18px; accent-color: #f43f5e;">
+                        <div style="flex: 1;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                                <strong style="color: var(--text-title); font-size: 13.5px;">📄 高清排版文档 (.pdf)</strong>
+                                <span class="format-pill-tag" style="background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3);">打印与汇报</span>
+                            </div>
+                            <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5;">
+                                A4 矢量高保真版面，自动生成正式封面、目录索引、精美排版与页码，适合保存、打印与呈递。
+                            </div>
+                        </div>
+                    </label>
+                </div>
+
+                <div v-if="selectedFormats.length === 0" style="color: #ef4444; font-size: 12px; margin-bottom: 12px; text-align: center;">
+                    ⚠️ 请至少勾选一种导出格式
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button @click="showFormatModal = false" class="btn btn-outline" style="padding: 8px 18px; font-size: 13px;">
+                        取消
+                    </button>
+                    <button @click="confirmAndStartBatch" :disabled="selectedFormats.length === 0" class="btn btn-emerald" style="padding: 8px 20px; font-size: 13px;">
+                        🚀 确认格式并开始存证 ({{ selectedFormats.length }} 种)
+                    </button>
+                </div>
+            </div>
+        </div>
+
 
             <!-- Configuration Form Card -->
             <section class="card">
@@ -1814,9 +2014,9 @@ def index_ui():
                     </div>
 
                     <div>
-                        <button @click="startBatchScrape" :disabled="selectedCount === 0 || scraping" class="btn btn-emerald" style="padding: 10px 22px; font-size: 14px;">
+                        <button @click="openFormatModal" :disabled="selectedCount === 0 || scraping" class="btn btn-emerald" style="padding: 10px 22px; font-size: 14px;">
                             <span v-if="scraping">⏳ 正在存证中...</span>
-                            <span v-else>🚀 开始批量存证 (选定 {{ selectedCount }} 项，含 EPUB)</span>
+                            <span v-else>🚀 开始批量存证 (选定 {{ selectedCount }} 项)</span>
                         </button>
                     </div>
                 </div>
@@ -1975,13 +2175,16 @@ def index_ui():
                     <div v-for="(log, idx) in activeJob.logs" :key="idx">{{ log }}</div>
                 </div>
 
-                <!-- Dual Download Actions -->
-                <div v-if="activeJob.status === 'completed'" style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 14px; margin-top: 18px;">
-                    <a :href="'/api/jobs/' + activeJob.job_id + '/download_epub'" class="btn btn-purple" style="padding: 12px 24px; font-size: 14px; font-weight: 700;">
-                        📖 点击下载精美电子书 (EPUB)
+                <!-- Multi-format Download Actions -->
+                <div v-if="activeJob.status === 'completed'" style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 18px;">
+                    <a v-if="activeJob.has_pdf || (activeJob.export_formats && activeJob.export_formats.includes('pdf'))" :href="'/api/jobs/' + activeJob.job_id + '/download_pdf'" class="btn btn-rose" style="padding: 12px 22px; font-size: 13.5px; font-weight: 700;">
+                        📄 下载高清文档 (PDF)
                     </a>
-                    <a :href="'/api/jobs/' + activeJob.job_id + '/download'" class="btn btn-emerald" style="padding: 12px 24px; font-size: 14px; font-weight: 700;">
-                        📦 点击下载完整证据包 (ZIP)
+                    <a v-if="activeJob.has_epub || (activeJob.export_formats && activeJob.export_formats.includes('epub'))" :href="'/api/jobs/' + activeJob.job_id + '/download_epub'" class="btn btn-purple" style="padding: 12px 22px; font-size: 13.5px; font-weight: 700;">
+                        📖 下载精美电子书 (EPUB)
+                    </a>
+                    <a v-if="activeJob.has_zip || (activeJob.export_formats && activeJob.export_formats.includes('zip')) || (!activeJob.has_epub && !activeJob.has_pdf)" :href="'/api/jobs/' + activeJob.job_id + '/download'" class="btn btn-emerald" style="padding: 12px 22px; font-size: 13.5px; font-weight: 700;">
+                        📦 下载完整证据包 (ZIP)
                     </a>
                 </div>
             </section>
@@ -1999,7 +2202,7 @@ def index_ui():
 
             createApp({
                 setup() {
-                    const theme = ref(localStorage.getItem('theme_mode') || 'dark');
+                    const theme = ref(localStorage.getItem('theme_mode') || 'light');
                     const applyTheme = (t) => {
                         theme.value = t;
                         localStorage.setItem('theme_mode', t);
@@ -2027,8 +2230,25 @@ def index_ui():
                         save_markdown: true,
                         save_comments: true,
                         save_screenshot: true,
-                        highlight_keywords: []
+                        highlight_keywords: [],
+                        export_formats: ['zip', 'epub', 'pdf']
                     });
+
+                    const showFormatModal = ref(false);
+                    const selectedFormats = ref(['zip', 'epub', 'pdf']);
+
+                    const openFormatModal = () => {
+                        const chosen = items.value.filter(i => i.selected);
+                        if (chosen.length === 0) return;
+                        showFormatModal.value = true;
+                    };
+
+                    const confirmAndStartBatch = () => {
+                        if (selectedFormats.value.length === 0) return;
+                        showFormatModal.value = false;
+                        options.value.export_formats = [...selectedFormats.value];
+                        startBatchScrape();
+                    };
                     const inspecting = ref(false);
                     const scraping = ref(false);
                     const targetType = ref('');
@@ -2426,6 +2646,10 @@ def index_ui():
                     return {
                         theme,
                         toggleTheme,
+                        showFormatModal,
+                        selectedFormats,
+                        openFormatModal,
+                        confirmAndStartBatch,
                         isAuthenticated,
                         loginPassword,
                         loggingIn,
