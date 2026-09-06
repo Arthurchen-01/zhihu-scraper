@@ -495,10 +495,19 @@ def run_batch_job(job_id: str, cookie: str, items: List[Dict[str, Any]], options
         if not scraped_content:
             scraped_content = item.get("excerpt") or "（该条目无正文或仅包含动态动作）"
 
+        # If it was an activity or other item without full markdown file yet, save markdown file
+        if save_markdown and not res_data and scraped_content:
+            try:
+                md_path = articles_dir / f"{item_type}_{safe_name(raw_title)}_{item_id}.md"
+                md_content = f"# {raw_title}\n\n- 类型: {item_type}\n- 发布时间: {created_at}\n- 原文链接: {url}\n\n---\n\n{scraped_content}\n"
+                md_path.write_text(md_content, encoding="utf-8")
+            except Exception as e:
+                logger.warning("Failed to write fallback markdown: %s", e)
+
         # Add to EPUB
         try:
             epub_builder.add_article_chapter(
-                idx,
+                len(epub_builder.chapters) + 1,
                 raw_title,
                 scraped_content,
                 created_at=created_at,
