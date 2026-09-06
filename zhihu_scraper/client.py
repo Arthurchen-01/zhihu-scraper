@@ -116,6 +116,19 @@ class ZhihuClient:
         """Perform GET request and parse JSON response safely."""
         try:
             resp = self.get(url, params=params, timeout=timeout)
+            if resp.status_code == 403 and self.cookie:
+                # Self-healing fallback: If stale cookie caused 403, retry cleanly without stale cookie
+                logger.info("Request with cookie returned 403 on %s, retrying cleanly without stale cookie...", url)
+                clean_headers = {k: v for k, v in self.session.headers.items() if k.lower() not in ["cookie", "x-xsrftoken"]}
+                try:
+                    clean_resp = requests.get(url, params=params, headers=clean_headers, timeout=timeout)
+                    if clean_resp.status_code == 200:
+                        self.cookie = ""
+                        self._setup_headers()
+                        return clean_resp.json()
+                except Exception:
+                    pass
+
             if resp.status_code != 200:
                 logger.warning("GET %s returned HTTP %d: %s", url, resp.status_code, resp.text[:200])
                 return {}
