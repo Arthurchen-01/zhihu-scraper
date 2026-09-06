@@ -1828,25 +1828,25 @@ def index_ui():
                     <div>
                         <span style="font-size: 12px; color: var(--text-muted); font-weight: 600;">🏷️ 内容分类独立筛选：</span>
                         <div class="filter-pills">
-                            <button @click="activeCategory = 'all'" :class="['filter-pill', activeCategory === 'all' ? 'active' : '']">
+                            <button data-category="all" @click="activeCategory = 'all'" :class="['filter-pill', activeCategory === 'all' ? 'active' : '']">
                                 🌟 全部 ({{ items.length }})
                             </button>
-                            <button @click="activeCategory = 'article'" :class="['filter-pill', activeCategory === 'article' ? 'active' : '']">
+                            <button data-category="article" @click="activeCategory = 'article'" :class="['filter-pill', activeCategory === 'article' ? 'active' : '']">
                                 📰 仅文章 ({{ countArticles }})
                             </button>
-                            <button @click="activeCategory = 'pin'" :class="['filter-pill', activeCategory === 'pin' ? 'active' : '']">
+                            <button data-category="pin" @click="activeCategory = 'pin'" :class="['filter-pill', activeCategory === 'pin' ? 'active' : '']">
                                 💡 仅想法 ({{ countPins }})
                             </button>
-                            <button @click="activeCategory = 'activity'" :class="['filter-pill', activeCategory === 'activity' ? 'active' : '']">
+                            <button data-category="activity" @click="activeCategory = 'activity'" :class="['filter-pill', activeCategory === 'activity' ? 'active' : '']">
                                 ⚡ 仅动态全部 ({{ countActivities }})
                             </button>
-                            <button @click="activeCategory = 'activity_article'" :class="['filter-pill', activeCategory === 'activity_article' ? 'active' : '']">
+                            <button data-category="activity_article" @click="activeCategory = 'activity_article'" :class="['filter-pill', activeCategory === 'activity_article' ? 'active' : '']">
                                 🎯 动态中的文章 ({{ countActivityArticles }})
                             </button>
-                            <button @click="activeCategory = 'answer'" :class="['filter-pill', activeCategory === 'answer' ? 'active' : '']">
+                            <button data-category="answer" @click="activeCategory = 'answer'" :class="['filter-pill', activeCategory === 'answer' ? 'active' : '']">
                                 💬 仅回答 ({{ countAnswers }})
                             </button>
-                            <button @click="activeCategory = 'column'" :class="['filter-pill', activeCategory === 'column' ? 'active' : '']">
+                            <button data-category="column" @click="activeCategory = 'column'" :class="['filter-pill', activeCategory === 'column' ? 'active' : '']">
                                 📚 仅专栏 ({{ countColumns }})
                             </button>
                         </div>
