@@ -109,6 +109,7 @@ class InspectRequest(BaseModel):
     url: str
     cookie: Optional[str] = ""
     max_items: Optional[int] = 0  # 0 or None means unlimited / all articles
+    drill_column: Optional[bool] = False  # When True, directly inspects column articles instead of resolving to author
 
 
 class BatchScrapeRequest(BaseModel):
@@ -330,61 +331,212 @@ def api_cookie_parse(req: CookieParseRequest):
     return normalize_zhihu_cookie(req.cookie)
 
 
+def resolve_target_to_author(client: ZhihuClient, input_url: str) -> dict:
+    """Intelligently resolves any Zhihu URL (author homepage, pin, answer, article, column)
+    into the underlying author's url_token, profile info, and resolution source metadata.
+    """
+    raw = input_url.strip()
+
+    # 1. Direct author profile (/people/{token})
+    m_people = re.search(r"zhihu\.com/people/([^/?#]+)", raw)
+    if m_people:
+        token = m_people.group(1)
+        return {"resolved": True, "url_token": token, "resolved_from": None}
+
+    # 2. Pin URL (/pin/{id})
+    m_pin = re.search(r"zhihu\.com/pin/(\d+)", raw)
+    if m_pin:
+        pin_id = m_pin.group(1)
+        pin_data = client.get_json(f"https://www.zhihu.com/api/v4/pins/{pin_id}")
+        if not pin_data or not pin_data.get("author"):
+            pin_data = client.get_json(f"https://api.zhihu.com/pins/{pin_id}")
+        if pin_data and pin_data.get("author"):
+            author = pin_data.get("author", {})
+            token = author.get("url_token")
+            if token:
+                raw_title = pin_data.get("excerpt_title") or (pin_data.get("content") or [{}])[0].get("content", "")[:40] or f"想法_{pin_id}"
+                clean_title = re.sub(r'<[^>]+>', '', str(raw_title)).strip()
+                return {
+                    "resolved": True,
+                    "url_token": token,
+                    "resolved_from": {
+                        "source_type": "想法",
+                        "source_id": pin_id,
+                        "source_title": clean_title[:45] + ("..." if len(clean_title) > 45 else ""),
+                        "source_url": f"https://www.zhihu.com/pin/{pin_id}",
+                        "author_name": author.get("name", "知乎创作者"),
+                        "author_token": token
+                    }
+                }
+
+    # 3. Answer URL (/answer/{id} or /question/{qid}/answer/{aid})
+    m_ans = re.search(r"zhihu\.com/(?:question/\d+/)?answer/(\d+)", raw)
+    if m_ans:
+        ans_id = m_ans.group(1)
+        ans_data = client.get_json(f"https://www.zhihu.com/api/v4/answers/{ans_id}?include=author,question")
+        if not ans_data or not ans_data.get("author"):
+            ans_data = client.get_json(f"https://api.zhihu.com/answers/{ans_id}")
+        if ans_data and ans_data.get("author"):
+            author = ans_data.get("author", {})
+            token = author.get("url_token")
+            if token:
+                q_title = (ans_data.get("question") or {}).get("title") or f"知乎问答_{ans_id}"
+                return {
+                    "resolved": True,
+                    "url_token": token,
+                    "resolved_from": {
+                        "source_type": "回答",
+                        "source_id": ans_id,
+                        "source_title": q_title[:45] + ("..." if len(q_title) > 45 else ""),
+                        "source_url": f"https://www.zhihu.com/answer/{ans_id}",
+                        "author_name": author.get("name", "知乎创作者"),
+                        "author_token": token
+                    }
+                }
+
+    # 4. Column URL (/column/{id} or c_{id})
+    is_column = (
+        "zhihu.com/column/" in raw
+        or "/c_" in raw
+        or raw.startswith("c_")
+        or ("zhuanlan.zhihu.com" in raw and "/p/" not in raw)
+    )
+    if is_column:
+        col_scraper = ColumnScraper(client)
+        col_info = col_scraper.get_column_info(raw)
+        author = col_info.get("author", {}) if col_info else {}
+        token = author.get("url_token")
+        if token:
+            col_id = col_info.get("id", raw)
+            col_title = col_info.get("title", "知乎专栏")
+            return {
+                "resolved": True,
+                "url_token": token,
+                "column_info": col_info,
+                "resolved_from": {
+                    "source_type": "专栏",
+                    "source_id": col_id,
+                    "source_title": col_title[:45],
+                    "source_url": f"https://www.zhihu.com/column/{col_id}" if "http" not in str(col_id) else str(col_id),
+                    "author_name": author.get("name", "知乎创作者"),
+                    "author_token": token,
+                    "column_info": col_info
+                }
+            }
+
+    # 5. Article URL (/p/{id})
+    m_art = re.search(r"(?:zhuanlan\.zhihu\.com|zhihu\.com)/p/(\d+)", raw)
+    if m_art:
+        art_id = m_art.group(1)
+        art_scraper = ArticleScraper(client)
+        art_data = art_scraper.get_article(art_id)
+        if art_data and art_data.get("author", {}).get("url_token"):
+            author = art_data.get("author", {})
+            token = author.get("url_token")
+            return {
+                "resolved": True,
+                "url_token": token,
+                "resolved_from": {
+                    "source_type": "文章",
+                    "source_id": art_id,
+                    "source_title": art_data.get("title", f"文章_{art_id}")[:45],
+                    "source_url": f"https://zhuanlan.zhihu.com/p/{art_id}",
+                    "author_name": author.get("name", "知乎创作者"),
+                    "author_token": token
+                }
+            }
+
+    # 6. Fallback: treat as raw url_token
+    token = raw.split("?")[0].strip("/").split("/")[-1]
+    return {
+        "resolved": False,
+        "url_token": token,
+        "resolved_from": None
+    }
+
+
 @app.post("/api/inspect")
 def inspect_target(req: InspectRequest):
-    """Inspects any author profile, column, or link and catalogs all child assets including dynamic activities."""
+    """Inspects any author profile, column, pin, answer, or article and catalogs all child assets including dynamic activities."""
     cookie = (req.cookie or "").strip() or get_default_cookie()
     client = ZhihuClient(cookie=cookie)
     url = req.url.strip()
 
     if not url:
-        raise HTTPException(status_code=400, detail="请输入有效的知乎主页或专栏链接")
+        raise HTTPException(status_code=400, detail="请输入有效的知乎主页、专栏、想法或问答链接")
 
-    # 1. If column URL or column slug
-    is_column = (
-        "zhihu.com/column/" in url
-        or "/c_" in url
-        or url.startswith("c_")
-        or ("zhuanlan.zhihu.com" in url and "/p/" not in url)
-    )
+    limit = None if (req.max_items is not None and req.max_items <= 0) else (req.max_items or 50)
 
-    if is_column:
-        col_scraper = ColumnScraper(client)
-        col_info = col_scraper.get_column_info(url)
-        limit = None if (req.max_items is None or req.max_items <= 0) else req.max_items
-        articles = col_scraper.list_column_articles(url, max_items=limit)
-        return {
-            "target_type": "column",
-            "column": {
-                "id": col_info.get("id", ""),
-                "title": col_info.get("title", "专栏"),
-                "description": col_info.get("description", ""),
-                "image_url": col_info.get("image_url", ""),
-                "articles_count": col_info.get("items_count") or col_info.get("articles_count") or len(articles),
-                "author": col_info.get("author", {})
-            },
-            "total_items": len(articles),
-            "items": articles
-        }
-
-    # 2. Otherwise treat as author or general profile
-    author_scraper = AuthorScraper(client)
-    try:
-        limit = None if (req.max_items is not None and req.max_items <= 0) else (req.max_items or 50)
-        catalog = author_scraper.catalog_all_assets(
-            url,
-            include_articles=True,
-            include_answers=True,
-            include_pins=True,
-            include_columns=True,
-            include_activities=True,
-            max_per_category=limit
+    # 1. If drill_column requested explicitly (e.g. user clicked "仅看本专栏文章")
+    if req.drill_column:
+        is_column = (
+            "zhihu.com/column/" in url
+            or "/c_" in url
+            or url.startswith("c_")
+            or ("zhuanlan.zhihu.com" in url and "/p/" not in url)
         )
-        catalog["target_type"] = "author"
-        return catalog
-    except Exception as e:
-        logger.error("Error inspecting %s: %s", url, e)
-        raise HTTPException(status_code=500, detail=f"解析知乎资产失败: {str(e)}")
+        if is_column:
+            col_scraper = ColumnScraper(client)
+            col_info = col_scraper.get_column_info(url)
+            articles = col_scraper.list_column_articles(url, max_items=limit)
+            return {
+                "target_type": "column",
+                "column": {
+                    "id": col_info.get("id", ""),
+                    "title": col_info.get("title", "专栏"),
+                    "description": col_info.get("description", ""),
+                    "image_url": col_info.get("image_url", ""),
+                    "articles_count": col_info.get("items_count") or col_info.get("articles_count") or len(articles),
+                    "author": col_info.get("author", {})
+                },
+                "total_items": len(articles),
+                "items": articles
+            }
+
+    # 2. Smart Author Resolution: resolve pin, answer, column, article to author personal homepage!
+    resolved = resolve_target_to_author(client, url)
+    target_token = resolved.get("url_token")
+    resolved_from = resolved.get("resolved_from")
+
+    if target_token:
+        author_scraper = AuthorScraper(client)
+        try:
+            catalog = author_scraper.catalog_all_assets(
+                target_token,
+                include_articles=True,
+                include_answers=True,
+                include_pins=True,
+                include_columns=True,
+                include_activities=True,
+                max_per_category=limit
+            )
+            catalog["target_type"] = "author"
+            if resolved_from:
+                catalog["resolved_from"] = resolved_from
+            return catalog
+        except Exception as e:
+            logger.error("Error cataloging author for token %s: %s", target_token, e)
+            # Graceful fallback: If it was a column, return column articles
+            if resolved_from and resolved_from.get("source_type") == "专栏":
+                col_scraper = ColumnScraper(client)
+                col_info = resolved_from.get("column_info") or col_scraper.get_column_info(url)
+                articles = col_scraper.list_column_articles(url, max_items=limit)
+                return {
+                    "target_type": "column",
+                    "column": {
+                        "id": col_info.get("id", ""),
+                        "title": col_info.get("title", "专栏"),
+                        "description": col_info.get("description", ""),
+                        "image_url": col_info.get("image_url", ""),
+                        "articles_count": col_info.get("items_count") or col_info.get("articles_count") or len(articles),
+                        "author": col_info.get("author", {})
+                    },
+                    "total_items": len(articles),
+                    "items": articles
+                }
+            raise HTTPException(status_code=500, detail=f"解析知乎创作者资产失败: {str(e)}")
+
+    raise HTTPException(status_code=400, detail="未能识别该知乎链接的创作者或内容")
 
 
 def run_batch_job(job_id: str, cookie: str, items: List[Dict[str, Any]], options: Dict[str, Any]):
@@ -1822,8 +1974,8 @@ def index_ui():
                 
                 <div style="display: grid; grid-template-columns: 2fr 2fr 1.2fr; gap: 14px;">
                     <div>
-                        <label>目标知乎主页或专栏链接 (必填)</label>
-                        <input v-model="targetUrl" type="text" placeholder="例: https://www.zhihu.com/people/shan-chang-qing-yi 或 /column/c_xxx">
+                        <label>目标知乎主页、专栏、想法或回答链接 (全类型智能穿透)</label>
+                        <input v-model="targetUrl" type="text" placeholder="例: /people/xxx, /pin/xxx, /answer/xxx, /column/c_xxx">
                     </div>
                     <div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -1840,9 +1992,9 @@ def index_ui():
                         <div style="position: relative;">
                             <input 
                                 v-model="cookie" 
-                                @input="handleCookieInput"
+                                @input="handleCookieInput" 
                                 :type="showCookie ? 'text' : 'password'" 
-                                placeholder="无需手动找 Cookie，点击右上角【🔑 一键获取】即可自动填入"
+                                placeholder="无需手动找 Cookie，点击右上角【🔑 一键获取】即可自动填入" 
                                 style="padding-right: 70px;"
                             >
                             <button 
@@ -1901,6 +2053,33 @@ def index_ui():
                     </button>
                 </div>
             </section>
+
+            <!-- Smart Resolution Penetration Banner -->
+            <div v-if="resolvedFrom && targetType === 'author'" class="card" style="padding: 14px 20px; border-left: 4px solid var(--cyan); background: var(--toolbar-bg); margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="background: rgba(6, 182, 212, 0.15); color: var(--cyan); border: 1px solid rgba(6, 182, 212, 0.3); padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700;">
+                            🎯 智能溯源穿透
+                        </span>
+                        <span style="font-size: 13px; color: var(--text-main);">
+                            已成功从输入的<strong>知乎{{ resolvedFrom.source_type }}</strong>《{{ resolvedFrom.source_title }}》穿透溯源至创作者<strong>【{{ resolvedFrom.author_name }}】</strong>的个人主页全量资产！
+                        </span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <button 
+                            v-if="resolvedFrom.source_type === '专栏' && resolvedFrom.column_info" 
+                            @click="enterColumn(resolvedFrom.column_info)" 
+                            class="btn btn-outline btn-sm"
+                            title="只查看该专栏内的精选文章"
+                        >
+                            📚 仅看本专栏文章
+                        </button>
+                        <a v-if="resolvedFrom.source_url" :href="resolvedFrom.source_url" target="_blank" class="btn btn-outline btn-sm">
+                            🔗 查看原{{ resolvedFrom.source_type }}
+                        </a>
+                    </div>
+                </div>
+            </div>
 
             <!-- Breadcrumb Bar -->
             <div v-if="parentAuthor && targetType === 'column'" class="card" style="padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
@@ -2258,6 +2437,7 @@ def index_ui():
                     const parentAuthor = ref(null);
                     const items = ref([]);
                     const activeJob = ref(null);
+                    const resolvedFrom = ref(null);
 
                     // Credential Helper State
                     const showCredentialModal = ref(false);
@@ -2529,7 +2709,7 @@ def index_ui():
                         return t ? { 'X-Auth-Token': t } : {};
                     };
 
-                    const inspect = async (urlToInspect) => {
+                    const inspect = async (urlToInspect, drillColumn = false) => {
                         const u = (urlToInspect || targetUrl.value).trim();
                         if (!u) {
                             alert('请输入知乎链接');
@@ -2550,7 +2730,8 @@ def index_ui():
                                 body: JSON.stringify({
                                     url: u,
                                     cookie: cookie.value,
-                                    max_items: fetchLimit.value
+                                    max_items: fetchLimit.value,
+                                    drill_column: drillColumn
                                 })
                             });
                             if (res.status === 401) {
@@ -2561,6 +2742,7 @@ def index_ui():
                             if (!res.ok) throw new Error(data.detail || '解析失败');
                             
                             targetType.value = data.target_type || 'author';
+                            resolvedFrom.value = data.resolved_from || null;
 
                             if (data.target_type === 'column') {
                                 currentColumn.value = data.column;
@@ -2582,15 +2764,17 @@ def index_ui():
                         if (authorInfo.value) {
                             parentAuthor.value = { ...authorInfo.value, url: targetUrl.value };
                         }
-                        targetUrl.value = col.url || ('https://www.zhihu.com/column/' + col.id);
-                        inspect(targetUrl.value);
+                        const colId = col.id || col.source_id;
+                        const colUrl = col.url || ('https://www.zhihu.com/column/' + colId);
+                        targetUrl.value = colUrl;
+                        inspect(colUrl, true);
                     };
 
                     const returnToAuthor = () => {
                         if (parentAuthor.value) {
                             targetUrl.value = parentAuthor.value.url || parentAuthor.value.profile_url;
                             parentAuthor.value = null;
-                            inspect(targetUrl.value);
+                            inspect(targetUrl.value, false);
                         }
                     };
 
@@ -2694,6 +2878,7 @@ def index_ui():
                         parentAuthor,
                         items,
                         activeJob,
+                        resolvedFrom,
                         selectedCount,
                         isAllFilteredSelected,
                         toggleSelectAllFiltered,
