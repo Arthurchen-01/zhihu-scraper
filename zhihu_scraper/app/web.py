@@ -2319,6 +2319,7 @@ def index_ui():
                             localStorage.setItem('zhihu_cookie', cookie.value);
                         }
                         inspecting.value = true;
+                        activeJob.value = null;
                         try {
                             const res = await fetch('/api/inspect', {
                                 method: 'POST',
@@ -2378,6 +2379,7 @@ def index_ui():
                         if (chosen.length === 0) return;
 
                         scraping.value = true;
+                        activeJob.value = null;
                         try {
                             const res = await fetch('/api/scrape/batch', {
                                 method: 'POST',
