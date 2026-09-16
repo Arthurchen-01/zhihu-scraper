@@ -123,8 +123,7 @@ class ZhihuClient:
                 try:
                     clean_resp = requests.get(url, params=params, headers=clean_headers, timeout=timeout)
                     if clean_resp.status_code == 200:
-                        self.cookie = ""
-                        self._setup_headers()
+                        # Return clean response without permanently destroying self.cookie session
                         return clean_resp.json()
                 except Exception:
                     pass
