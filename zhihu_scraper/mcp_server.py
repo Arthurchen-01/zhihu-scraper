@@ -15,10 +15,15 @@ import json
 import logging
 import os
 import sys
-import urllib.request
-import urllib.error
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Setup clean stderr logging so stdout is dedicated to pure JSON-RPC
 logging.basicConfig(
