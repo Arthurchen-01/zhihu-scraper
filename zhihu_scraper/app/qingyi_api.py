@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import platform
@@ -221,8 +222,8 @@ class AiReviewReq(BaseModel):
 
 
 class BundleReq(BaseModel):
-    """一键执行器打包下载：把当前凭证写进包里的 cookie.txt。"""
-    cookie: str
+    """傻瓜部署包下载：cookie 可选（部署器会自动读取本机登录）。"""
+    cookie: str = ""
 
 
 class WorkerClaimReq(BaseModel):
@@ -390,11 +391,201 @@ def qy_ai_review_single(req: AiReviewReq):
     return r
 
 
-_EXEC_BAT = (
+# --------------------------------------------------------------------------- #
+# 凭证柜：deploy.py 自动读取本机登录后暂存于此（仅内存，10 分钟 TTL，不落盘），
+# 用户回到网页点「载入凭证」即可完成零粘贴流程。
+# --------------------------------------------------------------------------- #
+_CRED_VAULT: Dict[str, Dict[str, Any]] = {}
+_CRED_TTL = 600  # 秒
+
+
+class CredDepositReq(BaseModel):
+    key: str
+    cookie: str
+    note: str = ""
+
+
+@router.post("/credential-deposit")
+def qy_cred_deposit(req: CredDepositReq):
+    """deploy.py 上传自动读取到的凭证。key 必须与站点密钥一致。"""
+    site_key = os.environ.get("QY_SITE_KEY", "guanjun2026")
+    if req.key != site_key:
+        raise HTTPException(status_code=403, detail="站点密钥不正确")
+    ck = (req.cookie or "").strip()
+    if "z_c0=" not in ck:
+        raise HTTPException(status_code=400, detail="凭证里没有 z_c0，不是有效登录态")
+    now = time.time()
+    for k in [k for k, v in _CRED_VAULT.items() if now - v["ts"] > _CRED_TTL]:
+        _CRED_VAULT.pop(k, None)
+    h = hashlib.sha256(ck.encode("utf-8")).hexdigest()[:12]
+    _CRED_VAULT[h] = {"cookie": ck, "ts": now,
+                      "note": (req.note or "本机")[:40]}
+    return {"ok": True, "token": h, "ttl": _CRED_TTL}
+
+
+@router.get("/credential-latest")
+def qy_cred_latest():
+    """网页端一键载入最近自动获取的凭证（10 分钟内有效）。"""
+    now = time.time()
+    live = {k: v for k, v in _CRED_VAULT.items() if now - v["ts"] <= _CRED_TTL}
+    if not live:
+        return {"ok": False,
+                "note": "凭证柜为空（有效期 10 分钟）。请先在电脑上运行傻瓜部署包。"}
+    k, v = max(live.items(), key=lambda kv: kv[1]["ts"])
+    return {"ok": True, "token": k, "cookie": v["cookie"], "note": v["note"],
+            "age": int(now - v["ts"])}
+
+
+_DEPLOY_PY = """#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+'''
+清一新教育 · 傻瓜部署器
+自动：识别设备 → 装依赖 → 读取本机浏览器知乎登录 → 生成 cookie.txt →
+      上传凭证柜（网页点「载入凭证」即可用）→ 启动执行器。
+全程不需要粘贴，不需要 F12。
+'''
+
+import platform
+import subprocess
+import sys
+from pathlib import Path
+
+SERVER = "https://zh.samuraiguan.cloud"
+SITE_KEY = "guanjun2026"
+HERE = Path(__file__).resolve().parent
+
+
+def pip(pkg):
+    print("    安装依赖:", pkg)
+    subprocess.call([sys.executable, "-m", "pip", "install", "--quiet",
+                     "--disable-pip-version-check", pkg])
+
+
+def main():
+    os_name = platform.system()
+    v = sys.version_info
+    print("=" * 62)
+    print("  清一新教育 · 傻瓜部署器")
+    print("=" * 62)
+    print(f"[1/4] 设备识别: {os_name} · Python {v.major}.{v.minor}.{v.micro}")
+    if v < (3, 9):
+        print("[!] 需要 Python 3.9 及以上。请到 python.org 安装，")
+        print("    Windows 安装时务必勾选 Add Python to PATH。")
+        try:
+            input("按回车退出...")
+        except EOFError:
+            pass
+        return 1
+
+    win = os_name == "Windows"
+    print("[2/4] 安装依赖（已装过会自动跳过）...")
+    pip("requests")
+    if win:
+        pip("pywin32")
+        pip("pycryptodome")
+    else:
+        pip("browser-cookie3")
+
+    print("[3/4] 自动读取本机知乎登录（无需粘贴，无需 F12）...")
+    ck = ""
+    for attempt in range(1, 4):
+        try:
+            sys.path.insert(0, str(HERE))
+            from qingyi_executor import auto_detect_cookie
+            ck, src = auto_detect_cookie()
+            print(f"    [OK] 已读取（来源: {src}）")
+            break
+        except Exception as exc:
+            print(f"    [!] 第 {attempt} 次尝试失败：{exc}")
+            ck = ""
+            if (HERE / "cookie.txt").exists():
+                print("    检测到目录里已有 cookie.txt，将直接使用它继续。")
+                break
+            if attempt >= 3:
+                try:
+                    input("    按回车退出...")
+                except EOFError:
+                    pass
+                return 1
+            try:
+                ans = input(
+                    "    请先确保浏览器已登录 zhihu.com；Windows 请完全退出 Edge/Chrome"
+                    "（关闭所有窗口），然后按回车重试（输入 q 退出）: ").strip().lower()
+            except EOFError:
+                return 1
+            if ans == "q":
+                return 1
+
+    if ck:
+        (HERE / "cookie.txt").write_text(ck + "\\n", encoding="utf-8")
+        try:
+            import json as _j
+            import urllib.request as _u
+            req = _u.Request(
+                SERVER + "/api/qy/credential-deposit",
+                data=_j.dumps({"key": SITE_KEY, "cookie": ck,
+                               "note": os_name}).encode("utf-8"),
+                headers={"Content-Type": "application/json",
+                         "X-API-Key": SITE_KEY})
+            _u.urlopen(req, timeout=20)
+            print("    [OK] 凭证已暂存（10 分钟有效）：回到网页点「📥 载入凭证」即可。")
+        except Exception as exc:
+            print(f"    [i] 凭证柜暂存失败（不影响本机运行）：{exc}")
+
+    print("[4/4] 启动执行器（领取网页上创建的修改任务；Ctrl+C 随时安全停止）")
+    try:
+        subprocess.call([sys.executable, "qingyi_executor.py",
+                         "--server", SERVER, "--key", SITE_KEY,
+                         "--cookie-file", "cookie.txt"])
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+"""
+
+_AGENTS_MD = """# 给 AI 助手：请帮用户把这个工具跑起来
+
+这是「清一新教育」知乎文章批量署名的**本地执行器**。
+真正的知乎写入必须来自用户本人的电脑与网络身份（防风控），所以需要在本机运行。
+
+## 请按顺序执行
+
+1. **识别设备**：Windows 还是 macOS（`platform` / `uname`）。
+2. **确认 Python >= 3.9**：`python --version`（Win）或 `python3 --version`（Mac）。
+   没有就引导用户到 python.org 安装；Windows 必须勾选 Add Python to PATH。
+3. **安装依赖**（在本目录）：
+   - Windows: `python -m pip install requests pywin32 pycryptodome`
+   - macOS:   `python3 -m pip install requests browser-cookie3`
+4. **确保用户的浏览器（Edge/Chrome）已登录 zhihu.com**，然后运行：
+   `python deploy.py`（Win）或 `python3 deploy.py`（Mac）。
+   它会自动读取本机知乎登录生成 cookie.txt，并启动执行器。
+   - Windows 下若提示浏览器锁定：让用户**完全关闭浏览器窗口**后重跑。
+   - macOS 首次可能弹钥匙串授权：点「始终允许」。
+5. 执行器启动后会轮询云端领取任务并逐篇写入；`Ctrl+C` 随时安全停止。
+
+## 安全红线（不要做）
+
+- 不要修改 `qingyi_executor.py` 的写入逻辑。
+- 不要把 `cookie.txt` 内容打印到终端、上传到除本工具服务端以外的任何地方。
+- 不要绕过每日 120 篇的限额机制。
+"""
+
+
+
+_REQ_TXT = """requests
+pywin32; sys_platform == "win32"
+pycryptodome; sys_platform == "win32"
+browser-cookie3; sys_platform == "darwin"
+"""
+
+_DEPLOY_BAT = (
     "@echo off\r\n"
     "chcp 65001 >nul\r\n"
+    "title \u6e05\u4e00\u65b0\u6559\u80b2 \u00b7 \u4e00\u952e\u90e8\u7f72\r\n"
     "cd /d %~dp0\r\n"
-    "echo [1/2] Checking Python and dependency (requests)...\r\n"
     "set PY=python\r\n"
     "%PY% --version >nul 2>nul\r\n"
     "if errorlevel 1 set PY=py\r\n"
@@ -405,43 +596,38 @@ _EXEC_BAT = (
     "  pause\r\n"
     "  exit /b 1\r\n"
     ")\r\n"
-    "%PY% -c \"import requests\" >nul 2>nul\r\n"
-    "if errorlevel 1 %PY% -m pip install requests\r\n"
-    "echo [2/2] Starting executor. Press Ctrl+C to stop safely.\r\n"
-    "%PY% qingyi_executor.py --server https://zh.samuraiguan.cloud "
-    "--key guanjun2026 --cookie-file cookie.txt\r\n"
+    "%PY% deploy.py\r\n"
     "pause\r\n"
 )
 
-_EXEC_SH = (
+_DEPLOY_SH = (
     "#!/usr/bin/env bash\n"
     'cd "$(dirname "$0")"\n'
-    'python3 -c "import requests" 2>/dev/null || pip3 install requests\n'
-    "python3 qingyi_executor.py --server https://zh.samuraiguan.cloud "
-    "--key guanjun2026 --cookie-file cookie.txt\n"
+    "python3 deploy.py\n"
 )
 
 _EXEC_README = (
-    "清一新教育 · 本地执行器 一键包\n"
-    "================================\n\n"
-    "包里已经带好了一切：执行器脚本、你的知乎凭证（cookie.txt）、一键启动脚本。\n"
-    "不需要再粘贴任何东西。\n\n"
-    "Windows 用户：\n"
-    "  1. 把整个文件夹解压到任意位置（比如桌面）\n"
-    "  2. 双击「一键启动-Windows.bat」\n"
-    "  3. 看到进度即可；按 Ctrl+C 或直接关窗口可随时安全停止\n\n"
-    "Mac 用户：\n"
-    "  1. 解压后打开「终端」，cd 到这个文件夹\n"
-    "  2. 运行:  bash 一键启动-Mac.command\n\n"
-    "内置安全机制（自动生效，无需配置）：\n"
+    "清一新教育 · 傻瓜部署包\n"
+    "========================\n\n"
+    "你不需要粘贴任何东西，也不需要懂任何技术。\n\n"
+    "前提：你的电脑浏览器（Edge 或 Chrome）已登录 zhihu.com。\n\n"
+    "Windows 用户（三步）：\n"
+    "  1. 把这个文件夹解压到桌面或任意位置\n"
+    "  2. 双击「一键部署-Windows.bat」\n"
+    "  3. 它会自动：装好依赖 → 读取你浏览器里的知乎登录 → 启动执行器\n"
+    "     回到网页点「📥 载入凭证」即可开始勾选文章（凭证 10 分钟内有效）\n\n"
+    "Mac 用户（三步）：\n"
+    "  1. 解压这个文件夹\n"
+    "  2. 双击「一键部署-Mac.command」（或终端里运行 bash 一键部署-Mac.command）\n"
+    "  3. 首次可能弹出钥匙串授权，点「始终允许」\n\n"
+    "把整个文件夹丢给你的 AI 助手也可以：里面有 AGENTS.md，\n"
+    "AI 助手看一眼就知道该做什么。\n\n"
+    "内置安全机制（自动生效）：\n"
     "  · 每天最多 120 篇，到量自动停止，剩余次日继续\n"
-    "  · 每小时最多 12 篇；篇与篇之间随机间隔 25~75 秒\n"
-    "  · 每连续 5 篇休息 3~7 分钟；连续失败 3 次自动中止\n"
-    "  · 每篇改动前原文自动备份到本机，可一键还原\n"
-    "  · 每篇固定改动 2 处：标题 1 处 + 正文 1 处（AI 审核决定位置）\n\n"
-    "首次运行需要联网安装 requests（自动完成，几秒钟）。\n"
+    "  · 每小时最多 12 篇；篇间随机间隔 25~75 秒；每 5 篇休息 3~7 分钟\n"
+    "  · 连续失败 3 次自动中止；每篇改动前原文自动备份，可一键还原\n"
+    "  · 每篇固定 2 处：标题 1 处 + 正文 1 处（AI 审核决定加在哪）\n"
 )
-
 
 @router.post("/executor/bundle")
 def qy_executor_bundle(req: BundleReq):
@@ -450,21 +636,24 @@ def qy_executor_bundle(req: BundleReq):
     凭证只写进下载包，不落服务器磁盘。
     """
     cookie = (req.cookie or "").strip()
-    if not cookie:
-        raise HTTPException(status_code=400,
-                            detail="请先在第 1 步粘贴知乎凭证（或点一键获取）")
     script = qy_executor_script()
     if not isinstance(script, str):
         script = script.body.decode("utf-8")
     import io as _io
     import zipfile as _zf
 
+    ck_file = (cookie + "\n") if cookie else (
+        "# 此文件由「一键部署」自动生成：它会读取你浏览器里的知乎登录。\n"
+        "# 若你已手动复制了 Cookie，也可以把 Cookie 粘贴到本文件第 2 行。\n")
     buf = _io.BytesIO()
     with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
         z.writestr("qingyi_executor.py", script)
-        z.writestr("cookie.txt", cookie)
-        z.writestr("一键启动-Windows.bat", _EXEC_BAT)
-        z.writestr("一键启动-Mac.command", _EXEC_SH)
+        z.writestr("deploy.py", _DEPLOY_PY)
+        z.writestr("cookie.txt", ck_file)
+        z.writestr("一键部署-Windows.bat", _DEPLOY_BAT)
+        z.writestr("一键部署-Mac.command", _DEPLOY_SH)
+        z.writestr("AGENTS.md", _AGENTS_MD)
+        z.writestr("requirements.txt", _REQ_TXT)
         z.writestr("使用说明.txt", _EXEC_README)
     buf.seek(0)
     return Response(

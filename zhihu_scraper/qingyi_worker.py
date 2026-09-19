@@ -346,6 +346,136 @@ def _read_cookie(args: argparse.Namespace) -> str:
     raise SystemExit("请通过 --cookie 或 --cookie-file 提供知乎登录凭证。")
 
 
+def auto_detect_cookie():
+    """从本机浏览器自动读取知乎登录凭证（用户零粘贴）。
+
+    Windows: Edge / Chrome 的 Cookies 库（DPAPI + AES-GCM 解密）。
+    macOS:   browser-cookie3（chrome/edge/firefox/safari 依次尝试）。
+    返回 (cookie_str, source)；失败抛 RuntimeError（中文原因）。
+    """
+    import sys as _sys
+
+    if _sys.platform == "win32":
+        import base64 as _b64
+        import json as _json
+        import shutil as _shutil
+        import sqlite3 as _sql
+        import subprocess as _sub
+        import tempfile as _tmpf
+        from pathlib import Path as _P
+
+        try:
+            import win32crypt  # noqa: F401
+            from Crypto.Cipher import AES  # noqa: F401
+        except ImportError:
+            raise RuntimeError(
+                "缺少解密组件（pywin32 / pycryptodome）。"
+                "请在本目录运行：python -m pip install pywin32 pycryptodome")
+
+        home = _P.home()
+        browsers = [
+            ("Edge", home / "AppData" / "Local" / "Microsoft" / "Edge" / "User Data"),
+            ("Chrome", home / "AppData" / "Local" / "Google" / "Chrome" / "User Data"),
+        ]
+        locked = []
+        for b_name, user_data in browsers:
+            if not user_data.exists():
+                continue
+            ls_path = user_data / "Local State"
+            if not ls_path.exists():
+                continue
+            try:
+                enc_key = _b64.b64decode(
+                    _json.loads(ls_path.read_text(encoding="utf-8"))
+                    ["os_crypt"]["encrypted_key"])[5:]
+                key = win32crypt.CryptUnprotectData(enc_key, None, None, None, 0)[1]
+            except Exception:
+                continue
+            for prof in ["Default"] + [f"Profile {i}" for i in range(1, 8)]:
+                db = user_data / prof / "Network" / "Cookies"
+                if not db.exists():
+                    db = user_data / prof / "Cookies"
+                if not db.exists():
+                    continue
+                tmp_path = None
+                try:
+                    with _tmpf.NamedTemporaryFile(delete=False,
+                                                  suffix=".sqlite") as t:
+                        tmp_path = _P(t.name)
+                    try:
+                        _shutil.copy2(db, tmp_path)
+                    except PermissionError:
+                        # 浏览器正在运行：用 Windows 自带 esentutl 复制锁定文件
+                        r = _sub.run(["esentutl", "/y", str(db), "/d",
+                                      str(tmp_path), "/o"],
+                                     capture_output=True, timeout=60)
+                        if r.returncode != 0 or not tmp_path.exists() \
+                                or tmp_path.stat().st_size == 0:
+                            raise
+                    conn = _sql.connect(tmp_path)
+                    rows = conn.execute(
+                        "SELECT name, encrypted_value FROM cookies "
+                        "WHERE host_key LIKE '%zhihu.com%'").fetchall()
+                    conn.close()
+                    cd = {}
+                    for name, enc in rows:
+                        try:
+                            if enc[:3] in (b"v10", b"v11"):
+                                nonce, ct, tag = enc[3:15], enc[15:-16], enc[-16:]
+                                val = AES.new(key, AES.MODE_GCM, nonce=nonce
+                                              ).decrypt_and_verify(ct, tag
+                                              ).decode("utf-8", "ignore")
+                            else:
+                                val = win32crypt.CryptUnprotectData(
+                                    enc, None, None, None, 0)[1].decode(
+                                    "utf-8", "ignore")
+                            if val:
+                                cd[name] = val
+                        except Exception:
+                            pass
+                    if "z_c0" in cd:
+                        return ("; ".join(f"{k}={v}" for k, v in cd.items()),
+                                f"{b_name}({prof})")
+                except PermissionError:
+                    locked.append(b_name)
+                except Exception:
+                    pass
+                finally:
+                    if tmp_path and tmp_path.exists():
+                        try:
+                            tmp_path.unlink()
+                        except Exception:
+                            pass
+        if locked:
+            raise RuntimeError(
+                f"{'/'.join(sorted(set(locked)))} 正在运行并锁定了数据文件。"
+                "请完全关闭浏览器后重试。")
+        raise RuntimeError(
+            "未在 Edge / Chrome 中找到知乎登录。请先用浏览器登录 zhihu.com 再重试。")
+
+    if _sys.platform == "darwin":
+        try:
+            import browser_cookie3 as _bc3
+        except ImportError:
+            raise RuntimeError(
+                "缺少 browser-cookie3。请运行：python3 -m pip install browser-cookie3")
+        last_err = None
+        for fn in ("chrome", "edge", "firefox", "safari"):
+            try:
+                jar = getattr(_bc3, fn)(domain_name=".zhihu.com")
+                cd = {c.name: c.value for c in jar
+                      if "zhihu" in (getattr(c, "domain", "") or "")}
+                if "z_c0" in cd:
+                    return ("; ".join(f"{k}={v}" for k, v in cd.items()), fn)
+            except Exception as e:
+                last_err = e
+        raise RuntimeError(
+            "未能从浏览器读取知乎登录（Mac 首次可能弹出钥匙串授权，请点「始终允许」）。"
+            + (f"：{last_err}" if last_err else ""))
+
+    raise RuntimeError("该系统暂不支持自动读取，请改用手动粘贴凭证。")
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
         description="清一新教育 · 本地执行器（标题 1 处 + 正文 1 处，每篇合计 2 处）")
@@ -354,6 +484,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--key", default=None,
                     help="站点访问密钥（默认读环境变量 QY_API_KEY）")
     ap.add_argument("--cookie", default=None, help="知乎凭证字符串")
+    ap.add_argument("--auto-cookie", action="store_true",
+                    help="自动读取本机浏览器里的知乎登录（零粘贴；Windows 用 Edge/Chrome，"
+                         "mac 用 browser-cookie3）")
     ap.add_argument("--cookie-file", default=None,
                     help="含知乎凭证的文件路径")
     ap.add_argument("--backup-dir", default=None, help="备份目录")
@@ -377,6 +510,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         raise SystemExit("请通过 --key 或环境变量 QY_API_KEY 提供站点访问密钥。")
 
     cookie = _read_cookie(args)
+    if getattr(args, "auto_cookie", False) and not cookie:
+        try:
+            cookie, src = auto_detect_cookie()
+            print(f"[OK] 已自动读取本机知乎登录（来源：{src}），无需粘贴。")
+        except Exception as exc:
+            print(f"[!] 自动读取失败：{exc}")
+            print("    可改用 --cookie-file cookie.txt；或先在浏览器登录 zhihu.com 后重试。")
+            return 1
 
     pol = RatePolicy()
     if args.gap_min is not None:

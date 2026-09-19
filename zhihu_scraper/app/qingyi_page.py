@@ -1,7 +1,7 @@
 """清一新教育 · 标题署名控制台 前端页面。
 
 交互设计：
-  第一步  粘贴凭证 → 只读检索本人资产
+  第一步  部署包自动读取凭证（零粘贴）→ 只读检索本人资产
   第二步  按分类筛选 + 勾选文章
   第三步  创建任务 → 本地执行器领取 → 实时进度渲染
   第四步  逐篇展开查看修改对照（标题 diff + 正文片段）与正文零修改证据
@@ -244,12 +244,17 @@ tr.item.doing{background:#eff6ff}
 
 <!-- ============ STEP 1 ============ -->
 <div class="card">
-  <h2><span class="step">1</span> 凭证与检索</h2>
-  <div class="hint"><strong>先让系统认识你：</strong>在左侧粘贴知乎凭证（需包含 <code>z_c0=</code> 与 <code>_xsrf=</code>），然后点「🔍 开始检索我的文章」。检索是<strong>只读</strong>的，不会写入任何内容。</div>
+  <h2><span class="step">1</span> 凭证与检索 <span class="chip" id="osChip" style="margin-left:8px">🖥️ 识别设备中…</span></h2>
+  <div class="hint"><strong>全自动 · 零粘贴（推荐）：</strong>① 点「⬇️ 下载部署包」→ ② 在你的电脑上双击「<span id="deployTip">一键部署</span>」，它会自动从浏览器读取知乎登录（<strong>不用粘贴、不用 F12</strong>）→ ③ 回到本页点「📥 载入凭证」。检索是<strong>只读</strong>的，不会写入任何内容。</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
+    <button class="btn-primary" id="btnBundle1" onclick="dlBundle()">⬇️ 下载部署包（自动读登录）</button>
+    <button class="btn-ghost" id="btnLoadCred" onclick="doLoadCred()">📥 载入凭证</button>
+    <span class="chip mute">凭证暂存 10 分钟，过期可重新部署获取</span>
+  </div>
   <div class="row">
     <div style="flex:3;min-width:300px">
-      <label class="f">知乎登录凭证（Cookie）</label>
-      <textarea id="ck" placeholder="粘贴完整 Cookie，需包含 z_c0= 与 _xsrf="></textarea>
+      <label class="f">知乎登录凭证（一般无需手动填写，点「📥 载入凭证」自动填好）</label>
+      <textarea id="ck" placeholder="点上面「📥 载入凭证」即可自动填入 —— 不需要你粘贴任何东西"></textarea>
     </div>
     <div style="flex:0 0 auto;display:flex;gap:8px">
       <button class="btn-primary" id="btnInspect" onclick="doInspect()">🔍 开始检索我的文章</button>
@@ -326,12 +331,13 @@ tr.item.doing{background:#eff6ff}
 
   <div id="execGuide">
     <div class="hint" style="margin-top:0">
-      <strong>傻瓜三步：</strong>① 点下面的蓝色按钮下载执行器包（你的凭证已自动装进包里）
-      → ② 解压到任意文件夹 → ③ 双击「一键启动」。
+      <strong>傻瓜三步：</strong>① 点下面的蓝色按钮下载部署包（自带自动部署器）
+      → ② 解压到任意文件夹 → ③ 双击「一键部署」：自动从浏览器读取知乎登录并启动执行器。
+      然后回第 1 步点「📥 载入凭证」即可勾选文章。
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0">
-      <button class="btn-primary" id="btnBundle" onclick="dlBundle()">⬇️ 一键下载执行器包（推荐）</button>
-      <span class="chip mute" id="bundleHint">凭证来自第 1 步的输入框</span>
+      <button class="btn-primary" id="btnBundle" onclick="dlBundle()">⬇️ 一键下载部署包（推荐）</button>
+      <span class="chip mute" id="bundleHint">包内自带自动部署器（无凭证时会自动读取浏览器登录）</span>
     </div>
     <details class="os">
       <summary>高级：分开下载 / 手动运行 / 交给 Antigravity</summary>
@@ -424,6 +430,50 @@ function msg(el, text, cls){
   n.textContent = text || "";
   n.style.color = cls === "err" ? "var(--err)" : cls === "ok" ? "var(--ok)" : "var(--text-2)";
 }
+
+/* ---------- v4：设备识别 + 凭证柜一键载入 ---------- */
+function detectOS(){
+  try{
+    const u = navigator.userAgent || "";
+    if(/Android/i.test(u)) return "Android";
+    if(/iPhone|iPad|iPod/i.test(u)) return "iOS";
+    if(/Windows/i.test(u)) return "Windows";
+    if(/Macintosh|Mac OS X/i.test(u)) return "macOS";
+    if(/Linux/i.test(u)) return "Linux";
+  }catch(e){}
+  return "未知设备";
+}
+function setOsChip(){
+  const os = detectOS();
+  const el = document.getElementById("osChip");
+  if(el) el.textContent = "🖥️ 已识别你的设备：" + os;
+  const tip = document.getElementById("deployTip");
+  if(tip){
+    tip.textContent = os === "Windows" ? "一键部署-Windows.bat"
+                    : os === "macOS" ? "一键部署-Mac.command"
+                    : "一键部署（见包内使用说明）";
+  }
+}
+async function doLoadCred(){
+  const b = document.getElementById("btnLoadCred");
+  b.disabled = true; b.innerHTML = '<span class="spin"></span> 载入中…';
+  msg("inspectMsg","正在获取自动读取的凭证（10 分钟内有效）…");
+  try{
+    const r = await fetch(API+"/api/qy/credential-latest",
+                          {headers:{"X-API-Key":"guanjun2026"}});
+    const j = await r.json();
+    if(!r.ok || !j.ok){ throw new Error(j.note || j.detail || "凭证柜为空"); }
+    document.getElementById("ck").value = j.cookie;
+    msg("inspectMsg","✅ 凭证已载入（来源：" + (j.note || "本机浏览器") + "，" + j.age + " 秒前获取）—— 正在自动检索…");
+    b.disabled = false; b.innerHTML = "📥 载入凭证";
+    await doInspect();
+  }catch(e){
+    msg("inspectMsg", "暂时没有可载入的凭证：" + e.message +
+        "。请先在电脑上运行部署包（第 1 步蓝色按钮），或稍后再试。", "err");
+    b.disabled = false; b.innerHTML = "📥 载入凭证";
+  }
+}
+setOsChip();
 
 /* ---------- STEP 1 ---------- */
 async function doInspect(){
@@ -884,7 +934,7 @@ loadPerDay();
 /* ---------- 一键执行器包 ---------- */
 async function dlBundle(){
   const ck = document.getElementById("ck").value.trim();
-  if(!ck){ alert("请先回到第 1 步：点「🔍 开始检索我的文章」旁的输入框粘贴凭证（或用一键获取），再回来下载。"); return; }
+  // v4：凭证可选 —— 包内自带自动部署器，会读取本机浏览器登录
   const b = document.getElementById("btnBundle");
   const t = b.innerHTML;
   b.disabled = true; b.innerHTML = '<span class="spin"></span> 正在打包…';
@@ -900,7 +950,7 @@ async function dlBundle(){
     a.download = "qingyi_executor.zip";
     a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-    document.getElementById("bundleHint").textContent = "已下载：解压后双击「一键启动」即可";
+    document.getElementById("bundleHint").textContent = "已下载：解压后双击「一键部署」，它会自动读取你的知乎登录";
   }catch(e){
     alert("下载失败："+e.message);
   }finally{
@@ -910,8 +960,8 @@ async function dlBundle(){
 
 /* ---------- 步步教学：聚光灯 + 幕布 ---------- */
 const TOUR_STEPS = [
-  {sel:"#ck", t:"第 1 步：让系统认识你",
-   d:"推荐先在知乎复制 Cookie 粘贴到这个框（需包含 z_c0= 与 _xsrf=）。然后点右边绿色按钮「🔍 开始检索我的文章」。"},
+  {sel:"#btnLoadCred", t:"第 1 步：让系统认识你（全自动）",
+   d:"先点「⬇️ 下载部署包」，在你的电脑上双击「一键部署」—— 它会自动读取你浏览器的知乎登录（零粘贴、零 F12）。然后回到这里点「📥 载入凭证」。"},
   {sel:"#btnInspect", t:"点这里开始检索",
    d:"系统会只读列出你名下的文章 / 想法 / 回答，不会写入任何内容。"},
   {sel:"#tabs", t:"第 2 步：挑文章",
@@ -920,8 +970,8 @@ const TOUR_STEPS = [
    d:"标题左边的方框就是开关；也可以用上方「全选」「选前 20」快捷选择。"},
   {sel:"#btnCreate", t:"第 3 步：AI 审核 + 创建任务",
    d:"点这一下，AI（DeepSeek）会逐篇阅读你的文章，决定每篇加几处、加在哪里，然后生成修改任务。"},
-  {sel:"#btnBundle", t:"第 4 步：下载执行器包",
-   d:"包里已自动带好你的凭证。解压后双击「一键启动」，修改就在你自己的电脑上开始（写入走你本人的网络身份）。"},
+  {sel:"#btnBundle", t:"第 4 步：下载部署包",
+   d:"包内自带自动部署器。解压后双击「一键部署」，修改就在你自己的电脑上开始（写入走你本人的网络身份）。"},
   {sel:"#perDay", t:"每日上限",
    d:"默认每天最多 120 篇，到量自动停止，保护账号。可以改。"}
 ];
