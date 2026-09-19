@@ -234,10 +234,15 @@ class LocalExecutor:
             print(f"   目标  : {it.get('title_after', '')[:70]}")
 
             item_started = time.time()
+            plan = it.get("ai_plan") or {}
             rec = self.signer.process_title(
                 it, dry_run=False, publish=True,
                 inject_body=bool(job.get("inject_body")),
-                body_hits=int(job.get("body_hits") or 1))
+                body_hits=int(job.get("body_hits") or 1),
+                body_anchors=[p.get("anchor") for p in (plan.get("picks") or [])
+                              if p.get("anchor")],
+                title_add=(None if plan.get("title_add") is None
+                           else bool(plan.get("title_add"))))
             rec["id"] = it["id"]
 
             if rec.get("status") == "done":

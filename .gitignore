@@ -44,3 +44,4 @@ data/qy_jobs.tmp
 data/qyedu_backup/
 data/qy_daily_quota.json
 *.bak
+data/deepseek_key.txt

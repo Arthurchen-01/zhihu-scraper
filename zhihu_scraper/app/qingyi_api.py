@@ -22,7 +22,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import (HTMLResponse, PlainTextResponse, Response,
+                               StreamingResponse)
 from pydantic import BaseModel
 
 from ..qingyi import BRAND, QingyiTitleSigner, RatePolicy
@@ -52,6 +53,129 @@ SPONSOR = {
 
 # 每日写入上限（防风控主闸）。用户口径：每天 120 篇，不要一次性全量上线。
 DAILY_CAP = 120
+
+
+# --------------------------------------------------------------------------- #
+# AI 审核（DeepSeek）：由模型决定每篇加几处品牌词、加在哪里
+# --------------------------------------------------------------------------- #
+# 密钥来源：环境变量 DEEPSEEK_API_KEY 优先，其次 data/deepseek_key.txt（不入库）。
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+DEEPSEEK_MODEL = "deepseek-chat"
+
+AI_REVIEW_PROMPT = (
+    "你在为一篇即将加入品牌词「清一新教育」的知乎文章做植入审核。\n"
+    "品牌词加入方式（平台规则已固定，不可更改）：\n"
+    "- 标题：在最前面加「【清一新教育】」\n"
+    "- 正文：在句子末尾加署名式括注「（清一新教育）」，不删改任何原有文字\n"
+    "\n"
+    "你会收到：文章标题；正文纯文本（可能截断）；正文候选位置列表"
+    "（每项含序号 idx、插入点前文 anchor、所在段落预览 para）。\n"
+    "\n"
+    "请只输出 JSON（不要 markdown 代码块、不要其他文字）：\n"
+    '{"title_add": true, "picks": [{"idx": 0, "reason": "不超过18字的理由"}]}\n'
+    "\n"
+    "判定规则：\n"
+    "- title_add：除非标题已含「清一/新教育」字样、或加了会明显语义混乱，否则为 true。\n"
+    "- picks：从候选中挑 0~2 个最适合的句末位置。优先与教育/成长/学习/方法论相关的"
+    "段落；首段与结尾更自然；避开引文、列表、代码、反问句。宁缺毋滥：正文短于 300 字"
+    "或主题与教育完全无关时挑 0~1 个。\n"
+    "- idx 必须来自候选列表；每个 pick 给不超过 18 字的 reason。"
+)
+
+
+def _load_ds_key() -> str:
+    k = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if k:
+        return k
+    try:
+        return Path("data/deepseek_key.txt").read_text(encoding="utf-8").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _ai_review_one(cookie: str, aid: str, title: str,
+                   want_body: bool) -> Dict[str, Any]:
+    """单篇 AI 审核。任何失败都回退内置规则（used_ai=False），绝不阻塞建任务。
+
+    返回: {ok, used_ai, title, title_add, picks:[{anchor,reason,para}],
+           candidates, note}
+    """
+    import requests as _rq
+
+    from .. import qy_content as qc
+
+    signer = QingyiTitleSigner(cookie=cookie, backup_dir=Path("data/qyedu_backup"))
+    draft = signer.get_article_draft(str(aid))
+    body = draft.get("content") or ""
+    t = (draft.get("title") or title or "").strip()
+
+    cands = qc.scan_scenes(body, limit=4)  # 候选池已内置段落间隔约束
+    cand_list = [{"idx": i, "anchor": c.anchor, "para": c.para_text[:90]}
+                 for i, c in enumerate(cands)]
+
+    fallback = {
+        "ok": True, "used_ai": False, "title": t, "title_add": True,
+        "picks": ([{"anchor": cands[0].anchor, "reason": cands[0].reason,
+                    "para": cands[0].para_text[:90]}]
+                  if (want_body and cands) else []),
+        "candidates": cand_list,
+        "note": "AI 审核不可用，已用内置规则挑选（与既往行为一致）。",
+    }
+
+    key = _load_ds_key()
+    if not key:
+        return fallback
+
+    try:
+        plain = re.sub(r"\s+", " ", qc._ANY_TAG_RE.sub("", body)).strip()
+        cand_txt = "\n".join(
+            f"- idx={c['idx']} anchor={c['anchor']!r} para={c['para']}"
+            for c in cand_list) or "（无可植入候选）"
+        user_msg = (f"文章标题：{t}\n\n正文（纯文本）：\n{plain[:3500]}\n\n"
+                    f"候选位置列表：\n{cand_txt}")
+        resp = _rq.post(
+            DEEPSEEK_URL,
+            headers={"Authorization": f"Bearer {key}"},
+            json={
+                "model": DEEPSEEK_MODEL,
+                "messages": [
+                    {"role": "system", "content": AI_REVIEW_PROMPT},
+                    {"role": "user", "content": user_msg},
+                ],
+                "temperature": 0.2,
+                "max_tokens": 400,
+                "response_format": {"type": "json_object"},
+                "stream": False,
+            },
+            timeout=45,
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
+        content = re.sub(r"^```(?:json)?|```$", "", content.strip(),
+                         flags=re.M).strip()
+        data = json.loads(content)
+        title_add = bool(data.get("title_add", True))
+        picks: List[Dict[str, Any]] = []
+        for p in (data.get("picks") or [])[:2]:
+            try:
+                idx = int(p.get("idx"))
+            except Exception:  # noqa: BLE001
+                continue
+            if 0 <= idx < len(cands):
+                c = cands[idx]
+                picks.append({"anchor": c.anchor,
+                              "reason": str(p.get("reason") or "")[:40],
+                              "para": c.para_text[:90]})
+        return {
+            "ok": True, "used_ai": True, "title": t, "title_add": title_add,
+            "picks": picks, "candidates": cand_list,
+            "note": ("AI 已审核" if picks
+                     else "AI 已审核：本文正文无需植入"),
+        }
+    except Exception as exc:  # noqa: BLE001
+        fallback["note"] = (f"AI 审核失败（{type(exc).__name__}），"
+                            "已用内置规则兜底。")
+        return fallback
 
 
 # --------------------------------------------------------------------------- #
@@ -86,6 +210,19 @@ class ScanScenesReq(BaseModel):
     cookie: str = ""
     id: str
     hits: int = 1
+
+
+class AiReviewReq(BaseModel):
+    """单篇 AI 审核请求（只读：拉正文 + 调模型，不写入知乎）。"""
+    cookie: str
+    id: str
+    title: str = ""
+    want_body: bool = True
+
+
+class BundleReq(BaseModel):
+    """一键执行器打包下载：把当前凭证写进包里的 cookie.txt。"""
+    cookie: str
 
 
 class WorkerClaimReq(BaseModel):
@@ -235,6 +372,107 @@ def qy_scan_scenes(req: ScanScenesReq):
         "note": ("正文已含品牌词，无需植入（幂等）" if hits_before
                  else "以上为只读预览，尚未写入任何内容。"),
     }
+
+
+@router.post("/ai-review-single")
+def qy_ai_review_single(req: AiReviewReq):
+    """单篇 AI 审核（只读）：拉草稿正文 → 候选位置 → DeepSeek 决定植入方案。
+
+    失败自动回退内置规则，返回 used_ai=False。绝不写入知乎。
+    """
+    cookie = (req.cookie or "").strip()
+    if not cookie:
+        raise HTTPException(status_code=400, detail="请提供知乎登录凭证")
+    try:
+        r = _ai_review_one(cookie, req.id, req.title, req.want_body)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"读取文章失败：{exc}")
+    return r
+
+
+_EXEC_BAT = (
+    "@echo off\r\n"
+    "chcp 65001 >nul\r\n"
+    "cd /d %~dp0\r\n"
+    "echo [1/2] Checking Python and dependency (requests)...\r\n"
+    "set PY=python\r\n"
+    "%PY% --version >nul 2>nul\r\n"
+    "if errorlevel 1 set PY=py\r\n"
+    "%PY% --version >nul 2>nul\r\n"
+    "if errorlevel 1 (\r\n"
+    "  echo Python not found. Please install Python 3.9+ from python.org\r\n"
+    "  echo and check \"Add Python to PATH\" during install.\r\n"
+    "  pause\r\n"
+    "  exit /b 1\r\n"
+    ")\r\n"
+    "%PY% -c \"import requests\" >nul 2>nul\r\n"
+    "if errorlevel 1 %PY% -m pip install requests\r\n"
+    "echo [2/2] Starting executor. Press Ctrl+C to stop safely.\r\n"
+    "%PY% qingyi_executor.py --server https://zh.samuraiguan.cloud "
+    "--key guanjun2026 --cookie-file cookie.txt\r\n"
+    "pause\r\n"
+)
+
+_EXEC_SH = (
+    "#!/usr/bin/env bash\n"
+    'cd "$(dirname "$0")"\n'
+    'python3 -c "import requests" 2>/dev/null || pip3 install requests\n'
+    "python3 qingyi_executor.py --server https://zh.samuraiguan.cloud "
+    "--key guanjun2026 --cookie-file cookie.txt\n"
+)
+
+_EXEC_README = (
+    "清一新教育 · 本地执行器 一键包\n"
+    "================================\n\n"
+    "包里已经带好了一切：执行器脚本、你的知乎凭证（cookie.txt）、一键启动脚本。\n"
+    "不需要再粘贴任何东西。\n\n"
+    "Windows 用户：\n"
+    "  1. 把整个文件夹解压到任意位置（比如桌面）\n"
+    "  2. 双击「一键启动-Windows.bat」\n"
+    "  3. 看到进度即可；按 Ctrl+C 或直接关窗口可随时安全停止\n\n"
+    "Mac 用户：\n"
+    "  1. 解压后打开「终端」，cd 到这个文件夹\n"
+    "  2. 运行:  bash 一键启动-Mac.command\n\n"
+    "内置安全机制（自动生效，无需配置）：\n"
+    "  · 每天最多 120 篇，到量自动停止，剩余次日继续\n"
+    "  · 每小时最多 12 篇；篇与篇之间随机间隔 25~75 秒\n"
+    "  · 每连续 5 篇休息 3~7 分钟；连续失败 3 次自动中止\n"
+    "  · 每篇改动前原文自动备份到本机，可一键还原\n"
+    "  · 每篇固定改动 2 处：标题 1 处 + 正文 1 处（AI 审核决定位置）\n\n"
+    "首次运行需要联网安装 requests（自动完成，几秒钟）。\n"
+)
+
+
+@router.post("/executor/bundle")
+def qy_executor_bundle(req: BundleReq):
+    """一键打包：qingyi_executor.py + cookie.txt + 一键启动脚本 + 说明。
+
+    凭证只写进下载包，不落服务器磁盘。
+    """
+    cookie = (req.cookie or "").strip()
+    if not cookie:
+        raise HTTPException(status_code=400,
+                            detail="请先在第 1 步粘贴知乎凭证（或点一键获取）")
+    script = qy_executor_script()
+    if not isinstance(script, str):
+        script = script.body.decode("utf-8")
+    import io as _io
+    import zipfile as _zf
+
+    buf = _io.BytesIO()
+    with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+        z.writestr("qingyi_executor.py", script)
+        z.writestr("cookie.txt", cookie)
+        z.writestr("一键启动-Windows.bat", _EXEC_BAT)
+        z.writestr("一键启动-Mac.command", _EXEC_SH)
+        z.writestr("使用说明.txt", _EXEC_README)
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition":
+                 "attachment; filename=qingyi_executor.zip"},
+    )
 
 
 @router.get("/jobs")
@@ -775,6 +1013,12 @@ def qy_meta():
             "机器行为特征。"
         ),
         "sponsor": SPONSOR,
+        "ai_review": {
+            "enabled": bool(_load_ds_key()),
+            "model": DEEPSEEK_MODEL,
+            "note": "由 AI 决定每篇加几处品牌词、加在哪里；"
+                    "AI 不可用时自动回退内置规则。",
+        },
         "default_policy": RatePolicy().as_dict(),
         "architecture": {
             "control_plane": "云端只做检索、编排与进度聚合",

@@ -565,7 +565,8 @@ class QingyiTitleSigner:
 
     def process_title(self, item: Dict[str, Any], dry_run: bool = False,
                       publish: bool = True, inject_body: bool = False,
-                      body_hits: int = 1) -> Dict[str, Any]:
+                      body_hits: int = 1, body_anchors: Optional[List[str]] = None,
+                      title_add: Optional[bool] = None) -> Dict[str, Any]:
         """Inject the brand into ONE item's title (and optionally its body).
 
         inject_body=False（默认）时正文只读，行为与"仅标题"完全一致。
@@ -615,6 +616,10 @@ class QingyiTitleSigner:
             rec["body_len"] = len(body)
 
             new_title, changed, reason = plan_title(title)
+            if title_add is False and changed:
+                changed = False
+                new_title = title
+                reason = "AI 审核决定本篇标题不加品牌词"
 
             rec["title_after"] = new_title if changed else title
             rec["title_changed"] = changed
@@ -632,7 +637,28 @@ class QingyiTitleSigner:
             new_body = None
             if inject_body:
                 try:
-                    scenes = _qyc.scan_scenes(body, limit=max(1, body_hits))
+                    scenes = None
+                    anchors = [a for a in (body_anchors or []) if a]
+                    if anchors:
+                        # 按 AI 计划的锚文本在候选池中定位（后 24 字符互含容错，
+                        # 抵御知乎重新序列化引入的空白差异）
+                        pool = _qyc.scan_scenes(body, limit=4)
+                        picked = []
+                        for a in anchors:
+                            for sc in pool:
+                                if sc in picked:
+                                    continue
+                                ka = (sc.anchor or "")[-24:]
+                                kb = (a or "")[-24:]
+                                if ka and kb and (ka in a or kb in sc.anchor):
+                                    picked.append(sc)
+                                    break
+                        if picked:
+                            scenes = picked
+                            rec["ai_plan_used"] = True
+                    if scenes is None:
+                        # 无计划或锚点未命中 → 回退内置规则（首段优先）
+                        scenes = _qyc.scan_scenes(body, limit=max(1, body_hits))
                     if scenes:
                         new_body = _qyc.apply_scenes(body, scenes)
                         rec["body_scenes"] = [

@@ -149,13 +149,25 @@ def create_job(items: List[Dict[str, Any]], policy: Optional[Dict[str, Any]] = N
             if not iid:
                 continue
             title_before = str(raw.get("title") or "")
+            # AI 审核计划：title_add 决定标题是否加；picks 决定正文加在哪
+            plan = raw.get("ai_plan") or None
+            ai_picks = []
+            if plan:
+                for p in (plan.get("picks") or []):
+                    if p and p.get("anchor"):
+                        ai_picks.append({"anchor": p["anchor"],
+                                         "reason": str(p.get("reason") or "")})
+            ai_title_add = True
+            if plan is not None and plan.get("title_add") is False:
+                ai_title_add = False
             entries.append({
                 "id": iid,
                 "type": str(raw.get("type") or "article"),
                 "kind_label": str(raw.get("kind_label") or "文章"),
                 "url": str(raw.get("url") or ""),
                 "title_before": title_before,
-                "title_after": title_before if BRAND in title_before
+                "title_after": title_before if (BRAND in title_before
+                                                or not ai_title_add)
                                else f"【{BRAND}】{title_before}",
                 "has_brand": BRAND in title_before,
                 "body_excerpt": str(raw.get("excerpt") or "")[:160],
@@ -172,6 +184,9 @@ def create_job(items: List[Dict[str, Any]], policy: Optional[Dict[str, Any]] = N
                 "body_hits_after": 0,
                 "body_hits_added": 0,
                 "body_scenes": [],
+                "ai_plan": ({"title_add": ai_title_add, "picks": ai_picks,
+                             "used_ai": bool((plan or {}).get("used_ai"))}
+                            if plan else None),
                 "backup": "",
                 "duration": 0.0,
                 "updated_at": _now(),
@@ -194,7 +209,8 @@ def create_job(items: List[Dict[str, Any]], policy: Optional[Dict[str, Any]] = N
             "brand": BRAND,
             "scope": "title_and_body" if want_body else "title_only",
             # 每篇固定 2 处：标题 1 处 + 正文 1 处（正文幂等，不重复植入）
-            "features": {"title": want_title, "inject_body": want_body},
+            "features": {"title": want_title, "inject_body": want_body,
+                         "ai_review": any(e.get("ai_plan") for e in entries)},
             "title_feature": want_title,
             "inject_body": want_body,
             "body_hits": 1 if want_body else 0,
@@ -213,6 +229,9 @@ def create_job(items: List[Dict[str, Any]], policy: Optional[Dict[str, Any]] = N
         }
         add_log(job, f"任务已创建，共 {len(entries)} 项；执行模式："
                      f"{'本地执行器' if job['mode'] == 'local' else '云端执行'}")
+        if job["features"].get("ai_review"):
+            add_log(job, "已附 AI 审核计划：由 DeepSeek 决定每篇加几处、加在哪里；"
+                         "执行器将按计划写入（AI 不可用的条目按内置规则）。")
         if want_body:
             add_log(job, "范围声明：每篇改动 2 处——标题加入品牌词 1 处；"
                          "正文以署名式括注加入品牌词 1 处（不删改任何原有文字，可一键还原）")
