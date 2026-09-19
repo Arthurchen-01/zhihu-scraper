@@ -46,6 +46,7 @@ from ..scrapers.comment import CommentScraper
 from ..visual.screenshot import VisualArchiver
 from ..epub_builder import ZhihuEpubBuilder
 from ..pdf_builder import ZhihuPdfBuilder
+from .qingyi_api import router as qingyi_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("zhihu_scraper.web")
@@ -81,6 +82,8 @@ async def auth_middleware(request: Request, call_next):
             "/download/taiji.zip",
             "/favicon.ico",
             "/manifest.json",
+            "/api/qy/console",
+            "/api/qy/meta",
         ]
         or path.startswith("/static/")
     ):
@@ -109,6 +112,9 @@ async def auth_middleware(request: Request, call_next):
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# 清一新教育 · 标题署名控制面（云端编排 + 本地执行器分发）
+app.include_router(qingyi_router)
 
 # In-memory store for background scraping jobs
 JOBS: Dict[str, Dict[str, Any]] = {}
@@ -1239,7 +1245,6 @@ def api_docs_page():
 
 @app.get("/", response_class=HTMLResponse)
 def index_ui():
-    """Renders the comprehensive self-service Web UI with password gate, category filters, and dual export."""
     return """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -2205,6 +2210,15 @@ def index_ui():
                     </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
+                    <a href="/api/qy/console" style="text-decoration: none;">
+                        <button
+                            class="btn btn-outline btn-sm"
+                            style="display: flex; align-items: center; gap: 6px; border-color: rgba(14, 165, 233, 0.45); color: #0ea5e9; font-weight: 600;"
+                            title="批量给文章标题加上【清一新教育】标识（仅改标题，正文不动）"
+                        >
+                            <span>🏷️ 文章修改工作台</span>
+                        </button>
+                    </a>
                     <button 
                         @click="showApiDocsModal = true" 
                         class="btn btn-outline btn-sm" 

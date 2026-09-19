@@ -36,3 +36,11 @@ ENV/
 outputs/screenshots/*.png
 outputs/temp/
 .tempmediaStorage/
+
+# 清一新教育工作台 · 运行时数据（含账号资产与原文备份，不入库）
+.snapshots/
+data/qy_jobs.json
+data/qy_jobs.tmp
+data/qyedu_backup/
+data/qy_daily_quota.json
+*.bak
