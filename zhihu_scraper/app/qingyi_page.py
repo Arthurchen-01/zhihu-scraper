@@ -167,28 +167,18 @@ details.os .body{padding:14px 16px}
 .scand{font-size:12.5px;color:var(--text-2);margin-top:5px;line-height:1.6}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
 .dot.ok{background:#22c55e}.dot.err{background:#ef4444}.dot.mute{background:#94a3b8}
+/* ---- 页首赞助条（小巧，几行） ---- */
 .sponsor{
-  background:linear-gradient(180deg,#fffbeb 0%,#fff 100%);
-  border:1px solid #fde68a;border-radius:var(--radius);
-  padding:18px 20px;margin:22px 0 0;box-shadow:var(--shadow)
+  background:linear-gradient(180deg,#fffbeb 0%,#fffdf6 100%);
+  border:1px solid #fde68a;border-radius:10px;
+  padding:9px 14px;margin:0 0 14px;
+  font-size:12.5px;line-height:1.85;color:var(--text-2)
 }
-.sponsor h3{font-size:14px;margin:0 0 10px;font-weight:700;color:#78350f;
-  display:flex;align-items:center;gap:8px}
-.sponsor .line{font-size:13px;color:var(--text-2);margin:7px 0;line-height:1.75}
-.sponsor .line strong{color:var(--text)}
-.sponsor .kv{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-.sponsor .kv>div{
-  background:#fff;border:1px solid var(--line);border-radius:10px;
-  padding:9px 13px;min-width:210px;flex:1
-}
-.sponsor .kv .k{font-size:11.5px;color:var(--text-3);font-weight:600;
-  letter-spacing:.02em;text-transform:uppercase}
-.sponsor .kv .v{font-size:13.5px;font-weight:700;margin-top:3px;
-  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.sponsor .ph{color:#b45309;background:#fef3c7;border-radius:5px;padding:1px 6px;
-  font-weight:600}
-.sponsor .foot{font-size:11.5px;color:var(--text-3);margin-top:12px;
-  border-top:1px dashed var(--line);padding-top:10px}
+.sponsor b{color:#78350f;font-weight:700}
+.sponsor .ph{color:#b45309;background:#fef3c7;border-radius:5px;
+  padding:0 6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-weight:600;font-size:12px}
+.sponsor .tip{color:var(--text-3);font-size:11.5px}
 .dcap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
   background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
   padding:11px 14px;margin:12px 0 4px;font-size:12.5px;color:var(--text-2)}
@@ -200,6 +190,15 @@ details.os .body{padding:14px 16px}
 </head>
 <body>
 <div class="wrap">
+
+<!-- ============ 赞助与联系（页首 · 小巧） ============ -->
+<div class="sponsor">
+  🤝 <b>清一新教育-冠军一班-谢迪安友情资助</b>
+  <span class="tip">｜本工具免费提供，用于让有价值的教学内容更容易被检索到</span><br>
+  📞 支持本计划 / 企业 AI 供应对接：<b>谢迪安 / 陈冠宇</b>
+  · 微信号：<span class="ph">{微信号·待补}</span>
+  <span class="tip">（署名与联系方式仅显示在本页面，<b>不写入任何文章正文</b>）</span>
+</div>
 
 <header class="top">
   <h1>清一新教育文章修改工作台</h1>
@@ -390,39 +389,6 @@ details.os .body{padding:14px 16px}
     每篇原文均在本机留有备份，可一键还原。
   </div>
   <div id="ovBody" style="margin-top:16px"></div>
-</div>
-
-<!-- ============ 赞助与联系 ============ -->
-<div class="sponsor">
-  <h3>🤝 赞助与联系</h3>
-  <div class="line">
-    <strong>清一新教育-冠军一班-谢迪安友情资助</strong>
-    工具本身免费提供，用于让有价值的教学内容更容易被检索到。
-  </div>
-  <div class="kv">
-    <div>
-      <div class="k">支持本计划</div>
-      <div class="v">联系项目负责人</div>
-      <div class="line" style="margin:4px 0 0;font-size:12px">
-        微信号：<span class="ph" id="wxOwner">{微信号·待补}</span>
-      </div>
-    </div>
-    <div>
-      <div class="k">企业 AI 供应对接</div>
-      <div class="v">谢迪安 / 陈冠宇</div>
-      <div class="line" style="margin:4px 0 0;font-size:12px">
-        微信号：<span class="ph" id="wxBiz">{微信号·待补}</span>
-      </div>
-    </div>
-  </div>
-  <div class="line" style="margin-top:10px;font-size:12.5px">
-    如果您的企业需要 AI 能力供应、内容自动化或类似的工程化落地，
-    也欢迎直接联系上方两位对接人。
-  </div>
-  <div class="foot">
-    说明：以上署名与联系方式仅出现在本工作台页面，<strong>不写入任何文章正文</strong>——
-    文章改动范围严格限定为「标题 1 处 + 正文 1 处」。
-  </div>
 </div>
 
 </div>

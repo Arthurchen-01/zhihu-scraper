@@ -1125,6 +1125,7 @@ API_DOCS_HTML = """<!DOCTYPE html>
             font-weight: 600;
         }
         .nav-btn:hover { background: var(--cyan-hover); }
+
     </style>
 </head>
 <body>
@@ -2059,6 +2060,55 @@ def index_ui():
             letter-spacing: 0.5px;
         }
 
+    /* ============ 清一新教育 · 文章修改工作台 入口标识 ============ */
+    .qy-entry{
+        display: flex; align-items: center; gap: 16px;
+        text-decoration: none; cursor: pointer;
+        background: linear-gradient(135deg, rgba(14,165,233,.15) 0%, rgba(168,85,247,.13) 100%);
+        border: 1.5px solid rgba(14,165,233,.5);
+        border-radius: 14px; padding: 15px 20px; margin-bottom: 16px;
+        box-shadow: 0 2px 12px rgba(14,165,233,.12);
+        transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+    }
+    .qy-entry:hover{
+        transform: translateY(-2px);
+        border-color: rgba(14,165,233,.9);
+        box-shadow: 0 10px 26px rgba(14,165,233,.26);
+    }
+    .qy-entry-icon{
+        width: 46px; height: 46px; flex: 0 0 46px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 23px;
+        background: rgba(14,165,233,.18);
+        border: 1px solid rgba(14,165,233,.35);
+    }
+    .qy-entry-title{
+        font-size: 15.5px; font-weight: 800;
+        color: var(--text-title); letter-spacing: .01em;
+        display: flex; align-items: center; gap: 9px;
+    }
+    .qy-entry-tag{
+        font-size: 10.5px; font-weight: 700; color: #0284c7;
+        background: rgba(14,165,233,.14);
+        border: 1px solid rgba(14,165,233,.35);
+        border-radius: 5px; padding: 1px 7px; letter-spacing: .03em;
+    }
+    .qy-entry-desc{
+        font-size: 12.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.7;
+    }
+    .qy-entry-desc code{
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11.5px; background: rgba(14,165,233,.10);
+        color: #0369a1; border-radius: 4px; padding: 1px 5px;
+    }
+    .qy-entry-go{
+        margin-left: auto; white-space: nowrap;
+        font-size: 12.5px; font-weight: 700; color: #0ea5e9;
+        border: 1px solid rgba(14,165,233,.42);
+        border-radius: 20px; padding: 7px 16px;
+        background: rgba(14,165,233,.09);
+    }
+
     </style>
     <script src="/static/vue.global.prod.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.js';"></script>
 </head>
@@ -2193,6 +2243,23 @@ def index_ui():
 
         <!-- Main Container -->
         <div v-if="isAuthenticated" class="container">
+
+            <!-- ============ 清一新教育 · 文章修改工作台（入口标识） ============ -->
+            <a href="/api/qy/console" class="qy-entry"
+               title="清一新教育文章修改工作台 —— 给文章标题与内容添加【清一新教育】标识">
+                <div class="qy-entry-icon">🏷️</div>
+                <div>
+                    <div class="qy-entry-title">
+                        清一新教育 · 文章修改工作台
+                        <span class="qy-entry-tag">标题 + 内容</span>
+                    </div>
+                    <div class="qy-entry-desc">
+                        给文章<strong>标题</strong>和<strong>内容</strong>添加 <code>【清一新教育】</code> 标识
+                        · 每篇固定 <strong>2 处</strong> · 只做句末括注不改写原文 · 可一键还原
+                    </div>
+                </div>
+                <div class="qy-entry-go">点击进入 →</div>
+            </a>
             
             <!-- Header -->
             <header class="card">
@@ -2214,7 +2281,7 @@ def index_ui():
                         <button
                             class="btn btn-outline btn-sm"
                             style="display: flex; align-items: center; gap: 6px; border-color: rgba(14, 165, 233, 0.45); color: #0ea5e9; font-weight: 600;"
-                            title="批量给文章标题加上【清一新教育】标识（仅改标题，正文不动）"
+                            title="批量给文章标题与内容加上【清一新教育】标识（每篇固定 2 处）"
                         >
                             <span>🏷️ 文章修改工作台</span>
                         </button>

@@ -177,8 +177,10 @@ class LocalExecutor:
 
         print(f"[任务] {job_id} | 待处理 {len(todo)} 篇"
               f"{f'（另有 {len(others)} 项非文章类型，跳过）' if others else ''}")
+        body_note = ("每篇 2 处：标题 1 处 + 正文 1 处"
+                     if job.get("inject_body") else "仅标题，正文不动")
         self.cp.log(job_id, f"本地执行器 {self.worker_id} 已开始，"
-                            f"待处理 {len(todo)} 篇（仅标题，正文不动）")
+                            f"待处理 {len(todo)} 篇（{body_note}）")
 
         for it in others:
             rec = {
@@ -341,7 +343,7 @@ def _read_cookie(args: argparse.Namespace) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     ap = argparse.ArgumentParser(
-        description="清一新教育 · 本地执行器（仅修改标题，正文保持原样）")
+        description="清一新教育 · 本地执行器（标题 1 处 + 正文 1 处，每篇合计 2 处）")
     ap.add_argument("--server", default="https://zh.samuraiguan.cloud",
                     help="云端控制面地址")
     ap.add_argument("--key", default=None,
