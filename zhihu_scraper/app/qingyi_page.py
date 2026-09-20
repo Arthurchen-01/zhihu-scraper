@@ -304,12 +304,24 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
 
   <ol class="mini">
     <li>
-      <div class="ttl">下载部署包 → 解压 → 双击「<span id="deployTip">一键部署</span>」</div>
-      <div class="tiptext">它会自动读到你浏览器里的知乎登录，不需要你手动找任何东西。</div>
+      <div class="ttl">下载「一键程序」→ 双击 → 完</div>
+      <div class="tiptext">就一个文件：不用解压、不用打开终端、不用安装任何东西。它会自动读到你浏览器里的知乎登录。</div>
       <div class="act">
-        <button class="btn-primary" id="btnBundle1" onclick="dlBundle('btnBundle1')">⬇️ 下载部署包</button>
-        <span class="tiptext" id="hint1">下载完成后解压，双击里面的「<span id="deployTip2">一键部署</span>」即可</span>
+        <button class="btn-primary" id="btnExe" onclick="dlExe('btnExe')">⬇️ 下载 Windows 一键程序</button>
+        <span class="tiptext" id="hint1">下好直接双击就能跑（首次运行若被 Windows 拦一下，点「更多信息」→「仍要运行」）</span>
       </div>
+      <details class="adv" style="margin-top:8px">
+        <summary>其他方式：Mac / 交给 AI 助手 / 仍想用部署包</summary>
+        <div class="body">
+          <div class="act">
+            <button class="btn-ghost btn-sm" id="btnBundle1" onclick="dlBundle('btnBundle1')">⬇️ 下载部署包（zip）</button>
+            <span class="tiptext">需要解压，再双击里面的「<span id="deployTip2">一键部署</span>」。Mac 用户走这个。</span>
+          </div>
+          <div class="tiptext" style="margin-top:8px">
+            交给 AI 助手：把 <a href="https://github.com/Arthurchen-01/zh-editor" target="_blank">github.com/Arthurchen-01/zh-editor</a> 发给他，让他照仓库里的 AGENTS.md 执行即可。
+          </div>
+        </div>
+      </details>
     </li>
     <li>
       <div class="ttl">回到这里，点一下「载入凭证」</div>
@@ -435,8 +447,9 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
 
   <div id="execGuide" class="hide">
     <div class="act" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <button class="btn-primary" id="btnBundle" onclick="dlBundle('btnBundle')">⬇️ 下载部署包</button>
-      <span class="tiptext" id="bundleHint">解压后双击「一键部署」，它会把上面的任务领走并开始修改</span>
+      <button class="btn-primary" id="btnExe2" onclick="dlExe('btnExe2')">⬇️ 下载 Windows 一键程序</button>
+      <button class="btn-ghost btn-sm" id="btnBundle" onclick="dlBundle('btnBundle')">⬇️ 部署包（zip）</button>
+      <span class="tiptext" id="bundleHint">双击就能跑，它会自动把上面的任务领走并开始修改</span>
     </div>
   </div>
 
@@ -1260,7 +1273,9 @@ function loadPerDay(){
   if(sel) sel.value = v;
   renderCapNote();
   refreshDailyMeter();
-  return parseInt(v, 10);
+  const cap = parseInt(v, 10);
+  syncPerDay(cap);          // 让云端与网页一致，一键程序启动时才能拿到正确上限
+  return cap;
 }
 
 function savePerDay(){
@@ -1268,10 +1283,19 @@ function savePerDay(){
   if(!sel) return;
   localStorage.setItem(PERDAY_KEY, sel.value);
   const cap = parseInt(sel.value,10);
+  syncPerDay(cap);
   toast("每天最多改 " + (cap === 0 ? "不限" : cap + " 篇")
-        + (BUNDLE_DONE ? " —— 请重新下载一次部署包才会生效" : ""));
+        + " —— 一键程序会按这个上限执行");
   renderCapNote();
   refreshDailyMeter();
+}
+
+/* 把「每日上限」同步到云端：一键程序启动时会读回去，所以不用重新下载任何东西 */
+function syncPerDay(cap){
+  try{
+    fetch(API+"/api/qy/config", {method:"POST", headers:JH(),
+         body:JSON.stringify({per_day: cap})}).catch(()=>{});
+  }catch(e){}
 }
 
 function currentCap(){
@@ -1357,6 +1381,28 @@ async function dlBundle(btnId){
   }
 }
 
+/* 下载单文件一键程序：用户只要双击，不需要解压 / 终端 / 装 Python */
+async function dlExe(btnId){
+  const b = document.getElementById(btnId || "btnExe");
+  const t = b ? b.innerHTML : "";
+  if(b){ b.disabled = true; b.innerHTML = '<span class="spin"></span> 正在准备…'; }
+  try{
+    const r = await fetch(API+"/api/qy/download/windows", {headers:H()});
+    if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||"下载失败"); }
+    const bl = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(bl);
+    a.download = "清一新教育一键修改.exe";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 8000);
+    toast("下载完成：找到「清一新教育一键修改.exe」，双击运行即可");
+  }catch(e){
+    toast("下载失败：" + e.message);
+  }finally{
+    if(b){ b.disabled = false; b.innerHTML = t; }
+  }
+}
+
 function finishBundle(ok, err){
   const hid = document.getElementById("hint1");
   const bh  = document.getElementById("bundleHint");
@@ -1401,8 +1447,8 @@ function showHelp(){
 
 /* ---------- 新手引导 ---------- */
 const TOUR_STEPS = [
-  {sel:"#btnBundle1", t:"第 1 步：下载部署包",
-   d:"先点这个按钮下载。解压后双击里面的「一键部署」，它会自动读到你浏览器里的知乎登录 —— 不用粘贴、不用按 F12。"},
+  {sel:"#btnExe", t:"第 1 步：下载一键程序并双击",
+   d:"就下载这一个文件，下好双击它就行 —— 不用解压、不用开终端、不用装任何东西。它会自动读到你浏览器里的知乎登录，不用粘贴、不用按 F12。"},
   {sel:"#btnLoadCred", t:"第 1 步：载入凭证",
    d:"部署包跑起来之后，回到这里点一下。凭证会自动填好，并立刻帮你把名下的文章检索出来。"},
   {sel:"#tabs", t:"第 2 步：挑分类",

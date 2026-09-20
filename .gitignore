@@ -47,3 +47,5 @@ data/qy_daily_quota.json
 data/deepseek_key.txt
 data/qy_pre/
 data/qy_pre.json
+data/qy_download/
+data/qy_site_cfg.json

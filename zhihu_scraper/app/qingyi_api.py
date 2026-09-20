@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import (HTMLResponse, PlainTextResponse, Response,
-                               StreamingResponse)
+from fastapi.responses import (FileResponse, HTMLResponse, PlainTextResponse,
+                               Response, StreamingResponse)
 from pydantic import BaseModel
 
 from ..qingyi import BRAND, QingyiTitleSigner, RatePolicy
@@ -645,6 +645,23 @@ _AGENTS_MD = """# 给 AI 助手：请照这套规则，帮用户把「清一新�
 > 为什么写入一定要在本地？知乎的编辑行为必须来自用户自己的电脑与网络身份；
 > 机房 IP 批量写入会触发平台风控。所以云端只做检索、编排与**复核**。
 
+## 最快路径（Windows 用户先看这条）
+
+**什么都别让用户装。** 让他打开工作台
+`https://zh.samuraiguan.cloud/api/qy/console`，点「⬇️ 下载 Windows 一键程序」，
+然后**双击**下载到的 `清一新教育一键修改.exe` 就行。
+
+那是一个单文件程序：**不需要解压、不需要终端、不需要 Python、不需要 pip**。
+它会自己读浏览器登录、把凭证同步到云端、请云端算好每篇最终稿，然后开始上传；
+跑完还会请云端复核。
+
+唯一要提醒用户的一件事：如果 Edge / Chrome 开着，程序会提示关掉浏览器 ——
+**它会自动等你，关掉后自己继续，不用按任何键**（浏览器会独占锁住登录数据，
+这是 Windows 的系统级行为，任何工具都绕不过去）。
+
+以下情况才需要走「手动部署」：用户是 macOS（暂无预编译程序）；
+用户不想下载 exe；或者用户就是要让你（AI 助手）来代劳。
+
 ## 请按顺序执行
 
 1. **识别设备**：Windows 还是 macOS（用 `platform` / `uname` 判断）。
@@ -724,8 +741,14 @@ _EXEC_README = """清一新教育 · 一键部署包
 
 前提：你的电脑浏览器（Edge 或 Chrome）已登录 zhihu.com。
 
-Windows 用户（三步）：
-  1. 把这个文件夹解压到桌面或任意位置
+Windows 用户（最省事 · 两步）：
+  1. 到工作台点「⬇️ 下载 Windows 一键程序」
+  2. 双击下载到的「清一新教育一键修改.exe」
+  —— 不用解压、不用开终端、不用装 Python。
+     首次运行若被 Windows 拦一下：点「更多信息」→「仍要运行」。
+
+Windows 用户（备用 · 用这个文件夹，需要电脑已装 Python 3.9+）：
+  1. 把文件夹解压到桌面或任意位置
   2. 双击「一键部署-Windows.bat」
   3. 它会自动：装好依赖 → 读取你浏览器里的知乎登录 →
      请云端把每篇文章的「最终稿」算好 → 启动执行器开始上传
@@ -740,9 +763,11 @@ Mac 用户（三步）：
   你这台电脑只负责把云端算好的内容原样提交到知乎，不自己改写。
   全部做完后，云端会重新回读线上文章逐篇复核，告诉你有哪几篇没按要求完成。
 
-【如果提示读取失败】
-  浏览器开着的时候会锁住凭证文件。把 Edge / Chrome 的所有窗口全部关掉，
-  回到部署窗口按回车重试即可（部署器最多等你 5 次）。
+【如果提示读取失败 / 一直说读不到登录】
+  浏览器开着的时候会独占锁住登录数据（Windows 系统级行为，绕不过去）。
+  把 Edge / Chrome 的【所有窗口】全部关掉即可 ——
+  一键程序会自己等你，关掉之后自动继续，不用按任何键；
+  用部署包的话，回到窗口按回车重试（最多等 5 次）。
 
 把整个文件夹丢给你的 AI 助手也可以：里面有 AGENTS.md，
 AI 助手看一眼就知道该做什么。想更省事，直接把仓库地址发给 AI 助手：
@@ -1726,6 +1751,79 @@ def qy_daily_usage():
 # --------------------------------------------------------------------------- #
 # Meta
 # --------------------------------------------------------------------------- #
+
+# ================= 站点级配置：每日上限 =================
+# 网页上的「每日上限」选择会 POST 到这里；Windows 一键程序启动时 GET 回来。
+# 这样用户只需在网页上选一次，双击 exe 就自动遵守，不需要再传 perday.txt。
+_SITE_CFG_PATH = Path("data/qy_site_cfg.json")
+_SITE_CFG = {"per_day": 120}
+
+
+def _load_site_cfg() -> Dict[str, Any]:
+    try:
+        if _SITE_CFG_PATH.exists():
+            d = json.loads(_SITE_CFG_PATH.read_text(encoding="utf-8"))
+            if isinstance(d, dict) and d.get("per_day") is not None:
+                _SITE_CFG["per_day"] = max(0, int(d["per_day"]))
+    except Exception:  # noqa: BLE001
+        pass
+    return _SITE_CFG
+
+
+def _save_site_cfg() -> None:
+    try:
+        _SITE_CFG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SITE_CFG_PATH.write_text(json.dumps(_SITE_CFG, ensure_ascii=False),
+                                  encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+class ConfigReq(BaseModel):
+    per_day: Optional[int] = None
+
+
+@router.get("/config")
+def qy_get_config():
+    """一键程序启动时读它：每日上限以网页上的选择为准。"""
+    cfg = _load_site_cfg()
+    return {"ok": True, "per_day": int(cfg.get("per_day", 120))}
+
+
+@router.post("/config")
+def qy_set_config(req: ConfigReq):
+    """网页改「每日上限」时同步过来。"""
+    if req.per_day is not None:
+        _SITE_CFG["per_day"] = max(0, int(req.per_day))
+        _save_site_cfg()
+    return {"ok": True, "per_day": int(_SITE_CFG.get("per_day", 120))}
+
+
+# ================= Windows 一键程序分发 =================
+_EXE_NAME = "清一新教育一键修改.exe"
+_EXE_DIR = Path("data/qy_download")
+
+
+@router.get("/download/{plat}")
+def qy_download(plat: str):
+    """分发一键程序：用户下载后双击即用 —— 不用解压、不用终端、不用装 Python。"""
+    p = (plat or "").strip().lower()
+    if p not in ("windows", "win", "exe"):
+        raise HTTPException(
+            status_code=404,
+            detail=("macOS 尚未提供预编译程序（无法在 Windows 上交叉编译）。"
+                    "请把 https://github.com/Arthurchen-01/zh-editor 交给你的 AI 助手执行。"))
+    for cand in (_EXE_DIR / _EXE_NAME, _EXE_DIR / "QingyiEduOneClick.exe"):
+        if cand.exists():
+            return FileResponse(str(cand),
+                                media_type="application/vnd.microsoft.portable-executable",
+                                filename=_EXE_NAME)
+    raise HTTPException(status_code=404,
+                        detail="Windows 一键程序还没生成，请先用「下载部署包」的方式。")
+
+
+_load_site_cfg()
+
 
 @router.get("/meta")
 def qy_meta():
