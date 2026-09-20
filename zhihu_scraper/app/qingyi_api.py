@@ -18,6 +18,7 @@ import json
 import os
 import platform
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -343,6 +344,12 @@ def qy_create_job(req: CreateJobReq):
                       "inject_body": bool(req.inject_body)})
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    # v5：任务一建好，云端就在后台把每篇的最终稿算好（用户什么都不用做）。
+    try:
+        threading.Thread(target=_auto_prepare, args=(job["job_id"],),
+                         daemon=True).start()
+    except Exception:  # noqa: BLE001
+        pass
     return {"ok": True, "job": job}
 
 
@@ -402,7 +409,7 @@ def qy_ai_review_single(req: AiReviewReq):
 # 用户回到网页点「载入凭证」即可完成零粘贴流程。
 # --------------------------------------------------------------------------- #
 _CRED_VAULT: Dict[str, Dict[str, Any]] = {}
-_CRED_TTL = 600  # 秒
+_CRED_TTL = 21600  # 秒（6 小时：网页载入后，云端预修改与复核都要用）
 
 
 class CredDepositReq(BaseModel):
@@ -581,9 +588,32 @@ def main():
             headers={"Content-Type": "application/json",
                      "X-API-Key": SITE_KEY})
         _u.urlopen(req, timeout=20)
-        print("    [OK] 凭证已暂存（10 分钟有效）：回到网页点「📥 载入凭证」即可。")
+        print("    [OK] 凭证已暂存：回到网页点「📥 载入凭证」即可开始。")
     except Exception as exc:
         print(f"    [i] 凭证柜暂存失败（不影响本机运行）：{exc}")
+
+    try:
+        import json as _j2
+        import urllib.request as _u2
+        lr = _u2.Request(SERVER + "/api/qy/jobs?limit=1",
+                         headers={"X-API-Key": SITE_KEY})
+        lj = _j2.loads(_u2.urlopen(lr, timeout=20).read().decode("utf-8"))
+        jobs = (lj.get("jobs") or [])
+        if jobs:
+            jid = jobs[0].get("job_id")
+            pr = _u2.Request(
+                SERVER + "/api/qy/prepare",
+                data=_j2.dumps({"job_id": jid, "cookie": ck}).encode("utf-8"),
+                headers={"Content-Type": "application/json",
+                         "X-API-Key": SITE_KEY})
+            pj = _j2.loads(_u2.urlopen(pr, timeout=300).read().decode("utf-8"))
+            if pj.get("ok"):
+                print(f"    [OK] 云端已预修改 {pj.get('prepared')} 篇"
+                      f"（无需改动 {pj.get('skipped')}，失败 {pj.get('failed')}）")
+            else:
+                print(f"    [i] 云端预修改未执行：{pj.get('note')}")
+    except Exception as exc:
+        print(f"    [i] 云端预修改跳过：{exc}")
 
     print("[4/4] 启动执行器（每日上限 "
           + ("不限" if cap == 0 else f"{cap} 篇")
@@ -688,6 +718,411 @@ _EXEC_README = (
     "  · 连续失败 3 次自动中止；每篇改动前原文自动备份，可一键还原\n"
     "  · 每篇固定 2 处：标题 1 处 + 正文 1 处（AI 审核决定加在哪）\n"
 )
+
+
+# --------------------------------------------------------------------------- #
+# v5：云端预修改（prepare）+ 云端独立复核（verify）+ agent 交付信息（brief）
+#
+# 分工（对应「云端定规则、本地只搬运、云端再复核」）：
+#   prepare  —— 云端用同一套引擎，把每篇的「最终标题 + 最终正文」算好并落盘缓存
+#               （这就是用户要的「云端的缓存（修改的内容）」）。
+#   payload  —— 本地执行器按需取回缓存，原样上传，不做任何内容判断。
+#   verify   —— 写入完成后，云端重新回读线上文章，对照缓存做规则校验，
+#               给出逐篇 pass/fail（不采信本地自述）。
+#   brief    —— 给网页与 agent 的交付信息：还差多少、是否全部通过、那句话。
+# --------------------------------------------------------------------------- #
+_PRE_DIR = Path("data/qy_pre")
+_BRAND_TITLE = f"【{BRAND}】"
+_BRAND_BODY_FULL = "（清一新教育）"
+_BRAND_BODY_HALF = "(清一新教育)"
+
+from ..qingyi import body_fingerprint as _body_fp  # noqa: E402
+from .. import qy_content as _qyc  # noqa: E402
+
+_PREP_LOCK = threading.Lock()
+_PREP_RUNNING: Dict[str, float] = {}
+
+
+def _payload_path(job_id: str, item_id: str) -> Path:
+    d = _PRE_DIR / str(job_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d / ("%s.json" % str(item_id))
+
+
+def _brand_hits(html: str) -> int:
+    return _qyc._ANY_TAG_RE.sub("", html or "").count(BRAND)
+
+
+def _cookie_candidates(explicit: str = "") -> List[str]:
+    """可用凭证：显式传入的优先，其次凭证柜里最新的（都必须是登录态）。"""
+    out: List[str] = []
+    ck = (explicit or "").strip()
+    if "z_c0=" in ck:
+        out.append(ck)
+    now = time.time()
+    live = sorted(
+        ((v.get("ts", 0), v.get("cookie", "")) for v in _CRED_VAULT.values()
+         if now - v.get("ts", 0) <= _CRED_TTL),
+        key=lambda t: t[0], reverse=True)
+    for _ts, c in live:
+        if c and c not in out and "z_c0=" in c:
+            out.append(c)
+    return out
+
+
+def _first_working_signer(job: Dict[str, Any], explicit: str = ""):
+    """挑一个真能读到线上文章的凭证（读一篇试探）。
+
+    返回 (signer, aid, err)。云端所有读写都以「能真的读到」为准，
+    避免拿到一个过期凭证却把整轮 prepare/verify 判成失败。
+    """
+    cands = _cookie_candidates(explicit)
+    if not cands:
+        return None, "", ("云端没有可用凭证：请先在网页点「📥 载入凭证」，"
+                          "或让本地执行器带上自己的 cookie 请求复核。")
+    first_aid = ""
+    for it in job.get("items", []):
+        if it.get("type") == "article":
+            first_aid = str(it.get("id"))
+            break
+    last = ""
+    for c in cands:
+        try:
+            sg = QingyiTitleSigner(c)
+            if first_aid:
+                sg.get_article_draft(first_aid)
+            return sg, first_aid, ""
+        except Exception as exc:  # noqa: BLE001
+            last = str(exc)
+    return None, first_aid, f"凭证不可用（{last}）"
+
+
+class PrepareReq(BaseModel):
+    job_id: str
+    cookie: str = ""
+    limit: int = 0
+
+
+class VerifyReq(BaseModel):
+    cookie: str = ""
+
+
+def _prepare_core(job: Dict[str, Any], cookie: str = "", limit: int = 0,
+                  trigger: str = "manual") -> Dict[str, Any]:
+    """云端预修改：逐篇算好最终稿并落盘（只读线上，不写入）。"""
+    job_id = job["job_id"]
+    signer, _aid, err = _first_working_signer(job, cookie)
+    if signer is None:
+        return {"ok": False, "note": err}
+    todo = [it for it in job.get("items", [])
+            if it.get("type") == "article" and it.get("status") == "pending"
+            and not it.get("payload")]
+    if limit:
+        todo = todo[:limit]
+    want_body = bool(job.get("inject_body"))
+    prepared = skipped = failed = 0
+    details: List[Dict[str, Any]] = []
+    for it in todo:
+        aid = str(it.get("id"))
+        try:
+            draft = signer.get_article_draft(aid)
+            pre_title = draft.get("title") or ""
+            pre_body = draft.get("content") or ""
+            plan = it.get("ai_plan") or {}
+            anchors = [p.get("anchor") for p in (plan.get("picks") or [])
+                       if p.get("anchor")]
+            rec = signer.process_title(
+                {"id": aid, "type": "article",
+                 "kind_label": it.get("kind_label", "文章"),
+                 "url": it.get("url", ""), "title": pre_title},
+                dry_run=True, inject_body=want_body,
+                body_hits=int(job.get("body_hits") or 1),
+                body_anchors=(anchors or None),
+                title_add=(None if plan.get("title_add") is None
+                           else bool(plan.get("title_add"))),
+                with_payload=True)
+            payload = rec.get("payload")
+            now = int(time.time())
+            if not payload:
+                reason = rec.get("message", "无需改动")
+                it["pre"] = {"plan_title": pre_title, "skip": reason,
+                             "prepared_at": now}
+                it["status"] = "skipped"
+                it["message"] = reason
+                skipped += 1
+                details.append({"id": aid, "skip": reason})
+                continue
+            fp_plan = _body_fp(payload.get("content") or pre_body)
+            _payload_path(job_id, aid).write_text(json.dumps({
+                "job_id": job_id, "item_id": aid,
+                "url": it.get("url", ""),
+                "title": payload["title"],
+                "content": payload["content"],
+                "pre_title": pre_title,
+                "pre_content": pre_body,
+                "pre_body_sha256": _body_fp(pre_body),
+                "expected_body_sha256": fp_plan,
+                "title_added": bool(rec.get("title_changed")),
+                "body_added": int(rec.get("body_hits_added") or 0),
+                "prepared_at": now,
+            }, ensure_ascii=False), encoding="utf-8")
+            it["pre"] = {
+                "plan_title": payload["title"],
+                "body_added": int(rec.get("body_hits_added") or 0),
+                "body_len": len(payload.get("content") or ""),
+                "prepared_at": now,
+            }
+            it["payload"] = {
+                "title": payload["title"],
+                "body_len": len(payload.get("content") or ""),
+                "expected_body_sha256": fp_plan,
+            }
+            it["title_after"] = payload["title"]
+            prepared += 1
+            details.append({"id": aid, "plan_title": payload["title"],
+                            "body_added": int(rec.get("body_hits_added") or 0)})
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            details.append({"id": aid, "error": str(exc)[:180]})
+        time.sleep(0.4)
+    QJ.add_log(job, f"云端预修改（{trigger}）：已缓存 {prepared} 篇，"
+                    f"无需改动 {skipped} 篇，失败 {failed} 篇")
+    QJ.recompute(job)
+    job["updated_at"] = int(time.time())
+    QJ.save()
+    return {"ok": True, "prepared": prepared, "skipped": skipped,
+            "failed": failed, "total": len(todo), "details": details}
+
+
+def _judge(snap: Dict[str, Any], live_title: str, live_body: str):
+    """规则校验：线上结果是否等于云端方案，且是否只动了该动的地方。"""
+    pre_title = (snap.get("pre_title") or "").strip()
+    pre_body = snap.get("pre_content") or ""
+    plan_title = (snap.get("title") or "").strip()
+    plan_body = snap.get("content")
+    if plan_body is None:
+        plan_body = pre_body
+
+    fp_pre = _body_fp(pre_body)
+    fp_plan = _body_fp(plan_body)
+    fp_live = _body_fp(live_body)
+    plan_injected = (fp_plan != fp_pre)
+
+    reasons: List[str] = []
+
+    # ---- 规则 1：标题 ----
+    lt = (live_title or "").strip()
+    title_ok = (lt == plan_title)
+    if not title_ok:
+        if lt == pre_title and plan_title != pre_title:
+            reasons.append("标题未按云端方案修改（线上仍是原标题）")
+        elif (plan_title.startswith(_BRAND_TITLE)
+              and not lt.startswith(_BRAND_TITLE)):
+            reasons.append("标题缺少品牌前缀「【清一新教育】」")
+        elif (plan_title.startswith(_BRAND_TITLE)
+              and lt[len(_BRAND_TITLE):] != pre_title):
+            reasons.append("标题除前缀外还有其它改动（原文被改写）")
+        else:
+            reasons.append("标题与云端方案不一致")
+
+    # ---- 规则 2：正文 ----
+    hits_pre = _brand_hits(pre_body)
+    hits_live = _brand_hits(live_body)
+    delta = hits_live - hits_pre
+    level = ""
+    body_ok = True
+    if plan_injected:
+        # 先看「到底有没有植入」，再说「改动有没有越界」：
+        # 这样最常见的失败（只改标题、忘了正文）能给出直指的提示。
+        token = (_BRAND_BODY_FULL if _BRAND_BODY_FULL in live_body else
+                 (_BRAND_BODY_HALF if _BRAND_BODY_HALF in live_body else ""))
+        if not token:
+            body_ok = False
+            reasons.append("正文未按云端方案植入品牌词（线上找不到品牌括注）")
+        elif delta != 1:
+            body_ok = False
+            reasons.append(f"正文品牌词增减异常（原文 {hits_pre} 处 → "
+                           f"线上 {hits_live} 处，应恰好 +1）")
+        if body_ok and fp_live == fp_plan:
+            level = "matches_plan"
+        elif body_ok and _body_fp(_qyc.strip_scenes(live_body)) == fp_pre:
+            level = "only_parenthetical"
+        elif body_ok:
+            body_ok = False
+            reasons.append("正文改动超出云端方案（原文被改写，无法还原）")
+    else:
+        if fp_live == fp_pre:
+            level = "untouched"
+        else:
+            body_ok = False
+            reasons.append("任务未要求改动正文，但正文文本被改动")
+
+    metrics = {"body_hits_before": hits_pre, "body_hits_after": hits_live,
+               "body_restore_level": level, "plan_injected_body": plan_injected}
+    return title_ok, body_ok, reasons, metrics
+
+
+@router.post("/prepare")
+def qy_prepare(req: PrepareReq):
+    """云端预修改：把每篇的最终标题/正文算好并缓存（本地只负责上传）。"""
+    job = QJ.get_job(req.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return _prepare_core(job, cookie=req.cookie, limit=req.limit,
+                         trigger="manual")
+
+
+def _auto_prepare(job_id: str) -> None:
+    """任务创建后自动预修改（后台线程，不阻塞网页）。"""
+    with _PREP_LOCK:
+        if job_id in _PREP_RUNNING:
+            return
+        _PREP_RUNNING[job_id] = time.time()
+    try:
+        job = QJ.get_job(job_id)
+        if not job:
+            return
+        res = _prepare_core(job, trigger="auto")
+        if not res.get("ok"):
+            QJ.add_log(job, f"自动预修改未执行：{res.get('note')}")
+            QJ.save()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[prepare] 自动预修改异常：{exc}")
+    finally:
+        with _PREP_LOCK:
+            _PREP_RUNNING.pop(job_id, None)
+
+
+@router.get("/agent/payload/{job_id}/{item_id}")
+def qy_agent_payload(job_id: str, item_id: str):
+    """本地执行器取回云端预算好的内容（预修改缓存）。"""
+    p = _payload_path(job_id, str(item_id))
+    if not p.exists():
+        raise HTTPException(status_code=404,
+                            detail="该篇没有云端预修改缓存")
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"缓存读取失败：{exc}")
+
+
+@router.post("/verify/{job_id}")
+def qy_verify(job_id: str, req: Optional[VerifyReq] = None):
+    """云端独立复核：重新回读线上文章，对照云端缓存做规则校验。
+
+    这一端点的意义：本地执行器说「我做完了」不算数 —— 云端自己去知乎看一遍。
+    """
+    job = QJ.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    explicit = (getattr(req, "cookie", "") or "") if req else ""
+    signer, _aid, err = _first_working_signer(job, explicit)
+    if signer is None:
+        return {"ok": False, "note": err}
+    checked = passed = failed = skipped = 0
+    details: List[Dict[str, Any]] = []
+    for it in job.get("items", []):
+        if it.get("type") != "article":
+            continue
+        if it.get("status") not in ("done", "saved_not_published"):
+            skipped += 1
+            continue
+        aid = str(it.get("id"))
+        p = _payload_path(job_id, aid)
+        if not p.exists():
+            it["verify"] = {"status": "unknown", "checked_at": int(time.time()),
+                            "reasons": ["无云端预修改缓存，无法复核"]}
+            skipped += 1
+            continue
+        try:
+            snap = json.loads(p.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            it["verify"] = {"status": "unknown", "checked_at": int(time.time()),
+                            "reasons": [f"缓存读取失败：{exc}"]}
+            skipped += 1
+            continue
+        try:
+            live = signer.get_article_draft(aid)
+        except Exception as exc:  # noqa: BLE001
+            it["verify"] = {"status": "unknown", "checked_at": int(time.time()),
+                            "reasons": [f"回读失败：{exc}"]}
+            failed += 1
+            details.append({"id": aid, "verify": "fail",
+                            "reasons": [f"回读失败：{exc}"]})
+            continue
+        live_title = live.get("title") or ""
+        live_body = live.get("content") or ""
+        title_ok, body_ok, reasons, metrics = _judge(snap, live_title, live_body)
+        verdict = "pass" if (title_ok and body_ok) else "fail"
+        checked += 1
+        if verdict == "pass":
+            passed += 1
+        else:
+            failed += 1
+        info = {"status": verdict, "checked_at": int(time.time()),
+                "title_ok": title_ok, "body_ok": body_ok, "reasons": reasons,
+                "live_title": live_title[:140]}
+        info.update(metrics)
+        it["verify"] = info
+        details.append({"id": aid, "verify": verdict,
+                        "title": live_title[:70], "reasons": reasons})
+
+    job["verify_summary"] = {
+        "checked": checked, "passed": passed, "failed": failed,
+        "skipped": skipped, "at": int(time.time()),
+        "all_passed": bool(checked and failed == 0 and passed == checked),
+    }
+    job["updated_at"] = int(time.time())
+    QJ.add_log(job, f"云端独立复核：校验 {checked} 篇，通过 {passed}，"
+                    f"不通过 {failed}，未校验 {skipped}")
+    QJ.save()
+    return {"ok": True, "summary": job["verify_summary"], "details": details}
+
+
+@router.get("/agent/brief")
+def qy_agent_brief(job_id: str = ""):
+    """给网页 + agent 的交付信息：还差多少、是否全部通过、交给 agent 的那句话。"""
+    job = QJ.get_job(job_id) if job_id else None
+    if job is None:
+        recent = QJ.list_jobs(limit=1)
+        job = QJ.get_job(recent[0]["job_id"]) if recent else None
+    if not job:
+        return {"ok": False, "note": "还没有任务"}
+    items = [it for it in job.get("items", []) if it.get("type") == "article"]
+    prepared = sum(1 for it in items if it.get("payload"))
+    pending = sum(1 for it in items if it.get("status") == "pending")
+    done = sum(1 for it in items
+               if it.get("status") in ("done", "saved_not_published"))
+    skipped = sum(1 for it in items if it.get("status") == "skipped")
+    verified = sum(1 for it in items
+                   if (it.get("verify") or {}).get("status") == "pass")
+    vfailed = sum(1 for it in items
+                  if (it.get("verify") or {}).get("status") == "fail")
+    repo = "https://github.com/Arthurchen-01/zh-editor"
+    instruction = (
+        "请打开 {repo} ，按其中的 AGENTS.md 执行「清一新教育」文章署名任务。\n"
+        "控制面地址：https://zh.samuraiguan.cloud\n"
+        "站点密钥：{key}\n"
+        "任务号：{jid}\n"
+        "规则：每篇固定 2 处 —— ① 标题最前面加【清一新教育】1 处；"
+        "② 正文以署名式括注（清一新教育）加 1 处；不得删改其它任何文字。\n"
+        "不要自己改写内容：云端已算好每篇的最终稿，执行器按 "
+        "/api/qy/agent/payload 取回后原样上传即可。\n"
+        "完成后云端会逐篇回读复核（POST /api/qy/verify/{jid}），"
+        "请把复核结果贴回来。").format(repo=repo, key=SITE_KEY,
+                                        jid=job["job_id"])
+    return {
+        "ok": True, "job_id": job["job_id"], "status": job.get("status"),
+        "counts": {"total": len(items), "prepared": prepared, "pending": pending,
+                   "done": done, "skipped": skipped,
+                   "verified": verified, "verify_failed": vfailed},
+        "verify_summary": job.get("verify_summary") or {},
+        "all_verified": bool(prepared and verified == prepared and vfailed == 0),
+        "preparing": job["job_id"] in _PREP_RUNNING,
+        "instruction": instruction,
+        "repo": repo,
+        "console": "https://zh.samuraiguan.cloud/api/qy/console",
+    }
 
 
 @router.post("/executor/bundle")

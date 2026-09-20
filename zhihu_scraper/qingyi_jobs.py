@@ -72,6 +72,16 @@ def _save() -> None:
         pass
 
 
+def save() -> None:
+    """公开封装：把任务库落盘（控制面 API 用它保存预修改/复核结果）。"""
+    _save()
+
+
+def recompute(job: Dict[str, Any]) -> None:
+    """公开封装：重算 summary（预修改把某些条目判为 skipped 后要用）。"""
+    _recompute(job)
+
+
 def _trim() -> None:
     jobs = _STORE.get("jobs", {})
     if len(jobs) <= MAX_JOBS_KEPT:

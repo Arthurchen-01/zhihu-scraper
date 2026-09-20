@@ -45,3 +45,5 @@ data/qyedu_backup/
 data/qy_daily_quota.json
 *.bak
 data/deepseek_key.txt
+data/qy_pre/
+data/qy_pre.json

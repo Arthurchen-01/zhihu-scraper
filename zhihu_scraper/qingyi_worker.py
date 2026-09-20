@@ -78,18 +78,22 @@ class ControlPlane:
         })
         self.timeout = timeout
 
-    def _req(self, method: str, path: str, **kw) -> Optional[Dict[str, Any]]:
+    def _req(self, method: str, path: str, quiet: bool = False,
+             **kw) -> Optional[Dict[str, Any]]:
         url = f"{self.base}{path}"
         try:
             r = self.s.request(method, url, timeout=self.timeout, **kw)
         except Exception as exc:  # noqa: BLE001
-            print(f"[!] 网络错误 {method} {path}: {exc}")
+            if not quiet:
+                print(f"[!] 网络错误 {method} {path}: {exc}")
             return None
         if r.status_code == 401:
             print("[!] 云端拒绝：访问密钥无效。请用 --key 传入站点密钥。")
             return None
         if r.status_code >= 400:
-            print(f"[!] {method} {path} -> HTTP {r.status_code} {r.text[:160]}")
+            if not quiet:
+                print(f"[!] {method} {path} -> HTTP {r.status_code} "
+                      f"{r.text[:160]}")
             return None
         try:
             return r.json()
@@ -118,6 +122,27 @@ class ControlPlane:
     def finish(self, job_id: str, summary: Dict[str, Any]) -> None:
         self._req("POST", "/api/qy/worker/finish",
                   json={"job_id": job_id, "summary": summary})
+
+    # ---- v5：云端预修改的取回 + 请云端独立复核 ---- #
+
+    def payload(self, job_id: str, item_id: str) -> Optional[Dict[str, Any]]:
+        """取回云端为该篇预算好的最终稿；没有缓存则返回 None（回退本地计算）。"""
+        res = self._req(
+            "GET", f"/api/qy/agent/payload/{job_id}/{item_id}", quiet=True)
+        if not res or res.get("raw"):
+            return None
+        if res.get("title") is None or res.get("content") is None:
+            return None
+        return res
+
+    def verify(self, job_id: str, cookie: str = "") -> Optional[Dict[str, Any]]:
+        """请云端独立复核（云端自己去回读线上文章，不信本地自述）。"""
+        return self._req("POST", f"/api/qy/verify/{job_id}",
+                         json={"cookie": cookie or ""})
+
+    def brief(self, job_id: str = "") -> Optional[Dict[str, Any]]:
+        q = f"?job_id={job_id}" if job_id else ""
+        return self._req("GET", f"/api/qy/agent/brief{q}", quiet=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -235,14 +260,22 @@ class LocalExecutor:
 
             item_started = time.time()
             plan = it.get("ai_plan") or {}
-            rec = self.signer.process_title(
-                it, dry_run=False, publish=True,
-                inject_body=bool(job.get("inject_body")),
-                body_hits=int(job.get("body_hits") or 1),
-                body_anchors=[p.get("anchor") for p in (plan.get("picks") or [])
-                              if p.get("anchor")],
-                title_add=(None if plan.get("title_add") is None
-                           else bool(plan.get("title_add"))))
+            # v5：优先用云端已经算好的最终稿（本地只负责原样上传）。
+            # 取不到云端缓存时才退回本地计算，保证老流程不被破坏。
+            payload = self.cp.payload(job_id, it["id"])
+            if payload:
+                print(f"   云端方案: {str(payload.get('title', ''))[:70]}")
+                rec = self.signer.apply_payload(it, payload, publish=True)
+            else:
+                rec = self.signer.process_title(
+                    it, dry_run=False, publish=True,
+                    inject_body=bool(job.get("inject_body")),
+                    body_hits=int(job.get("body_hits") or 1),
+                    body_anchors=[p.get("anchor")
+                                  for p in (plan.get("picks") or [])
+                                  if p.get("anchor")],
+                    title_add=(None if plan.get("title_add") is None
+                               else bool(plan.get("title_add"))))
             rec["id"] = it["id"]
 
             if rec.get("status") == "done":
@@ -283,6 +316,23 @@ class LocalExecutor:
                 while time.time() < nxt and not _STOP:
                     time.sleep(min(10, max(0.5, nxt - time.time())))
                     self.cp.heartbeat(job_id, self.worker_id)
+
+        # ---- v5：写入结束 → 请云端独立复核（云端重新回读线上文章做规则校验）----
+        try:
+            vres = self.cp.verify(job_id, self.signer.cookie)
+            if vres and vres.get("ok"):
+                vs = vres.get("summary") or {}
+                print(f"\n[云端复核] 校验 {vs.get('checked', 0)} 篇 | "
+                      f"通过 {vs.get('passed', 0)} | 不通过 {vs.get('failed', 0)}"
+                      f" | 未校验 {vs.get('skipped', 0)}")
+                for d in (vres.get("details") or []):
+                    if d.get("verify") == "fail":
+                        print(f"   ✗ {d.get('id')}："
+                              f"{'；'.join(d.get('reasons') or [])}")
+            elif vres:
+                print(f"\n[云端复核] 未执行：{vres.get('note')}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"[云端复核] 跳过（{exc}）")
 
         summary = {
             "worker_id": self.worker_id,
