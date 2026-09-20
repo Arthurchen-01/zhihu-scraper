@@ -2160,7 +2160,7 @@ def index_ui():
                         <div style="font-size: 28px;">🔑</div>
                         <div>
                             <h3 style="font-size: 18px; font-weight: 700; color: var(--modal-title-color);">知乎登录凭证一键获取助手</h3>
-                            <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">彻底告别技术名词与抓包，根据你的情况任选一种傻瓜方式搞定凭证</p>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">按你的情况任选一种，三种方式都能拿到凭证</p>
                         </div>
                     </div>
                     <button @click="showCredentialModal = false" class="btn btn-outline btn-sm" style="padding: 4px 10px; font-size: 13px;">✕ 关闭</button>
@@ -2169,13 +2169,32 @@ def index_ui():
                 <!-- Method Cards Grid -->
                 <div style="display: flex; flex-direction: column; gap: 14px;">
 
+                    <!-- 推荐路径：跑一次部署包，零 F12 -->
+                    <div class="cred-card" style="border-color: rgba(14, 165, 233, 0.5); background: rgba(14, 165, 233, 0.05);">
+                        <div class="cred-card-header">
+                            <span class="cred-card-tag cred-tag-recommend">不用 F12 · 最快</span>
+                            <h4 class="cred-card-title">🚀 推荐：让「文章修改工作台」的部署包替你读</h4>
+                        </div>
+                        <p class="cred-card-desc">
+                            到工作台点一次「⬇️ 下载部署包」→ 解压 → 双击里面的「一键部署」。
+                            它会在你自己电脑上自动读到浏览器里的知乎登录，全程不用粘贴、不用按 F12。
+                            读完之后在网页上点「📥 载入凭证」即可，两个页面共用同一份凭证。
+                        </p>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap;">
+                            <a href="/api/qy/console" style="text-decoration: none;">
+                                <button class="btn btn-primary" style="padding: 9px 18px; font-size: 13px;">🏷️ 进入文章修改工作台</button>
+                            </a>
+                            <span style="font-size: 11px; color: var(--text-muted);">同一台电脑只需做一次</span>
+                        </div>
+                    </div>
+
                     <!-- Method 1: Local Auto-Read -->
                     <div class="cred-card">
                         <div class="cred-card-header">
-                            <span class="cred-card-tag cred-tag-recommend">没手机 · 最推荐</span>
-                            <h4 class="cred-card-title">⚡ 方式一：一键读取我电脑里已登录的知乎</h4>
+                            <span class="cred-card-tag cred-tag-recommend">不用 F12 · 次选</span>
+                            <h4 class="cred-card-title">⚡ 方式一：直接读取本机已登录的知乎</h4>
                         </div>
-                        <p class="cred-card-desc">只要你电脑里的 Edge 或 Chrome 曾经登录过知乎，点击下方按钮，0 秒直接读取已存凭证，无需掏手机！</p>
+                        <p class="cred-card-desc">只要你电脑里的 Edge 或 Chrome 曾经登录过知乎，点击下方按钮即可直接读取，无需掏手机。<br><strong style="color: #f59e0b;">注意：这个按钮只有在「本页面就开在你自己电脑上」时有效。如果你是通过云端网址打开本页，请改用上面那条「推荐：让部署包替你读」。</strong></p>
                         <div style="display: flex; align-items: center; gap: 12px; margin-top: 10px;">
                             <button @click="autoDetectLocalCookie" :disabled="detectingCookie" class="btn btn-primary" style="padding: 9px 18px; font-size: 13px;">
                                 <span v-if="detectingCookie">🔄 正在扫描电脑 Edge/Chrome...</span>
@@ -2190,10 +2209,10 @@ def index_ui():
                     <!-- Method 2: 1-Second Console Trick -->
                     <div class="cred-card" style="border-color: rgba(16, 185, 129, 0.35);">
                         <div class="cred-card-header">
-                            <span class="cred-card-tag cred-tag-foolproof">万能 · 100% 成功</span>
-                            <h4 class="cred-card-title">💡 方式二：1秒控制台口诀（无需手机·零基础推荐）</h4>
+                            <span class="cred-card-tag">兜底手段 · 需要按 F12</span>
+                            <h4 class="cred-card-title">💡 方式二：控制台取一次凭证（技术兜底）</h4>
                         </div>
-                        <p class="cred-card-desc">如果当前浏览器正在打开知乎，照着下面 3 步做，1 秒搞定：</p>
+                        <p class="cred-card-desc">上面两条都不行时再用这个。它需要按 F12 打开控制台，照着下面 3 步做：</p>
                         <div style="background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px; margin: 8px 0; font-size: 12px; line-height: 1.8;">
                             <div>1️⃣ 确保打开知乎网页并已登录：<a href="https://www.zhihu.com" target="_blank" style="color: var(--cyan); text-decoration: underline; font-weight: 600;">🔗 点击打开知乎 (在新标签页)</a></div>
                             <div>2️⃣ 在知乎网页按键盘最顶部的 <strong>F12</strong> 键，点击弹出来的顶部 <strong>Console (控制台)</strong></div>
@@ -2224,7 +2243,7 @@ def index_ui():
                             <button @click="openZhihuPopup" class="btn btn-outline" style="padding: 8px 16px; font-size: 13px;">
                                 🌐 弹出知乎官方登录窗口
                             </button>
-                            <span style="font-size: 11px; color: var(--text-muted);">登录完成后，再按方式二口诀一键复制即可</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">登录完成后，再按方式二复制一次即可（仍需 F12）</span>
                         </div>
                     </div>
 
@@ -3215,11 +3234,11 @@ def index_ui():
                                 }, 1200);
                             } else {
                                 detectSuccess.value = false;
-                                detectMsg.value = data.message || '未检测到可用登录态，请使用方式二！';
+                                detectMsg.value = data.message || '没有读到你电脑上的知乎登录态 —— 请改用最上面那条「让部署包替你读」。';
                             }
                         } catch (e) {
                             detectSuccess.value = false;
-                            detectMsg.value = '请求失败，建议使用方式二！';
+                            detectMsg.value = '请求失败 —— 请改用最上面那条「让部署包替你读」。';
                         } finally {
                             detectingCookie.value = false;
                         }

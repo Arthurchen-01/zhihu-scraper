@@ -331,19 +331,29 @@ class LocalExecutor:
 # --------------------------------------------------------------------------- #
 
 def _read_cookie(args: argparse.Namespace) -> str:
+    """读取凭证。读不到就返回空串（交给上层做自动读取兜底），不抛异常。
+
+    两个历史坑：
+      1. 部署包里的 cookie.txt 在没有凭证时只有注释行。旧实现把注释文本
+         当成凭证返回，执行器于是拿着注释去请求知乎。
+      2. 旧实现在这里 raise SystemExit，会把 --auto-cookie 的兜底路径
+         整个挡住 —— 自动读取根本没机会执行。
+    """
     if args.cookie:
         return args.cookie.strip()
     if args.cookie_file:
         p = Path(args.cookie_file)
         if not p.exists():
-            raise SystemExit(f"凭证文件不存在：{p}")
+            return ""
         raw = p.read_text(encoding="utf-8", errors="replace")
         for line in raw.splitlines():
             line = line.strip()
-            if "_xsrf=" in line and "z_c0=" in line:
+            if line.startswith("#"):
+                continue
+            if "z_c0=" in line:
                 return line
-        return raw.strip()
-    raise SystemExit("请通过 --cookie 或 --cookie-file 提供知乎登录凭证。")
+        return ""
+    return ""
 
 
 def auto_detect_cookie():
@@ -511,13 +521,32 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     cookie = _read_cookie(args)
     if getattr(args, "auto_cookie", False) and not cookie:
-        try:
-            cookie, src = auto_detect_cookie()
-            print(f"[OK] 已自动读取本机知乎登录（来源：{src}），无需粘贴。")
-        except Exception as exc:
-            print(f"[!] 自动读取失败：{exc}")
-            print("    可改用 --cookie-file cookie.txt；或先在浏览器登录 zhihu.com 后重试。")
-            return 1
+        print("凭证文件里没有可用登录态，改为自动读取本机浏览器登录…")
+        for _attempt in range(1, 6):
+            try:
+                cookie, src = auto_detect_cookie()
+                print(f"[OK] 已自动读取本机知乎登录（来源：{src}），无需粘贴。")
+                break
+            except Exception as exc:
+                cookie = ""
+                print(f"[!] 第 {_attempt}/5 次自动读取失败：{exc}")
+                if _attempt >= 5:
+                    break
+                print("    请把 Edge / Chrome 的所有窗口全部关掉（不是最小化），"
+                      "再按回车重试。")
+                try:
+                    _ans = input("    >>> 按回车重试（输入 q 退出）: ").strip().lower()
+                except EOFError:
+                    break
+                if _ans == "q":
+                    break
+    if not cookie:
+        raise SystemExit(
+            "没有拿到知乎登录凭证，无法继续。\n"
+            "  · 最省事的办法：双击「一键部署-Windows.bat」"
+            "（Mac 用「一键部署-Mac.command」），它会自动读取浏览器里的登录并重试。\n"
+            "  · 若提示浏览器锁定：把浏览器所有窗口全部关掉后再试一次。\n"
+            "  · 也可以手动把知乎 Cookie 粘贴到 cookie.txt 里。")
 
     pol = RatePolicy()
     if args.gap_min is not None:

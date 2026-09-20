@@ -1,10 +1,19 @@
-"""清一新教育 · 标题署名控制台 前端页面。
+"""清一新教育 · 文章修改工作台 前端页面（v5）。
 
-交互设计：
-  第一步  部署包自动读取凭证（零粘贴）→ 只读检索本人资产
-  第二步  按分类筛选 + 勾选文章
-  第三步  创建任务 → 本地执行器领取 → 实时进度渲染
-  第四步  逐篇展开查看修改对照（标题 diff + 正文片段）与正文零修改证据
+交互设计（每一步只做一件事）：
+  第 1 步  下载部署包 → 双击 → 回来点「载入凭证」→ 自动检索（零粘贴、零 F12）
+  第 2 步  打钩挑文章 → 点一个大按钮
+  第 3 步  在你自己电脑上执行（进度实时回传）
+  第 4 步  逐篇对照 + 正文零改动证据
+
+v5 相对 v4 的改动：
+  * 所有请求统一带上站点密钥 → 直接打开/收藏本页也能用（不再 401 天书）
+  * 「每日上限」真正下发到执行器（随包 perday.txt），并显示执行器实际生效值
+  * 「今日已写入」改为读取服务端真实计数（原来是永不更新的假数字）
+  * 修 savePerDay 调用未定义 toast 的 ReferenceError
+  * 修检索完成后按钮文案被改写、下载包没有任何反馈
+  * 部署指引与手动下载从页面主体收进「高级」，消除重复与自相矛盾
+  * 用户可见文案去掉「傻瓜」二字；报错文案去掉「粘贴」措辞
 """
 
 QY_PAGE_HTML = r"""<!DOCTYPE html>
@@ -26,12 +35,12 @@ QY_PAGE_HTML = r"""<!DOCTYPE html>
 body{
   margin:0;background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  font-size:14px;line-height:1.6;
+  font-size:14.5px;line-height:1.65;
 }
-.wrap{max-width:1160px;margin:0 auto;padding:26px 20px 80px}
+.wrap{max-width:1080px;margin:0 auto;padding:24px 18px 90px}
 header.top{display:flex;align-items:center;gap:14px;margin-bottom:8px;flex-wrap:wrap}
 h1{font-size:21px;margin:0;font-weight:700;letter-spacing:-.2px}
-.sub{color:var(--text-2);font-size:13px;margin:2px 0 22px}
+.sub{color:var(--text-2);font-size:13px;margin:2px 0 20px}
 .badge{
   display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;
   background:#e0f2fe;color:#0369a1;font-size:12px;font-weight:600
@@ -40,23 +49,22 @@ h1{font-size:21px;margin:0;font-weight:700;letter-spacing:-.2px}
   background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
   padding:20px;margin-bottom:16px;box-shadow:var(--shadow)
 }
-.card h2{font-size:15px;margin:0 0 4px;font-weight:700;display:flex;align-items:center;gap:8px}
+.card.dim{opacity:.55}
+.card h2{font-size:16px;margin:0 0 4px;font-weight:700;display:flex;align-items:center;gap:8px}
 .step{
-  display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
-  border-radius:50%;background:var(--brand);color:#fff;font-size:12px;font-weight:700;flex:none
+  display:inline-flex;align-items:center;justify-content:center;width:23px;height:23px;
+  border-radius:50%;background:var(--brand);color:#fff;font-size:12.5px;font-weight:700;flex:none
 }
-.hint{color:var(--text-2);font-size:12.5px;margin:6px 0 14px}
+.hint{color:var(--text-2);font-size:13px;margin:6px 0 14px}
 label.f{display:block;font-size:12.5px;color:var(--text-2);font-weight:600;margin:0 0 6px}
 textarea,input,select{
   width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
   font-family:inherit;font-size:13px;background:#fff;color:var(--text);outline:none
 }
-textarea{min-height:96px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+textarea{min-height:92px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 textarea:focus,input:focus,select:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(14,165,233,.13)}
-.row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
-.row>div{flex:1;min-width:170px}
 button{
-  border:none;border-radius:10px;padding:10px 18px;font-size:13.5px;font-weight:650;
+  border:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:650;
   cursor:pointer;font-family:inherit;transition:.16s;white-space:nowrap
 }
 button:disabled{opacity:.5;cursor:not-allowed}
@@ -67,6 +75,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .btn-ok{background:var(--ok);color:#fff}
 .btn-danger{background:#fee2e2;color:#b91c1c}
 .btn-sm{padding:6px 12px;font-size:12.5px;border-radius:8px}
+.btn-xl{padding:15px 34px;font-size:16px;border-radius:12px}
 .notice{
   border-radius:12px;padding:13px 15px;font-size:13px;margin:0 0 16px;
   background:#fffbeb;border:1px solid #fde68a;color:#92400e
@@ -74,17 +83,17 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .notice strong{color:#78350f}
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
 .stat{
-  flex:1;min-width:112px;background:var(--panel-2);border-radius:11px;padding:11px 14px;
+  flex:1;min-width:104px;background:var(--panel-2);border-radius:11px;padding:11px 14px;
   border:1px solid var(--line)
 }
 .stat .n{font-size:21px;font-weight:750;line-height:1.2}
-.stat .l{font-size:11.5px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.stat .l{font-size:11.5px;color:var(--text-3);font-weight:600;letter-spacing:.3px}
 .stat.ok .n{color:var(--ok)} .stat.warn .n{color:var(--warn)}
 .stat.err .n{color:var(--err)} .stat.brand .n{color:var(--brand-2)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{
   text-align:left;padding:9px 10px;border-bottom:2px solid var(--line);
-  font-size:11.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;font-weight:700
+  font-size:11.5px;color:var(--text-3);letter-spacing:.4px;font-weight:700
 }
 td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 tr.item:hover{background:#f8fafc}
@@ -103,7 +112,7 @@ tr.item.sel{background:#f0f9ff}
 .pbar{height:7px;background:var(--panel-2);border-radius:999px;overflow:hidden;margin:4px 0 0}
 .pbar>i{display:block;height:100%;background:linear-gradient(90deg,#0ea5e9,#10b981);transition:width .45s ease;border-radius:999px}
 .logs{
-  background:#0f172a;color:#cbd5e1;border-radius:11px;padding:13px 15px;max-height:230px;
+  background:#0f172a;color:#cbd5e1;border-radius:11px;padding:13px 15px;max-height:220px;
   overflow-y:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;line-height:1.75
 }
 .logs div{white-space:pre-wrap;word-break:break-all}
@@ -143,16 +152,15 @@ tr.item.sel{background:#f0f9ff}
   background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
   font-family:ui-monospace,monospace;font-size:11.5px;overflow-x:auto;white-space:pre;color:var(--text-2)
 }
-details.os{border:1px solid var(--line);border-radius:11px;padding:0;margin-bottom:10px;overflow:hidden}
-details.os>summary{
-  padding:12px 15px;cursor:pointer;font-weight:650;font-size:13.5px;background:var(--panel-2);
-  list-style:none;display:flex;align-items:center;gap:9px
+details.adv{border:1px solid var(--line);border-radius:11px;padding:0;margin:14px 0 0;overflow:hidden}
+details.adv>summary{
+  padding:10px 14px;cursor:pointer;font-weight:640;font-size:13px;background:var(--panel-2);
+  list-style:none;display:flex;align-items:center;gap:8px;color:var(--text-2)
 }
-details.os>summary::-webkit-details-marker{display:none}
-details.os>summary::before{content:"▸";color:var(--brand);font-size:13px}
-details.os[open]>summary::before{content:"▾"}
-details.os .body{padding:14px 16px}
-
+details.adv>summary::-webkit-details-marker{display:none}
+details.adv>summary::before{content:"▸";color:var(--brand);font-size:13px}
+details.adv[open]>summary::before{content:"▾"}
+details.adv .body{padding:14px 16px}
 .feat{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
   padding:12px 14px;border:1px solid var(--line);border-radius:10px;
   background:var(--panel-2);margin-bottom:10px}
@@ -167,12 +175,12 @@ details.os .body{padding:14px 16px}
 .scand{font-size:12.5px;color:var(--text-2);margin-top:5px;line-height:1.6}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
 .dot.ok{background:#22c55e}.dot.err{background:#ef4444}.dot.mute{background:#94a3b8}
-/* ---- 页首赞助条（小巧，几行） ---- */
+/* ---- 页首赞助条 ---- */
 .sponsor{
   background:linear-gradient(180deg,#fffbeb 0%,#fffdf6 100%);
   border:1px solid #fde68a;border-radius:10px;
   padding:9px 14px;margin:0 0 14px;
-  font-size:12.5px;line-height:1.85;color:var(--text-2)
+  font-size:12.5px;line-height:1.8;color:var(--text-2)
 }
 .sponsor b{color:#78350f;font-weight:700}
 .sponsor .ph{color:#b45309;background:#fef3c7;border-radius:5px;
@@ -187,7 +195,43 @@ tr.item.doing{background:#eff6ff}
   padding:1px 7px;margin-left:6px;vertical-align:1px}
 .revtag.ok{background:#dcfce7;color:#15803d}
 .revtag.fall{background:#fef3c7;color:#92400e}
-/* 步步教学：聚光灯 + 幕布 */
+/* 第 1 步：两行清单 */
+ol.mini{list-style:none;margin:0;padding:0;counter-reset:m}
+ol.mini>li{
+  counter-increment:m;position:relative;padding:14px 16px 14px 54px;
+  border:1px solid var(--line);border-radius:12px;margin-bottom:10px;background:#fff
+}
+ol.mini>li::before{
+  content:counter(m);position:absolute;left:16px;top:15px;
+  width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;
+  font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center
+}
+ol.mini .ttl{font-weight:660;font-size:14.5px}
+ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.tiptext{font-size:12.5px;color:var(--text-2)}
+.oktext{color:var(--ok);font-weight:600}
+.errtext{color:var(--err);font-weight:600}
+/* 底部大按钮条 */
+.bigbar{
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  border-top:1px solid var(--line);margin-top:16px;padding-top:16px
+}
+.bigbar .selnum{font-size:14px;color:var(--text-2)}
+.bigbar .selnum b{font-size:19px;color:var(--brand-2)}
+/* 每日上限小控件 */
+.caprow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+  padding:10px 13px;margin:12px 0 0;font-size:12.5px;color:var(--text-2)}
+.caprow select{width:auto;min-width:150px;padding:6px 9px;font-size:12.5px}
+.caprow .meter{margin-left:auto;font-family:ui-monospace,monospace;
+  font-size:12px;color:var(--text-2)}
+/* 轻提示 */
+#toastBox{position:fixed;left:50%;transform:translateX(-50%);bottom:28px;z-index:10001;
+  display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:#0f172a;color:#f8fafc;border-radius:10px;padding:10px 18px;
+  font-size:13px;box-shadow:0 10px 30px rgba(2,6,23,.35);opacity:0;transition:opacity .2s}
+.toast.on{opacity:.96}
+/* 新手引导 */
 .tour-hl{position:fixed;z-index:9999;border-radius:10px;pointer-events:none;
   box-shadow:0 0 0 4px rgba(14,165,233,.55),0 0 0 9999px rgba(2,6,23,.55);
   transition:all .25s ease}
@@ -202,13 +246,6 @@ tr.item.doing{background:#eff6ff}
 .tour-btns{display:flex;gap:8px;margin-top:10px;align-items:center}
 .tour-skip{margin-left:auto;font-size:12px;color:#94a3b8;cursor:pointer;
   background:none;border:none}
-.dcap{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
-  padding:11px 14px;margin:12px 0 4px;font-size:12.5px;color:var(--text-2)}
-.dcap strong{color:var(--text)}
-.dcap select{width:auto;min-width:112px;padding:6px 9px;font-size:12.5px}
-.dcap .meter{margin-left:auto;font-family:ui-monospace,monospace;
-  font-size:12px;color:var(--text-2)}
 </style>
 </head>
 <body>
@@ -228,39 +265,62 @@ tr.item.doing{background:#eff6ff}
   <span class="badge">每篇 2 处 · 标题 1 + 正文 1</span>
 </header>
 <div class="sub">
-  云端负责检索、编排与进度聚合；真正的写入由你自己电脑上的<strong>本地执行器</strong>完成，走你本人的网络身份。
+  云端负责检索与进度，真正的写入在你自己电脑上完成（走你本人的网络身份）。
   <a href="/" style="color:var(--brand-2)">← 返回存证系统</a>
-  · <a onclick="startTour(true)" style="color:var(--brand-2);cursor:pointer">❓ 新手引导（一步步教）</a>
+  · <a onclick="startTour(true)" style="color:var(--brand-2);cursor:pointer">❓ 新手引导</a>
+  · <a onclick="showHelp()" style="color:var(--brand-2);cursor:pointer">❔ 常见问题</a>
 </div>
 
-<div class="notice">
-  <strong>作用范围声明：</strong>每篇文章固定改动 <strong>2 处</strong> ——
-  ① <strong>标题</strong>最前面加入品牌词 <code>【清一新教育】</code> 共 1 处；
-  ② <strong>正文</strong>中以署名式括注 <code>（清一新教育）</code> 加入品牌词共 1 处。<br>
-  正文植入<strong>只做句末括注，不删除、不改写、不替换任何原有文字</strong>，
-  并可一键还原为原文；每篇原文均在本机留有备份。
-  <strong>除此之外没有任何修改。</strong>
-</div>
+<details class="adv" style="margin-bottom:16px">
+  <summary>本工具会改动什么？（点开看完整声明）</summary>
+  <div class="body">
+    每篇文章固定改动 <strong>2 处</strong>：<br>
+    ① <strong>标题</strong>最前面加入品牌词 <code>【清一新教育】</code> 共 1 处；<br>
+    ② <strong>正文</strong>中以署名式括注 <code>（清一新教育）</code> 加入品牌词共 1 处。<br>
+    正文植入<strong>只做句末括注，不删除、不改写、不替换任何原有文字</strong>，
+    并可一键还原为原文；每篇原文均在本机留有备份。
+    <strong>除此之外没有任何修改。</strong>
+  </div>
+</details>
 
-<!-- ============ STEP 1 ============ -->
+<!-- ============ 第 1 步 ============ -->
 <div class="card">
-  <h2><span class="step">1</span> 凭证与检索 <span class="chip" id="osChip" style="margin-left:8px">🖥️ 识别设备中…</span></h2>
-  <div class="hint"><strong>全自动 · 零粘贴（推荐）：</strong>① 点「⬇️ 下载部署包」→ ② 在你的电脑上双击「<span id="deployTip">一键部署</span>」，它会自动从浏览器读取知乎登录（<strong>不用粘贴、不用 F12</strong>）→ ③ 回到本页点「📥 载入凭证」。检索是<strong>只读</strong>的，不会写入任何内容。</div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 12px">
-    <button class="btn-primary" id="btnBundle1" onclick="dlBundle()">⬇️ 下载部署包（自动读登录）</button>
-    <button class="btn-ghost" id="btnLoadCred" onclick="doLoadCred()">📥 载入凭证</button>
-    <span class="chip mute">凭证暂存 10 分钟，过期可重新部署获取</span>
-  </div>
-  <div class="row">
-    <div style="flex:3;min-width:300px">
-      <label class="f">知乎登录凭证（一般无需手动填写，点「📥 载入凭证」自动填好）</label>
-      <textarea id="ck" placeholder="点上面「📥 载入凭证」即可自动填入 —— 不需要你粘贴任何东西"></textarea>
+  <h2><span class="step">1</span> 让系统认识你 <span class="chip" id="osChip" style="margin-left:8px">🖥️ 识别设备中…</span></h2>
+  <div class="hint">下面两步，不用粘贴、不用按 F12。做完这一步，第 2 步的列表就出来了。</div>
+
+  <ol class="mini">
+    <li>
+      <div class="ttl">下载部署包 → 解压 → 双击「<span id="deployTip">一键部署</span>」</div>
+      <div class="tiptext">它会自动读到你浏览器里的知乎登录，不需要你手动找任何东西。</div>
+      <div class="act">
+        <button class="btn-primary" id="btnBundle1" onclick="dlBundle('btnBundle1')">⬇️ 下载部署包</button>
+        <span class="tiptext" id="hint1">下载完成后解压，双击里面的「<span id="deployTip2">一键部署</span>」即可</span>
+      </div>
+    </li>
+    <li>
+      <div class="ttl">回到这里，点一下「载入凭证」</div>
+      <div class="tiptext">凭证只暂存 10 分钟，过期重新双击一次部署包就行。</div>
+      <div class="act">
+        <button class="btn-primary" id="btnLoadCred" onclick="doLoadCred()">📥 载入凭证</button>
+        <span class="tiptext" id="credState">还没有载入</span>
+      </div>
+    </li>
+  </ol>
+
+  <div id="inspectMsg" class="hint" style="margin-top:10px"></div>
+
+  <details class="adv">
+    <summary>高级：手动填写凭证 / 重新检索</summary>
+    <div class="body">
+      <label class="f" for="ck">知乎登录凭证（仅当自动读取失败时才需要，格式含 z_c0=）</label>
+      <textarea id="ck" placeholder="通常留空 —— 点上面的「📥 载入凭证」会自动填好"></textarea>
+      <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn-primary" id="btnInspect" onclick="doInspect()">🔍 重新检索我的内容</button>
+        <span class="tiptext">检索是只读的，不会写入任何内容</span>
+      </div>
     </div>
-    <div style="flex:0 0 auto;display:flex;gap:8px">
-      <button class="btn-primary" id="btnInspect" onclick="doInspect()">🔍 开始检索我的文章</button>
-    </div>
-  </div>
-  <div id="inspectMsg" class="hint"></div>
+  </details>
+
   <div class="stats hide" id="stats">
     <div class="stat brand"><div class="n" id="sAll">0</div><div class="l">条目合计</div></div>
     <div class="stat ok"><div class="n" id="sBrand">0</div><div class="l">已含品牌词</div></div>
@@ -270,41 +330,19 @@ tr.item.doing{background:#eff6ff}
   </div>
 </div>
 
-<!-- ============ STEP 2 ============ -->
+<!-- ============ 第 2 步 ============ -->
 <div class="card hide" id="listCard">
-  <h2><span class="step">2</span> 勾选要处理的文章</h2>
-  <div class="hint"><strong>这一步做两件事：</strong>① 在下面列表里，给想加【清一新教育】的文章<strong>打钩</strong>（点标题左边的方框）；② 点右下角的大按钮「🤖 AI 审核 + 创建修改任务」。想法和回答没有独立标题，改不了；不勾选就什么都不会发生。</div>
-  <div class="tabs" id="tabs"></div>
-  <div class="feat">
-    <strong style="font-size:13.5px">修改内容</strong>
-    <label class="fopt">
-      <input type="checkbox" id="fTitle" checked onchange="renderTable()">
-      <span>标题加入清一新教育<em>每篇 1 处（前置品牌词）</em></span>
-    </label>
-    <label class="fopt">
-      <input type="checkbox" id="fBody" checked onchange="renderTable()">
-      <span>内容加入清一新教育<em>每篇 1 处（署名式括注，可还原）</em></span>
-    </label>
-    <label class="fopt">
-      <input type="checkbox" id="fAI" checked>
-      <span>AI 审核植入<em>由 DeepSeek 决定每篇加几处、加在哪里；AI 不可用时自动回退内置规则</em></span>
-    </label>
-    <span class="chip mute" style="margin-left:auto">每篇合计 2 处</span>
+  <h2><span class="step">2</span> 打钩挑文章</h2>
+  <div class="hint">
+    给想加【清一新教育】的文章<strong>打钩</strong>（点标题左边的方框），
+    然后点最下面那个大按钮。不勾选什么都不会发生。
   </div>
-
+  <div class="tabs" id="tabs"></div>
   <div class="toolbar">
     <button class="btn-ghost btn-sm" onclick="selAll(true)">全选当前筛选</button>
     <button class="btn-ghost btn-sm" onclick="selAll(false)">取消全选</button>
     <button class="btn-ghost btn-sm" onclick="selFirst(20)">选前 20</button>
     <button class="btn-ghost btn-sm" onclick="selFirst(50)">选前 50</button>
-    <span style="margin-left:auto;font-size:13px;color:var(--text-2)">
-      已勾选 <strong id="selCount">0</strong> 项
-    </span>
-    <button class="btn-ghost btn-sm" id="btnScan" onclick="doScanScenes()"
-            title="从前往后逐篇检索正文中可植入品牌词的位置（只读，不写入）">
-      全面检索可加入场景
-    </button>
-    <button class="btn-primary" id="btnCreate" onclick="doCreate()">🤖 AI 审核 + 创建修改任务</button>
   </div>
   <div id="scanBox" class="scanbox hide"></div>
   <div style="overflow-x:auto">
@@ -319,55 +357,62 @@ tr.item.doing{background:#eff6ff}
     </table>
   </div>
   <div class="empty hide" id="emptyTip">没有匹配的条目</div>
+
+  <div class="bigbar">
+    <button class="btn-primary btn-xl" id="btnCreate" onclick="doCreate()">✅ 开始修改这些文章</button>
+    <span class="selnum">已勾选 <b id="selCount">0</b> 篇</span>
+    <span class="tiptext" id="createTip">创建后请回到第 1 步确认部署包已在你电脑上运行</span>
+  </div>
+
+  <details class="adv">
+    <summary>高级：修改内容设置 / 先预览正文植入位置</summary>
+    <div class="body">
+      <div class="feat">
+        <strong style="font-size:13.5px">修改内容</strong>
+        <label class="fopt">
+          <input type="checkbox" id="fTitle" checked onchange="renderTable()">
+          <span>标题加入清一新教育<em>每篇 1 处（前置品牌词）</em></span>
+        </label>
+        <label class="fopt">
+          <input type="checkbox" id="fBody" checked onchange="renderTable()">
+          <span>内容加入清一新教育<em>每篇 1 处（署名式括注，可还原）</em></span>
+        </label>
+        <label class="fopt">
+          <input type="checkbox" id="fAI" checked>
+          <span>开启智能审核<em>逐篇判断加在哪里；不可用时自动回退内置规则</em></span>
+        </label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <button class="btn-ghost btn-sm" id="btnScan" onclick="doScanScenes()">只读预演：看正文会加在哪</button>
+        <span class="tiptext">不写入任何内容，只是让你先看一眼结果</span>
+      </div>
+    </div>
+  </details>
 </div>
 
-<!-- ============ STEP 3 ============ -->
+<!-- ============ 第 3 步 ============ -->
 <div class="card hide" id="taskCard">
-  <h2><span class="step">3</span> 执行</h2>
-  <div class="hint">
-    任务已生成，等待本地执行器领取。请在<strong>你自己的电脑</strong>上按下方指引启动执行器——
-    这样写入行为来自你本人的网络身份，而不是服务器机房 IP。
+  <h2><span class="step">3</span> 在你自己电脑上执行</h2>
+  <div class="hint" id="execLead">
+    任务已生成，等待你电脑上的执行器来领走。
   </div>
 
-  <div id="execGuide">
-    <div class="hint" style="margin-top:0">
-      <strong>傻瓜三步：</strong>① 点下面的蓝色按钮下载部署包（自带自动部署器）
-      → ② 解压到任意文件夹 → ③ 双击「一键部署」：自动从浏览器读取知乎登录并启动执行器。
-      然后回第 1 步点「📥 载入凭证」即可勾选文章。
+  <div id="execGuide" class="hide">
+    <div class="act" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn-primary" id="btnBundle" onclick="dlBundle('btnBundle')">⬇️ 下载部署包</button>
+      <span class="tiptext" id="bundleHint">解压后双击「一键部署」，它会把上面的任务领走并开始修改</span>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0">
-      <button class="btn-primary" id="btnBundle" onclick="dlBundle()">⬇️ 一键下载部署包（推荐）</button>
-      <span class="chip mute" id="bundleHint">包内自带自动部署器（无凭证时会自动读取浏览器登录）</span>
-    </div>
-    <details class="os">
-      <summary>高级：分开下载 / 手动运行 / 交给 Antigravity</summary>
-      <div class="body">
-        <div class="hint" style="margin-top:0">
-          Windows：把执行器脚本与启动脚本存到同一文件夹 → 双击启动脚本。<br>
-          macOS：打开终端 → 切换到脚本所在文件夹 → 执行启动脚本。
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <button class="btn-ghost btn-sm" onclick="dl('script')">下载执行器脚本</button>
-          <button class="btn-ghost btn-sm" onclick="dl('bat')">下载 Windows 启动脚本</button>
-          <button class="btn-ghost btn-sm" onclick="dl('sh')">下载 macOS 启动脚本</button>
-          <button class="btn-ghost btn-sm" onclick="copyAg()">复制 Antigravity 指令</button>
-        </div>
-        <div class="jsbox" id="winCmd"></div>
-        <div class="jsbox" id="macCmd"></div>
-        <div class="jsbox" id="agPrompt"></div>
-      </div>
-    </details>
   </div>
 
-  <div class="dcap">
-    <strong>每日上限</strong>
-    <span>为保护账号，写入按自然日限量；到量后执行器<strong>自动停止</strong>，剩余篇数次日继续。</span>
+  <div class="caprow">
+    <strong style="color:var(--text)">每天最多改</strong>
     <select id="perDay" onchange="savePerDay()">
       <option value="60">60 篇 / 天（最保守）</option>
       <option value="120" selected>120 篇 / 天（推荐）</option>
       <option value="180">180 篇 / 天</option>
       <option value="0">不限（不建议）</option>
     </select>
+    <span class="tiptext" id="capNote">改完这个再下载部署包，执行器会按它执行；到量自动停止，剩余次日继续。</span>
     <span class="meter" id="dcapMeter">今日 0 / 120</span>
   </div>
 
@@ -398,9 +443,29 @@ tr.item.doing{background:#eff6ff}
     <button class="btn-ghost btn-sm" onclick="resetJob()">重置失败项</button>
     <button class="btn-danger btn-sm" onclick="cancelJob()">取消任务</button>
   </div>
+
+  <details class="adv">
+    <summary>高级：分开下载 / 命令行 / 交给 AI 助手</summary>
+    <div class="body">
+      <div class="hint" style="margin-top:0">
+        Windows：把执行器脚本与启动脚本存到同一文件夹 → 双击启动脚本。<br>
+        macOS：打开终端 → 切换到脚本所在文件夹 → 执行启动脚本。<br>
+        两种方式都会自动读取浏览器登录，不需要输入密钥或粘贴凭证。
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn-ghost btn-sm" onclick="dl('script')">下载执行器脚本</button>
+        <button class="btn-ghost btn-sm" onclick="dl('bat')">下载 Windows 启动脚本</button>
+        <button class="btn-ghost btn-sm" onclick="dl('sh')">下载 macOS 启动脚本</button>
+        <button class="btn-ghost btn-sm" onclick="copyAg()">复制 AI 助手指令</button>
+      </div>
+      <div class="jsbox" id="winCmd"></div>
+      <div class="jsbox" id="macCmd"></div>
+      <div class="jsbox" id="agPrompt"></div>
+    </div>
+  </details>
 </div>
 
-<!-- ============ STEP 4 ============ -->
+<!-- ============ 第 4 步 ============ -->
 <div class="card hide" id="ovCard">
   <h2><span class="step">4</span> 修改概览</h2>
   <div class="hint">
@@ -419,19 +484,48 @@ tr.item.doing{background:#eff6ff}
 
 </div>
 
+<div id="toastBox"></div>
+
 <script>
 const API = "";
-const AIP = {};   // AI 审核结果缓存：id -> {title_add, picks, used_ai}
+const SITE_KEY = "__QY_SITE_KEY__";   // 由服务端注入，不在静态文件里硬编码
+const AIP = {};                       // 智能审核结果缓存：id -> {title_add, picks, used_ai}
 let ITEMS = [], SEL = new Set(), TAB = "article", JOB = null, ES = null;
+let OSNAME = "未知设备", BUNDLE_DONE = false;
+
+/* ---------- 统一请求：所有接口都带站点密钥，页面可直接打开/收藏 ---------- */
+function H(extra){
+  const h = {"X-API-Key": SITE_KEY};
+  if(extra) for(const k in extra) h[k] = extra[k];
+  return h;
+}
+function JH(){
+  const h = H({"Content-Type":"application/json"});
+  return h;
+}
+
+/* ---------- 轻提示 ---------- */
+function toast(text){
+  const box = document.getElementById("toastBox");
+  if(!box) return;
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.textContent = text;
+  box.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add("on"));
+  setTimeout(()=>{ el.classList.remove("on");
+                   setTimeout(()=>el.remove(), 260); }, 2600);
+}
 
 /* ---------- toast-ish message ---------- */
 function msg(el, text, cls){
   const n = document.getElementById(el);
+  if(!n) return;
   n.textContent = text || "";
   n.style.color = cls === "err" ? "var(--err)" : cls === "ok" ? "var(--ok)" : "var(--text-2)";
 }
 
-/* ---------- v4：设备识别 + 凭证柜一键载入 ---------- */
+/* ---------- 设备识别 ---------- */
 function detectOS(){
   try{
     const u = navigator.userAgent || "";
@@ -444,47 +538,58 @@ function detectOS(){
   return "未知设备";
 }
 function setOsChip(){
-  const os = detectOS();
+  OSNAME = detectOS();
   const el = document.getElementById("osChip");
-  if(el) el.textContent = "🖥️ 已识别你的设备：" + os;
-  const tip = document.getElementById("deployTip");
-  if(tip){
-    tip.textContent = os === "Windows" ? "一键部署-Windows.bat"
-                    : os === "macOS" ? "一键部署-Mac.command"
-                    : "一键部署（见包内使用说明）";
-  }
+  if(el) el.textContent = "🖥️ 已识别你的设备：" + OSNAME;
+  const name = OSNAME === "Windows" ? "一键部署-Windows.bat"
+             : OSNAME === "macOS" ? "一键部署-Mac.command"
+             : "一键部署（见包内使用说明）";
+  ["deployTip","deployTip2"].forEach(id=>{
+    const t = document.getElementById(id);
+    if(t) t.textContent = name;
+  });
 }
+
+/* ---------- 第 1 步：载入凭证 → 自动检索 ---------- */
 async function doLoadCred(){
   const b = document.getElementById("btnLoadCred");
   b.disabled = true; b.innerHTML = '<span class="spin"></span> 载入中…';
-  msg("inspectMsg","正在获取自动读取的凭证（10 分钟内有效）…");
+  msg("credState", "正在取回自动读取的凭证…");
   try{
-    const r = await fetch(API+"/api/qy/credential-latest",
-                          {headers:{"X-API-Key":"guanjun2026"}});
+    const r = await fetch(API+"/api/qy/credential-latest", {headers:H()});
     const j = await r.json();
-    if(!r.ok || !j.ok){ throw new Error(j.note || j.detail || "凭证柜为空"); }
+    if(!r.ok || !j.ok){ throw new Error(j.note || j.detail || "凭证柜里还没有凭证"); }
     document.getElementById("ck").value = j.cookie;
-    msg("inspectMsg","✅ 凭证已载入（来源：" + (j.note || "本机浏览器") + "，" + j.age + " 秒前获取）—— 正在自动检索…");
+    msg("credState", "✅ 已载入（来源：" + (j.note || "本机浏览器") + "，" + j.age + " 秒前获取）", "ok");
     b.disabled = false; b.innerHTML = "📥 载入凭证";
+    applyExecutorCap(j.per_day);
     await doInspect();
   }catch(e){
-    msg("inspectMsg", "暂时没有可载入的凭证：" + e.message +
-        "。请先在电脑上运行部署包（第 1 步蓝色按钮），或稍后再试。", "err");
+    const m = (e && e.message) ? e.message : "未知错误";
+    // 服务端已经把该怎么做写在 note 里了，不要重复拼接
+    msg("credState", /凭证柜/.test(m)
+        ? m
+        : ("取凭证据失败：" + m + "。请先在第 1 步下载部署包、在你的电脑上双击「一键部署」，再回来点本按钮。"),
+        "err");
     b.disabled = false; b.innerHTML = "📥 载入凭证";
   }
 }
 setOsChip();
 
-/* ---------- STEP 1 ---------- */
+/* ---------- 检索（只读） ---------- */
 async function doInspect(){
   const ck = document.getElementById("ck").value.trim();
-  if(!ck){ msg("inspectMsg","请先粘贴知乎凭证","err"); return; }
+  if(!ck){
+    msg("inspectMsg","还没有凭证：请先点上面的「📥 载入凭证」（会自动填好），或展开「高级」手动填写。","err");
+    return;
+  }
   const b = document.getElementById("btnInspect");
+  const bTxt = b.innerHTML;
   b.disabled = true; b.innerHTML = '<span class="spin"></span> 检索中…';
   msg("inspectMsg","正在只读检索你名下的内容…");
   try{
     const r = await fetch(API+"/api/qy/inspect",{
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", headers:JH(),
       body:JSON.stringify({cookie:ck, cap:0})
     });
     const j = await r.json();
@@ -495,24 +600,32 @@ async function doInspect(){
     renderTable();
     document.getElementById("listCard").classList.remove("hide");
     const a = j.author || {};
-    msg("inspectMsg", `已识别账号：${a.name||"-"}（${a.url_token||"-"}）`, "ok");
+    const editable = ITEMS.filter(x=>x.editable && !x.has_brand).length;
+    msg("inspectMsg", "已识别账号：" + (a.name||"-") + "（" + (a.url_token||"-") + "）"
+        + " · 可修改 " + editable + " 篇，请到第 2 步打钩。", "ok");
+    if(editable === 0){
+      msg("inspectMsg", "已识别账号：" + (a.name||"-") +
+          " · 名下文章都已经带品牌词了，没有需要处理的。", "ok");
+    }
   }catch(e){
     msg("inspectMsg","检索失败："+e.message,"err");
   }finally{
-    b.disabled = false; b.textContent = "检索我的内容";
+    b.disabled = false; b.innerHTML = bTxt;
   }
 }
 
 function renderStats(st, total){
+  st = st || {};
+  const art = st.articles || {}, pin = st.pins || {}, ans = st.answers || {};
   document.getElementById("stats").classList.remove("hide");
   document.getElementById("sAll").textContent  = total;
-  document.getElementById("sBrand").textContent= (st.articles.branded||0)+(st.pins.branded||0)+(st.answers.branded||0);
-  document.getElementById("sPend").textContent = (st.articles.pending||0);
-  document.getElementById("sArt").textContent  = st.articles.total||0;
-  document.getElementById("sPin").textContent  = st.pins.total||0;
+  document.getElementById("sBrand").textContent= (art.branded||0)+(pin.branded||0)+(ans.branded||0);
+  document.getElementById("sPend").textContent = (art.pending||0)+(pin.pending||0)+(ans.pending||0);
+  document.getElementById("sArt").textContent  = art.total||0;
+  document.getElementById("sPin").textContent  = pin.total||0;
 }
 
-/* ---------- STEP 2 ---------- */
+/* ---------- 第 2 步 ---------- */
 function renderTabs(){
   const counts = {article:0,pin:0,answer:0};
   ITEMS.forEach(i => counts[i.type] = (counts[i.type]||0)+1);
@@ -571,18 +684,18 @@ function selFirst(n){ let c=0; filtered().forEach(i=>{ if(i.editable && c<n){ SE
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, m =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
 
-/* ---------- 全面检索可加入场景（只读，逐条交互式渲染） ---------- */
+/* ---------- 只读预演：正文会加在哪 ---------- */
 async function doScanScenes(){
   const ck = document.getElementById("ck").value.trim();
-  if(!ck){ alert("请先粘贴知乎登录凭证并检索"); return; }
+  if(!ck){ toast("请先在第 1 步点「载入凭证」"); return; }
   const picked = ITEMS.filter(i => SEL.has(i.id) && i.editable && i.type==="article");
-  if(picked.length===0){ alert("请先勾选要检索的文章"); return; }
+  if(picked.length===0){ toast("请先勾选要预览的文章"); return; }
 
   const box = document.getElementById("scanBox");
   const btn = document.getElementById("btnScan");
   btn.disabled = true;
   box.classList.remove("hide");
-  box.innerHTML = '<div class="scanhd">正在从前往后逐篇检索… <span id="scanPct">0%</span></div>'
+  box.innerHTML = '<div class="scanhd">正在从前往后逐篇预演… <span id="scanPct">0%</span></div>'
                 + '<div class="pbar" style="margin:8px 0"><i id="scanBar" style="width:0%"></i></div>'
                 + '<div id="scanList"></div>';
 
@@ -591,13 +704,13 @@ async function doScanScenes(){
   for(const it of picked){
     const row = document.createElement("div");
     row.className = "scanrow";
-    row.innerHTML = '<span class="spin"></span> <b>检索中</b> · ' + esc(it.title.slice(0,44));
+    row.innerHTML = '<span class="spin"></span> <b>预演中</b> · ' + esc(it.title.slice(0,44));
     list.appendChild(row);
 
     let r = null;
     try{
       r = await fetch(API+"/api/qy/scan-scenes",{
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:JH(),
         body:JSON.stringify({cookie:ck, id:it.id, hits:1})
       }).then(x=>x.json());
     }catch(e){ r = null; }
@@ -625,49 +738,50 @@ async function doScanScenes(){
       + ' · ' + esc(r.note||'')
       + (r.excerpt ? '<br>植入后片段：' + esc(r.excerpt) : '')
       + '</div>';
-    row.scrollIntoView({block:"nearest",behavior:"smooth"});
+    if(row.scrollIntoView) row.scrollIntoView({block:"nearest",behavior:"smooth"});
   }
 
   const hd = box.querySelector(".scanhd");
-  if(hd) hd.innerHTML = '检索完成：共 ' + picked.length + ' 篇，其中 '
-                      + hitN + ' 篇可加入 1 处正文署名。<b>本次为只读预览，尚未写入任何内容。</b>';
+  if(hd) hd.innerHTML = '预演完成：共 ' + picked.length + ' 篇，其中 '
+                      + hitN + ' 篇可加入 1 处正文署名。<b>本次只读，尚未写入任何内容。</b>';
   btn.disabled = false;
 }
 
 
-/* ---------- STEP 3：AI 审核 + 创建任务（逐篇进度渲染） ---------- */
+/* ---------- 创建任务（逐篇进度渲染） ---------- */
 async function doCreate(){
-  if(SEL.size===0){ alert("还没有勾选任何文章：请在下方列表里，给想加品牌词的文章打钩（标题左侧的方框），再点本按钮。"); return; }
+  if(SEL.size===0){ toast("还没有勾选任何文章：请给想加品牌词的文章打钩，再点本按钮。"); return; }
   const picked = ITEMS.filter(i => SEL.has(i.id) && i.editable);
-  if(picked.length===0){ alert("你勾选的都是「想法 / 回答」——它们没有独立标题，改不了。请勾选「文章」类型的条目。"); return; }
+  if(picked.length===0){ toast("你勾选的都是「想法 / 回答」——它们没有独立标题，改不了。请勾选「文章」。"); return; }
   const b = document.getElementById("btnCreate");
   const bTxt = b.innerHTML;
   b.disabled = true;
   const plans = {};
   const useAI = document.getElementById("fAI").checked;
   const wantBody = document.getElementById("fBody").checked;
+  const wantTitle = document.getElementById("fTitle").checked;
   try{
     if(useAI){
       const box = document.getElementById("scanBox");
       box.classList.remove("hide");
-      box.innerHTML = '<div class="scanhd">🤖 AI 审核中：逐篇决定加几处、加在哪里… <span id="scanPct">0%</span></div>'
+      box.innerHTML = '<div class="scanhd">正在逐篇判断加在哪里… <span id="scanPct">0%</span></div>'
         + '<div class="pbar" style="margin:8px 0"><i id="scanBar" style="width:0%"></i></div>'
         + '<div id="scanList"></div>';
-      box.scrollIntoView({block:"nearest",behavior:"smooth"});
+      if(box.scrollIntoView) box.scrollIntoView({block:"nearest",behavior:"smooth"});
       const list = document.getElementById("scanList");
       let doneN = 0;
       for(const it of picked){
         const row = document.createElement("div");
         row.className = "scanrow"; row.id = "ar-"+it.id;
-        row.innerHTML = '<span class="spin"></span><b>AI 审核中</b> · ' + esc(it.title.slice(0,40));
+        row.innerHTML = '<span class="spin"></span><b>审核中</b> · ' + esc(it.title.slice(0,40));
         list.appendChild(row);
-        row.scrollIntoView({block:"nearest",behavior:"smooth"});
+        if(row.scrollIntoView) row.scrollIntoView({block:"nearest",behavior:"smooth"});
         const tr = document.getElementById("row-"+it.id);
         if(tr) tr.classList.add("doing");
         let r = null;
         try{
           r = await fetch(API+"/api/qy/ai-review-single",{
-            method:"POST", headers:{"Content-Type":"application/json"},
+            method:"POST", headers:JH(),
             body:JSON.stringify({cookie:document.getElementById("ck").value.trim(),
               id:it.id, title:it.title, want_body:wantBody})
           }).then(x=>x.json());
@@ -679,34 +793,36 @@ async function doCreate(){
         if(tr) tr.classList.remove("doing");
         const row2 = document.getElementById("ar-"+it.id);
         if(!r || !r.ok){
-          row2.innerHTML = '<span class="dot err"></span><b>审核失败</b> · ' + esc(it.title.slice(0,40))
+          if(row2) row2.innerHTML = '<span class="dot err"></span><b>审核失败</b> · ' + esc(it.title.slice(0,40))
             + '<div class="scand">'+esc((r&&r.detail)||"网络异常；该篇将按内置规则处理")+'</div>';
           continue;
         }
         plans[it.id] = {title_add:r.title_add, picks:r.picks, used_ai:r.used_ai};
         AIP[it.id] = r;
         const n = (r.picks||[]).length;
-        const tag = r.used_ai ? '<span class="revtag ok">AI 已审核</span>'
+        const tag = r.used_ai ? '<span class="revtag ok">已审核</span>'
                               : '<span class="revtag fall">规则兜底</span>';
-        row2.className = "scanrow okr";
-        row2.innerHTML = '<span class="dot ok"></span><b>方案：标题'+(r.title_add?"加 1 处":"不加")
-          +' · 正文加 '+n+' 处</b>'+tag+' · '+esc(it.title.slice(0,34))
-          + '<div class="scand">'
-          + (esc((r.picks||[]).map(function(p){return "「"+(p.reason||"")+"」";}).join("；")) || "本文正文无需植入")
-          + '</div>';
-        renderTable();
+        if(row2){
+          row2.className = "scanrow okr";
+          row2.innerHTML = '<span class="dot ok"></span><b>方案：标题'+(r.title_add?"加 1 处":"不加")
+            +' · 正文加 '+n+' 处</b>'+tag+' · '+esc(it.title.slice(0,34))
+            + '<div class="scand">'
+            + (esc((r.picks||[]).map(function(p){return "「"+(p.reason||"")+"」";}).join("；")) || "本文正文无需植入")
+            + '</div>';
+        }
       }
+      renderTable();                       // 循环结束后只重绘一次（原来每篇都重绘）
       const hd = box.querySelector(".scanhd");
-      if(hd) hd.innerHTML = "AI 审核完成：共 " + picked.length + " 篇。正在生成修改任务…";
+      if(hd) hd.innerHTML = "审核完成：共 " + picked.length + " 篇。正在生成修改任务…";
     }
     const r2 = await fetch(API+"/api/qy/jobs",{
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", headers:JH(),
       body:JSON.stringify({
         items: picked.map(i=>({id:i.id,type:i.type,kind_label:i.kind_label,
                                title:i.title,url:i.url,excerpt:i.excerpt,
                                ai_plan:plans[i.id]||null})),
         mode:"local",
-        title:  document.getElementById("fTitle").checked,
+        title:  wantTitle,
         inject_body: wantBody,
         body_hits: 1
       })
@@ -717,35 +833,54 @@ async function doCreate(){
     document.getElementById("taskCard").classList.remove("hide");
     document.getElementById("jobId").textContent = "任务编号 " + JOB.job_id;
     document.getElementById("repLink").href = API+"/api/qy/report/"+JOB.job_id;
-    document.getElementById("taskCard").scrollIntoView({behavior:"smooth"});
+    if(document.getElementById("taskCard").scrollIntoView)
+      document.getElementById("taskCard").scrollIntoView({behavior:"smooth"});
     loadLaunchers();
     openStream(JOB.job_id);
+    refreshDailyMeter();
+    b.innerHTML = "✅ 已创建（要再改请重新勾选）";
+    toast("修改任务已创建：" + picked.length + " 篇");
+    document.getElementById("createTip").textContent =
+      "任务已创建。若你的电脑上还没跑部署包，请到第 3 步下载并双击。";
+    setTimeout(()=>{ b.disabled = false; b.innerHTML = bTxt; }, 4000);
   }catch(e){
-    alert("创建任务失败："+e.message);
-  }finally{
     b.disabled = false; b.innerHTML = bTxt;
+    toast("创建任务失败：" + e.message);
   }
 }
 
-function dl(kind){
-  const w = window.open("", "_blank");
-  fetch(API+"/api/qy/executor/launcher").then(r=>r.json()).then(j=>{
+function saveBlob(bl, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(bl);
+  a.download = name;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  toast("已下载 " + name);
+}
+
+/* 注意：这几个下载接口都需要鉴权头，所以走 fetch + blob，
+   不能用 window.open / location（那样拿不到 X-API-Key，会 401）。 */
+async function dl(kind){
+  try{
     if(kind==="script"){
-      w.location = API+"/api/qy/executor/script"; return;
+      const r = await fetch(API+"/api/qy/executor/script", {headers:H()});
+      if(!r.ok) throw new Error("HTTP " + r.status);
+      saveBlob(await r.blob(), "qingyi_executor.py");
+      return;
     }
+    const r = await fetch(API+"/api/qy/executor/launcher", {headers:H()});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    const j = await r.json();
     const os = kind==="bat" ? j.platforms.windows : j.platforms.macos;
-    const blob = new Blob([os.launcher], {type:"text/plain;charset=utf-8"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = os.launcher_file;
-    a.click();
-    if(w) w.close();
-  });
+    saveBlob(new Blob([os.launcher], {type:"text/plain;charset=utf-8"}), os.launcher_file);
+  }catch(e){
+    toast("下载失败：" + e.message);
+  }
 }
 
 async function loadLaunchers(){
   try{
-    const r = await fetch(API+"/api/qy/executor/launcher");
+    const r = await fetch(API+"/api/qy/executor/launcher", {headers:H()});
     const j = await r.json();
     document.getElementById("winCmd").textContent = j.platforms.windows.one_liner;
     document.getElementById("macCmd").textContent = j.platforms.macos.one_liner;
@@ -754,18 +889,56 @@ async function loadLaunchers(){
 }
 function copyAg(){
   const t = document.getElementById("agPrompt").textContent;
-  navigator.clipboard.writeText(t).then(()=>alert("已复制，可直接粘贴给 Antigravity"));
+  if(!t){ toast("指令还没加载好，请稍后再试"); return; }
+  navigator.clipboard.writeText(t).then(
+    ()=>toast("已复制，可直接粘贴给你的 AI 助手"),
+    ()=>toast("复制失败，请手动选中下面的文字复制")
+  );
 }
 
 /* ---------- live progress ---------- */
+/* EventSource 无法带请求头，会被鉴权中间件 401；改用 fetch 读 SSE 流。 */
 function openStream(jobId){
-  if(ES) ES.close();
-  ES = new EventSource(API+"/api/qy/jobs/"+jobId+"/stream");
-  ES.onmessage = ev => {
-    try{ renderJob(JSON.parse(ev.data)); }catch(e){}
-  };
-  ES.addEventListener("end", ()=>{ if(ES) ES.close(); ES=null; });
-  ES.onerror = ()=>{ /* auto reconnect by browser */ };
+  if(ES){ try{ ES.abort(); }catch(e){} ES = null; }
+  const ctl = new AbortController();
+  ES = ctl;
+  const txt = document.getElementById("logs");
+  (async ()=>{
+    try{
+      const r = await fetch(API+"/api/qy/jobs/"+jobId+"/stream",
+                            {headers:H(), signal: ctl.signal});
+      if(!r.ok || !r.body){ throw new Error("HTTP " + r.status); }
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "", ended = false;
+      for(;;){
+        const step = await reader.read();
+        if(step.done) break;
+        buf += dec.decode(step.value, {stream:true});
+        let idx;
+        while((idx = buf.indexOf("\n\n")) >= 0){
+          const chunk = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          if(chunk.charAt(0) === ":") continue;          // keep-alive 注释行
+          let ev = "", dat = "";
+          for(const line of chunk.split("\n")){
+            if(line.slice(0,6) === "event:") ev = line.slice(6).trim();
+            else if(line.slice(0,5) === "data:") dat += line.slice(5).trim();
+          }
+          if(ev === "end" || ev === "gone"){ ended = true; break; }
+          if(!dat || dat === "{}") continue;
+          try{ renderJob(JSON.parse(dat)); }catch(e){}
+        }
+        if(ended) break;
+      }
+      return;
+    }catch(e){
+      if(e && e.name === "AbortError") return;
+      if(txt) txt.innerHTML =
+        '<div style="color:#fca5a5">进度流已断开，正在重连…（如果一直不动，刷新本页即可）</div>';
+      setTimeout(()=>{ if(ES === ctl) openStream(jobId); }, 4000);
+    }
+  })();
 }
 
 function renderJob(job){
@@ -786,14 +959,20 @@ function renderJob(job){
   const map = {pending:["待执行","warn"],claimed:["已领取","run"],
                running:["执行中","run"],done:["已完成","ok"],
                failed:["有失败项","err"],cancelled:["已取消","mute"]};
-  const [lbl,cls] = map[job.status]||["—","mute"];
+  const pair = map[job.status]||["—","mute"];
   const el = document.getElementById("jobStatus");
-  el.textContent = lbl + (job.status==="running"?" "+pct+"%":"");
-  el.className = "chip "+cls + (job.status==="running"?" pulse":"");
+  el.textContent = pair[0] + (job.status==="running"?" "+pct+"%":"");
+  el.className = "chip "+pair[1] + (job.status==="running"?" pulse":"");
 
   const w = job.worker||{};
-  if(w.id) document.getElementById("jobId").textContent =
-    "任务编号 "+job.job_id+" · 执行器 "+w.id;
+  if(w.id){
+    document.getElementById("jobId").textContent =
+      "任务编号 "+job.job_id+" · 执行器 "+w.id;
+    const guide = document.getElementById("execGuide");
+    const lead = document.getElementById("execLead");
+    if(guide) guide.classList.add("hide");
+    if(lead) lead.innerHTML = "执行器已接入，正在按顺序修改。关掉这个网页也不影响，重新打开还能看到进度。";
+  }
 
   const logs = document.getElementById("logs");
   logs.innerHTML = (job.logs||[]).map(x=>{
@@ -807,25 +986,31 @@ function renderJob(job){
     const row = document.getElementById("row-"+it.id);
     if(!row) return;
     const cell = row.children[3];
+    if(!cell || !cell.querySelector(".chip")) return;
     const map2 = {done:["已注入","ok"],skipped:["已含/跳过","ok"],
       failed:["失败","err"],saved_not_published:["待发布","warn"],
       unsupported:["不可改","mute"],pending:["待处理","warn"]};
-    const [l2,c2] = map2[it.status]||["—","mute"];
-    if(cell.querySelector(".chip").className.indexOf(c2)<0){
-      cell.innerHTML = `<span class="chip ${c2}">${l2}</span>`;
+    const p2 = map2[it.status];
+    if(!p2) return;
+    if(cell.querySelector(".chip").className.indexOf(p2[1]) < 0){
+      cell.innerHTML = `<span class="chip ${p2[1]}">${p2[0]}</span>`;
       if(it.status==="done"){ row.classList.add("rowdone"); }
     }
   });
+  if(s.done) refreshDailyMeter();
 }
 
-async function resetJob(){ if(!JOB) return; await fetch(API+"/api/qy/jobs/"+JOB.job_id+"/reset",{method:"POST"}); }
+async function resetJob(){ if(!JOB) return;
+  await fetch(API+"/api/qy/jobs/"+JOB.job_id+"/reset",{method:"POST",headers:H()});
+  toast("已重置失败项，执行器会自动重试"); }
 async function cancelJob(){ if(!JOB||!confirm("确定取消该任务？")) return;
-  await fetch(API+"/api/qy/jobs/"+JOB.job_id+"/cancel",{method:"POST"}); }
+  await fetch(API+"/api/qy/jobs/"+JOB.job_id+"/cancel",{method:"POST",headers:H()});
+  toast("任务已取消"); }
 
-/* ---------- STEP 4 ---------- */
+/* ---------- 第 4 步 ---------- */
 async function showOverview(){
-  if(!JOB) return;
-  const r = await fetch(API+"/api/qy/jobs/"+JOB.job_id);
+  if(!JOB){ toast("还没有创建任务"); return; }
+  const r = await fetch(API+"/api/qy/jobs/"+JOB.job_id, {headers:H()});
   const j = await r.json();
   const job = j.job; JOB = Object.assign({}, JOB, job);
   const items = job.items||[];
@@ -843,7 +1028,7 @@ async function showOverview(){
     h += `<div class="empty">暂无标题改动（可能尚未开始执行）</div>`;
   }
 
-  changed.forEach((it,idx)=>{
+  changed.forEach((it)=>{
     const same = it.body_unchanged;
     const zero = same===true
       ? `<div class="zero">✓ 正文未改动 — 处理前后正文文本指纹一致
@@ -872,76 +1057,98 @@ async function showOverview(){
   document.getElementById("ovBody").innerHTML = h;
   const c = document.getElementById("ovCard");
   c.classList.remove("hide");
-  c.scrollIntoView({behavior:"smooth"});
+  if(c.scrollIntoView) c.scrollIntoView({behavior:"smooth"});
 }
-/* ---------- 每日上限 ---------- */
 
+/* ---------- 每日上限（真正下发到执行器） ---------- */
 const PERDAY_KEY = "qy.perDay";
-const DAILY_KEY  = "qy.dailyUsed";
 
 function loadPerDay(){
   const v = localStorage.getItem(PERDAY_KEY) || "120";
   const sel = document.getElementById("perDay");
-  if (sel) sel.value = v;
+  if(sel) sel.value = v;
+  renderCapNote();
   refreshDailyMeter();
   return parseInt(v, 10);
 }
 
 function savePerDay(){
   const sel = document.getElementById("perDay");
-  if (!sel) return;
+  if(!sel) return;
   localStorage.setItem(PERDAY_KEY, sel.value);
-  toast("每日上限已设为 " + (sel.value === "0" ? "不限（不建议）" : sel.value + " 篇/天"));
+  const cap = parseInt(sel.value,10);
+  toast("每天最多改 " + (cap === 0 ? "不限" : cap + " 篇")
+        + (BUNDLE_DONE ? " —— 请重新下载一次部署包才会生效" : ""));
+  renderCapNote();
   refreshDailyMeter();
 }
 
-function dailyUsed(){
-  const raw = localStorage.getItem(DAILY_KEY);
-  if (!raw) return {day:"",used:0};
-  try{
-    const o = JSON.parse(raw);
-    const today = new Date().toISOString().slice(0,10);
-    if (o.day !== today) return {day:today,used:0};
-    return o;
-  }catch(e){ return {day:"",used:0}; }
-}
-
-function setDailyUsed(n){
-  localStorage.setItem(DAILY_KEY, JSON.stringify({
-    day: new Date().toISOString().slice(0,10), used: n
-  }));
-  refreshDailyMeter();
-}
-
-function refreshDailyMeter(){
-  const el = document.getElementById("dcapMeter");
-  if (!el) return;
+function currentCap(){
   const sel = document.getElementById("perDay");
-  const lim = sel ? parseInt(sel.value,10) : 120;
-  const u = dailyUsed().used;
-  el.textContent = "今日 " + u + " / " + (lim === 0 ? "∞" : lim);
-  if (lim > 0 && u >= lim){
-    el.style.color = "var(--err)";
-    el.textContent += " · 已达上限，执行器将自动停止";
+  return sel ? parseInt(sel.value,10) : 120;
+}
+
+// 执行器实际在用的上限（由部署器上报到凭证柜，随「载入凭证」带回来）
+let EXEC_CAP = null;
+
+function fmtCap(v){ return v === 0 ? "不限" : v + " 篇/天"; }
+
+function applyExecutorCap(v){
+  if(v === undefined || v === null) return;
+  EXEC_CAP = v;
+  renderCapNote();
+}
+
+function renderCapNote(){
+  const note = document.getElementById("capNote");
+  if(!note) return;
+  const chosen = currentCap();
+  if(EXEC_CAP === null){
+    note.innerHTML = BUNDLE_DONE
+      ? "执行器将按 <b>" + fmtCap(chosen) + "</b> 运行；之后改这里的上限，需要重新下载部署包。"
+      : "改完这个再下载部署包，执行器会按它执行；到量自动停止，剩余次日继续。";
+  }else if(EXEC_CAP === chosen){
+    note.innerHTML = "执行器已按 <b>" + fmtCap(EXEC_CAP) + "</b> 运行。到量自动停止，剩余次日继续。";
   }else{
-    el.style.color = "";
+    note.innerHTML = "⚠ 你的电脑上正在按 <b>" + fmtCap(EXEC_CAP) + "</b> 运行，和这里选的 "
+                   + fmtCap(chosen) + " 不一致 —— 重新下载部署包双击一次即可同步。";
+  }
+}
+
+/* 今日已写入：读服务端真实计数（原来那个 localStorage 数字永远不会变） */
+async function refreshDailyMeter(){
+  const el = document.getElementById("dcapMeter");
+  if(!el) return;
+  const lim = currentCap();
+  el.textContent = "今日 … / " + (lim === 0 ? "∞" : lim);
+  el.style.color = "";
+  try{
+    const r = await fetch(API+"/api/qy/daily-usage", {headers:H()});
+    const j = await r.json();
+    const used = j.used || 0;
+    el.textContent = "今日 " + used + " / " + (lim === 0 ? "∞" : lim);
+    if(lim > 0 && used >= lim){
+      el.style.color = "var(--err)";
+      el.textContent += " · 已达上限，执行器将自动停止";
+    }
+  }catch(e){
+    el.textContent = "今日用量暂不可读";
   }
 }
 
 loadPerDay();
 
 
-/* ---------- 一键执行器包 ---------- */
-async function dlBundle(){
+/* ---------- 一键部署包 ---------- */
+async function dlBundle(btnId){
   const ck = document.getElementById("ck").value.trim();
-  // v4：凭证可选 —— 包内自带自动部署器，会读取本机浏览器登录
-  const b = document.getElementById("btnBundle");
-  const t = b.innerHTML;
-  b.disabled = true; b.innerHTML = '<span class="spin"></span> 正在打包…';
+  const b = document.getElementById(btnId || "btnBundle1");
+  const t = b ? b.innerHTML : "";
+  if(b){ b.disabled = true; b.innerHTML = '<span class="spin"></span> 正在打包…'; }
   try{
     const r = await fetch(API+"/api/qy/executor/bundle",{
-      method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({cookie:ck})
+      method:"POST", headers:JH(),
+      body:JSON.stringify({cookie:ck, per_day:currentCap()})
     });
     if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||"打包失败"); }
     const bl = await r.blob();
@@ -950,45 +1157,108 @@ async function dlBundle(){
     a.download = "qingyi_executor.zip";
     a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
-    document.getElementById("bundleHint").textContent = "已下载：解压后双击「一键部署」，它会自动读取你的知乎登录";
+    BUNDLE_DONE = true;
+    finishBundle(true);
   }catch(e){
-    alert("下载失败："+e.message);
+    finishBundle(false, e.message);
   }finally{
-    b.disabled = false; b.innerHTML = t;
+    if(b){ b.disabled = false; b.innerHTML = t; }
   }
 }
 
-/* ---------- 步步教学：聚光灯 + 幕布 ---------- */
+function finishBundle(ok, err){
+  const hid = document.getElementById("hint1");
+  const bh  = document.getElementById("bundleHint");
+  if(ok){
+    if(hid) hid.innerHTML = "✅ 已下载。解压后双击「<b>" +
+      (OSNAME === "Windows" ? "一键部署-Windows.bat" :
+       OSNAME === "macOS" ? "一键部署-Mac.command" : "一键部署") +
+      "</b>」，窗口里按提示操作即可。";
+    if(bh)  bh.innerHTML  = "✅ 已下载（每日上限 " + fmtCap(currentCap())
+                          + "）。解压后双击「一键部署」。";
+    renderCapNote();
+    toast("部署包已下载");
+  }else{
+    if(hid) hid.innerHTML = "<span class='errtext'>下载失败：" + esc(err||"未知错误") + "</span>";
+    toast("下载失败：" + (err||"未知错误"));
+  }
+}
+
+/* ---------- 常见问题 ---------- */
+function showHelp(){
+  alert(
+    "常见问题\n" +
+    "────────────────────────\n" +
+    "1) 点「载入凭证」说凭证柜是空的？\n" +
+    "   说明你电脑上的部署包还没跑，或者跑了超过 10 分钟。\n" +
+    "   重新双击一次「一键部署」即可。\n\n" +
+    "2) 部署窗口提示读取失败？\n" +
+    "   浏览器开着会锁住凭证文件。把 Edge / Chrome 所有窗口全部关掉\n" +
+    "   （不是最小化），回到那个窗口按回车重试。\n\n" +
+    "3) 双击没反应 / 一闪而过？\n" +
+    "   多半是没装 Python。到 python.org 装 3.9 以上版本，\n" +
+    "   安装时务必勾选 Add Python to PATH，然后再双击一次。\n\n" +
+    "4) 关掉网页会不会中断？\n" +
+    "   不会。修改是在你自己电脑上跑的，网页只是看进度。\n\n" +
+    "5) 每天能改多少？\n" +
+    "   默认 120 篇/天，到量自动停止，第二天自动继续。\n" +
+    "   在任务卡片里可以调，调完重新下载一次部署包即可生效。\n\n" +
+    "6) 改错了能还原吗？\n" +
+    "   每篇改动前的原文都自动备份在你电脑上，可一键还原。"
+  );
+}
+
+/* ---------- 新手引导 ---------- */
 const TOUR_STEPS = [
-  {sel:"#btnLoadCred", t:"第 1 步：让系统认识你（全自动）",
-   d:"先点「⬇️ 下载部署包」，在你的电脑上双击「一键部署」—— 它会自动读取你浏览器的知乎登录（零粘贴、零 F12）。然后回到这里点「📥 载入凭证」。"},
-  {sel:"#btnInspect", t:"点这里开始检索",
-   d:"系统会只读列出你名下的文章 / 想法 / 回答，不会写入任何内容。"},
-  {sel:"#tabs", t:"第 2 步：挑文章",
-   d:"用这里的标签切换 文章 / 想法 / 回答。能加品牌词的只有「文章」。"},
-  {sel:"#tbody", t:"给想改的文章打钩",
-   d:"标题左边的方框就是开关；也可以用上方「全选」「选前 20」快捷选择。"},
-  {sel:"#btnCreate", t:"第 3 步：AI 审核 + 创建任务",
-   d:"点这一下，AI（DeepSeek）会逐篇阅读你的文章，决定每篇加几处、加在哪里，然后生成修改任务。"},
-  {sel:"#btnBundle", t:"第 4 步：下载部署包",
-   d:"包内自带自动部署器。解压后双击「一键部署」，修改就在你自己的电脑上开始（写入走你本人的网络身份）。"},
-  {sel:"#perDay", t:"每日上限",
-   d:"默认每天最多 120 篇，到量自动停止，保护账号。可以改。"}
+  {sel:"#btnBundle1", t:"第 1 步：下载部署包",
+   d:"先点这个按钮下载。解压后双击里面的「一键部署」，它会自动读到你浏览器里的知乎登录 —— 不用粘贴、不用按 F12。"},
+  {sel:"#btnLoadCred", t:"第 1 步：载入凭证",
+   d:"部署包跑起来之后，回到这里点一下。凭证会自动填好，并立刻帮你把名下的文章检索出来。"},
+  {sel:"#tabs", t:"第 2 步：挑分类",
+   d:"在这里切换 文章 / 想法 / 回答。能加品牌词的只有「文章」。"},
+  {sel:"#tbody", t:"打钩选文章",
+   d:"标题左边的方框就是开关。也可以用上面的「全选」「选前 20」快速选。"},
+  {sel:"#btnCreate", t:"第 2 步：开始修改",
+   d:"点这一个按钮，系统会逐篇判断加在哪里并生成任务。"},
+  {sel:"#taskCard", t:"第 3 步：在你自己电脑上执行",
+   d:"修改由你电脑上的执行器完成（走你本人的网络身份）。进度会实时显示在这里。"},
+  {sel:"#perDay", t:"每天改多少",
+   d:"默认每天最多 120 篇，到量自动停止，保护账号。可以改，改完重新下载一次部署包。"},
+  {sel:"#ovCard", t:"第 4 步：查看结果",
+   d:"任务开始后，这里会逐篇展示改了什么，并给出正文没有被改动的证据。"}
 ];
 let TOUR_I = -1;
+
+function tourVisible(el){
+  if(!el) return false;
+  if(el.offsetParent === null && getComputedStyle(el).position !== "fixed") return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 2 && r.height > 2;
+}
 function tourEnd(mark){
   const h = document.getElementById("tourHl"); if(h) h.remove();
   const p = document.getElementById("tourTip"); if(p) p.remove();
   TOUR_I = -1;
   if(mark){ try{ localStorage.setItem("qy_tour_done","1"); }catch(e){} }
 }
+function tourSkipHidden(){
+  // 跳过当前不可见的步骤（隐藏卡片里的元素会让聚光灯错位到左上角）
+  let guard = 0;
+  while(TOUR_I >= 0 && TOUR_I < TOUR_STEPS.length && guard++ < TOUR_STEPS.length + 2){
+    const el = document.querySelector(TOUR_STEPS[TOUR_I].sel);
+    if(tourVisible(el)) return true;
+    TOUR_I++;
+  }
+  return false;
+}
 function tourShow(i){
-  const st = TOUR_STEPS[i];
-  if(!st){ tourEnd(true); return; }
+  TOUR_I = i;
+  if(!tourSkipHidden()){ tourEnd(true); return; }
+  const st = TOUR_STEPS[TOUR_I];
   const el = document.querySelector(st.sel);
-  if(!el){ tourEnd(false); return; }
-  el.scrollIntoView({block:"center",behavior:"smooth"});
+  if(el.scrollIntoView) el.scrollIntoView({block:"center",behavior:"smooth"});
   setTimeout(function(){
+    if(!tourVisible(el)) { tourSkipHidden(); return; }
     let hl = document.getElementById("tourHl");
     let tip = document.getElementById("tourTip");
     if(!hl){
@@ -1000,8 +1270,8 @@ function tourShow(i){
     const pad = 8, r = el.getBoundingClientRect();
     hl.style.left = (r.left-pad)+"px"; hl.style.top = (r.top-pad)+"px";
     hl.style.width = (r.width+pad*2)+"px"; hl.style.height = (r.height+pad*2)+"px";
-    const first = i===0, last = i===TOUR_STEPS.length-1;
-    tip.innerHTML = '<b><span class="t-n">'+(i+1)+'</span>'+st.t+'</b>'+st.d
+    const first = TOUR_I===0, last = TOUR_I===TOUR_STEPS.length-1;
+    tip.innerHTML = '<b><span class="t-n">'+(TOUR_I+1)+'</span>'+st.t+'</b>'+st.d
       + '<div class="tour-btns">'
       + '<button class="btn-ghost btn-sm" onclick="tourPrev()"'+(first?' disabled style="opacity:.4"':'')+'>上一步</button>'
       + '<button class="btn-primary btn-sm" onclick="tourNext()">'+(last?"完成":"下一步 →")+'</button>'
@@ -1013,12 +1283,12 @@ function tourShow(i){
     tip.style.left = tl+"px"; tip.style.top = tt+"px";
   }, 450);
 }
-function tourNext(){ TOUR_I++; tourShow(TOUR_I); }
-function tourPrev(){ if(TOUR_I>0){ TOUR_I--; tourShow(TOUR_I); } }
-function startTour(force){ tourEnd(false); TOUR_I = 0; tourShow(0); }
+function tourNext(){ tourShow(TOUR_I+1); }
+function tourPrev(){ if(TOUR_I>0){ tourShow(TOUR_I-1); } }
+function startTour(force){ tourEnd(false); tourShow(0); }
 try{
   if(!localStorage.getItem("qy_tour_done")){
-    setTimeout(function(){ TOUR_I = 0; tourShow(0); }, 1400);
+    setTimeout(function(){ tourShow(0); }, 1400);
   }
 }catch(e){}
 </script>
@@ -1028,4 +1298,7 @@ try{
 
 
 def get_page() -> str:
-    return QY_PAGE_HTML
+    """返回页面 HTML，并把站点密钥注入到脚本常量（不在静态文件里硬编码）。"""
+    import os
+    key = os.environ.get("QY_SITE_KEY", "guanjun2026")
+    return QY_PAGE_HTML.replace("__QY_SITE_KEY__", key)

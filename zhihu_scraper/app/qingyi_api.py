@@ -53,7 +53,12 @@ SPONSOR = {
 }
 
 # 每日写入上限（防风控主闸）。用户口径：每天 120 篇，不要一次性全量上线。
-DAILY_CAP = 120
+# 网页上的「每日上限」选择会随部署包下发到执行器（perday.txt），此处为默认值。
+DAILY_CAP = int(os.environ.get("QY_DAILY_CAP", "120"))
+
+# 站点访问密钥（模块级单一来源）。执行器/启动脚本由服务端直接携带，
+# 用户不需要知道也不需要输入它。
+SITE_KEY = os.environ.get("QY_SITE_KEY", "guanjun2026")
 
 
 # --------------------------------------------------------------------------- #
@@ -222,8 +227,9 @@ class AiReviewReq(BaseModel):
 
 
 class BundleReq(BaseModel):
-    """傻瓜部署包下载：cookie 可选（部署器会自动读取本机登录）。"""
+    """部署包下载：cookie 可选（部署器会自动读取本机登录）。"""
     cookie: str = ""
+    per_day: int = 0          # 网页上的「每日上限」选择，随包下发
 
 
 class WorkerClaimReq(BaseModel):
@@ -403,13 +409,13 @@ class CredDepositReq(BaseModel):
     key: str
     cookie: str
     note: str = ""
+    per_day: int = 0          # 网页上选的每日上限（0=不限）
 
 
 @router.post("/credential-deposit")
 def qy_cred_deposit(req: CredDepositReq):
     """deploy.py 上传自动读取到的凭证。key 必须与站点密钥一致。"""
-    site_key = os.environ.get("QY_SITE_KEY", "guanjun2026")
-    if req.key != site_key:
+    if req.key != SITE_KEY:
         raise HTTPException(status_code=403, detail="站点密钥不正确")
     ck = (req.cookie or "").strip()
     if "z_c0=" not in ck:
@@ -419,7 +425,8 @@ def qy_cred_deposit(req: CredDepositReq):
         _CRED_VAULT.pop(k, None)
     h = hashlib.sha256(ck.encode("utf-8")).hexdigest()[:12]
     _CRED_VAULT[h] = {"cookie": ck, "ts": now,
-                      "note": (req.note or "本机")[:40]}
+                      "note": (req.note or "本机")[:40],
+                      "per_day": int(req.per_day or 0)}
     return {"ok": True, "token": h, "ttl": _CRED_TTL}
 
 
@@ -430,16 +437,18 @@ def qy_cred_latest():
     live = {k: v for k, v in _CRED_VAULT.items() if now - v["ts"] <= _CRED_TTL}
     if not live:
         return {"ok": False,
-                "note": "凭证柜为空（有效期 10 分钟）。请先在电脑上运行傻瓜部署包。"}
+                "note": ("凭证柜还是空的（凭证只保留 10 分钟）。"
+                         "请先在第 1 步下载部署包、在你的电脑上双击「一键部署」，"
+                         "再回来点「载入凭证」。")}
     k, v = max(live.items(), key=lambda kv: kv[1]["ts"])
     return {"ok": True, "token": k, "cookie": v["cookie"], "note": v["note"],
-            "age": int(now - v["ts"])}
+            "age": int(now - v["ts"]), "per_day": int(v.get("per_day") or 0)}
 
 
 _DEPLOY_PY = """#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 '''
-清一新教育 · 傻瓜部署器
+清一新教育 · 一键部署器
 自动：识别设备 → 装依赖 → 读取本机浏览器知乎登录 → 生成 cookie.txt →
       上传凭证柜（网页点「载入凭证」即可用）→ 启动执行器。
 全程不需要粘贴，不需要 F12。
@@ -453,6 +462,7 @@ from pathlib import Path
 SERVER = "https://zh.samuraiguan.cloud"
 SITE_KEY = "guanjun2026"
 HERE = Path(__file__).resolve().parent
+MAX_TRY = 5
 
 
 def pip(pkg):
@@ -461,11 +471,41 @@ def pip(pkg):
                      "--disable-pip-version-check", pkg])
 
 
+def per_day():
+    '''每日上限：由网页上的选择决定，随包下发在 perday.txt。'''
+    f = HERE / "perday.txt"
+    try:
+        if f.exists():
+            v = int(str(f.read_text(encoding="utf-8")).strip().split()[0])
+            return max(0, v)
+    except Exception:
+        pass
+    return 120
+
+
+def existing_cookie():
+    '''目录里已有的 cookie.txt —— 只有真的含 z_c0 才算可用。'''
+    f = HERE / "cookie.txt"
+    try:
+        if not f.exists():
+            return ""
+        raw = f.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return ""
+    for line in raw.splitlines():
+        line = line.strip()
+        if line.startswith("#"):
+            continue
+        if "z_c0=" in line:
+            return line
+    return ""
+
+
 def main():
     os_name = platform.system()
     v = sys.version_info
     print("=" * 62)
-    print("  清一新教育 · 傻瓜部署器")
+    print("  清一新教育 · 一键部署器")
     print("=" * 62)
     print(f"[1/4] 设备识别: {os_name} · Python {v.major}.{v.minor}.{v.micro}")
     if v < (3, 9):
@@ -478,7 +518,9 @@ def main():
         return 1
 
     win = os_name == "Windows"
-    print("[2/4] 安装依赖（已装过会自动跳过）...")
+    cap = per_day()
+    print("[2/4] 安装依赖（已装过会自动跳过）...  每日上限："
+          + ("不限" if cap == 0 else f"{cap} 篇/天"))
     pip("requests")
     if win:
         pip("pywin32")
@@ -488,7 +530,7 @@ def main():
 
     print("[3/4] 自动读取本机知乎登录（无需粘贴，无需 F12）...")
     ck = ""
-    for attempt in range(1, 4):
+    for attempt in range(1, MAX_TRY + 1):
         try:
             sys.path.insert(0, str(HERE))
             from qingyi_executor import auto_detect_cookie
@@ -496,47 +538,61 @@ def main():
             print(f"    [OK] 已读取（来源: {src}）")
             break
         except Exception as exc:
-            print(f"    [!] 第 {attempt} 次尝试失败：{exc}")
             ck = ""
-            if (HERE / "cookie.txt").exists():
-                print("    检测到目录里已有 cookie.txt，将直接使用它继续。")
+            print(f"    [!] 第 {attempt}/{MAX_TRY} 次读取失败：{exc}")
+            if attempt >= MAX_TRY:
                 break
-            if attempt >= 3:
-                try:
-                    input("    按回车退出...")
-                except EOFError:
-                    pass
-                return 1
+            print("")
+            print("    最常见的解决办法：")
+            print("      1) 把 Edge / Chrome 的所有窗口全部关掉（不是最小化）")
+            print("      2) 确认浏览器里已经登录 zhihu.com")
+            print("      3) 关好之后，回到本窗口按回车重试")
             try:
-                ans = input(
-                    "    请先确保浏览器已登录 zhihu.com；Windows 请完全退出 Edge/Chrome"
-                    "（关闭所有窗口），然后按回车重试（输入 q 退出）: ").strip().lower()
+                ans = input("    >>> 按回车重试（输入 q 退出）: ").strip().lower()
             except EOFError:
-                return 1
+                break
             if ans == "q":
-                return 1
+                break
 
-    if ck:
-        (HERE / "cookie.txt").write_text(ck + "\\n", encoding="utf-8")
+    if not ck:
+        ck = existing_cookie()
+        if ck:
+            print("    [i] 自动读取没成功，改用本目录里已有的 cookie.txt。")
+
+    if not ck:
+        print("")
+        print("[!] 没能拿到知乎登录凭证，无法继续。")
+        print("    最省事的办法：把浏览器所有窗口关掉，再双击一次「一键部署」。")
+        print("    如仍失败，可把浏览器里的知乎 Cookie 粘贴到 cookie.txt 后重试。")
         try:
-            import json as _j
-            import urllib.request as _u
-            req = _u.Request(
-                SERVER + "/api/qy/credential-deposit",
-                data=_j.dumps({"key": SITE_KEY, "cookie": ck,
-                               "note": os_name}).encode("utf-8"),
-                headers={"Content-Type": "application/json",
-                         "X-API-Key": SITE_KEY})
-            _u.urlopen(req, timeout=20)
-            print("    [OK] 凭证已暂存（10 分钟有效）：回到网页点「📥 载入凭证」即可。")
-        except Exception as exc:
-            print(f"    [i] 凭证柜暂存失败（不影响本机运行）：{exc}")
+            input("按回车退出...")
+        except EOFError:
+            pass
+        return 1
 
-    print("[4/4] 启动执行器（领取网页上创建的修改任务；Ctrl+C 随时安全停止）")
+    (HERE / "cookie.txt").write_text(ck + "\\n", encoding="utf-8")
+    try:
+        import json as _j
+        import urllib.request as _u
+        req = _u.Request(
+            SERVER + "/api/qy/credential-deposit",
+            data=_j.dumps({"key": SITE_KEY, "cookie": ck,
+                           "note": os_name, "per_day": cap}).encode("utf-8"),
+            headers={"Content-Type": "application/json",
+                     "X-API-Key": SITE_KEY})
+        _u.urlopen(req, timeout=20)
+        print("    [OK] 凭证已暂存（10 分钟有效）：回到网页点「📥 载入凭证」即可。")
+    except Exception as exc:
+        print(f"    [i] 凭证柜暂存失败（不影响本机运行）：{exc}")
+
+    print("[4/4] 启动执行器（每日上限 "
+          + ("不限" if cap == 0 else f"{cap} 篇")
+          + "；领取网页上创建的修改任务；Ctrl+C 随时安全停止）")
     try:
         subprocess.call([sys.executable, "qingyi_executor.py",
                          "--server", SERVER, "--key", SITE_KEY,
-                         "--cookie-file", "cookie.txt"])
+                         "--cookie-file", "cookie.txt",
+                         "--per-day", str(cap)])
     except KeyboardInterrupt:
         pass
     return 0
@@ -562,7 +618,8 @@ _AGENTS_MD = """# 给 AI 助手：请帮用户把这个工具跑起来
 4. **确保用户的浏览器（Edge/Chrome）已登录 zhihu.com**，然后运行：
    `python deploy.py`（Win）或 `python3 deploy.py`（Mac）。
    它会自动读取本机知乎登录生成 cookie.txt，并启动执行器。
-   - Windows 下若提示浏览器锁定：让用户**完全关闭浏览器窗口**后重跑。
+   - Windows 下若提示浏览器锁定：让用户**完全关闭浏览器窗口**（不是最小化），
+     回到部署窗口**按回车重试**（部署器最多等 5 次）。
    - macOS 首次可能弹钥匙串授权：点「始终允许」。
 5. 执行器启动后会轮询云端领取任务并逐篇写入；`Ctrl+C` 随时安全停止。
 
@@ -570,7 +627,7 @@ _AGENTS_MD = """# 给 AI 助手：请帮用户把这个工具跑起来
 
 - 不要修改 `qingyi_executor.py` 的写入逻辑。
 - 不要把 `cookie.txt` 内容打印到终端、上传到除本工具服务端以外的任何地方。
-- 不要绕过每日 120 篇的限额机制。
+- 不要绕过每日上限（见包内 perday.txt，由用户在网页上选择，默认 120 篇）。
 """
 
 
@@ -607,7 +664,7 @@ _DEPLOY_SH = (
 )
 
 _EXEC_README = (
-    "清一新教育 · 傻瓜部署包\n"
+    "清一新教育 · 一键部署包\n"
     "========================\n\n"
     "你不需要粘贴任何东西，也不需要懂任何技术。\n\n"
     "前提：你的电脑浏览器（Edge 或 Chrome）已登录 zhihu.com。\n\n"
@@ -620,20 +677,25 @@ _EXEC_README = (
     "  1. 解压这个文件夹\n"
     "  2. 双击「一键部署-Mac.command」（或终端里运行 bash 一键部署-Mac.command）\n"
     "  3. 首次可能弹出钥匙串授权，点「始终允许」\n\n"
+    "【如果提示读取失败】\n"
+    "  浏览器开着的时候会锁住凭证文件。把 Edge / Chrome 的所有窗口全部关掉，\n"
+    "  回到部署窗口按回车重试即可（部署器最多等你 5 次）。\n\n"
     "把整个文件夹丢给你的 AI 助手也可以：里面有 AGENTS.md，\n"
     "AI 助手看一眼就知道该做什么。\n\n"
     "内置安全机制（自动生效）：\n"
-    "  · 每天最多 120 篇，到量自动停止，剩余次日继续\n"
+    "  · 每日上限按你在网页上的选择执行（默认 120 篇/天），到量自动停止，剩余次日继续\n"
     "  · 每小时最多 12 篇；篇间随机间隔 25~75 秒；每 5 篇休息 3~7 分钟\n"
     "  · 连续失败 3 次自动中止；每篇改动前原文自动备份，可一键还原\n"
     "  · 每篇固定 2 处：标题 1 处 + 正文 1 处（AI 审核决定加在哪）\n"
 )
 
+
 @router.post("/executor/bundle")
 def qy_executor_bundle(req: BundleReq):
-    """一键打包：qingyi_executor.py + cookie.txt + 一键启动脚本 + 说明。
+    """一键打包：执行器 + 部署器 + 启动脚本 + 说明 + perday.txt。
 
     凭证只写进下载包，不落服务器磁盘。
+    per_day 由网页「每日上限」决定，部署器读 perday.txt 后传给执行器。
     """
     cookie = (req.cookie or "").strip()
     script = qy_executor_script()
@@ -645,10 +707,14 @@ def qy_executor_bundle(req: BundleReq):
     ck_file = (cookie + "\n") if cookie else (
         "# 此文件由「一键部署」自动生成：它会读取你浏览器里的知乎登录。\n"
         "# 若你已手动复制了 Cookie，也可以把 Cookie 粘贴到本文件第 2 行。\n")
+    cap = int(req.per_day or 0)
+    if cap < 0:
+        cap = 0
     buf = _io.BytesIO()
     with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
         z.writestr("qingyi_executor.py", script)
         z.writestr("deploy.py", _DEPLOY_PY)
+        z.writestr("perday.txt", str(cap) + "\n")
         z.writestr("cookie.txt", ck_file)
         z.writestr("一键部署-Windows.bat", _DEPLOY_BAT)
         z.writestr("一键部署-Mac.command", _DEPLOY_SH)
@@ -1018,55 +1084,48 @@ def qy_executor_launcher(server: str = "https://zh.samuraiguan.cloud"):
     win_bat = (
         "@echo off\r\n"
         "chcp 65001 >nul\r\n"
+        "cd /d %~dp0\r\n"
+        "title 清一新教育 · 本地执行器\r\n"
         "setlocal\r\n"
         "echo ============================================\r\n"
         "echo   清一新教育 - 文章修改本地执行器\r\n"
         "echo   作用：用你自己的网络身份完成知乎文章修改（标题 + 正文）\r\n"
-        "echo   范围：每篇 2 处（标题 1 + 正文 1）；每日上限 120 篇\r\n"
+        "echo   范围：每篇固定 2 处（标题 1 + 正文 1）\r\n"
+        "echo   每日上限：按网页上的选择（见 perday.txt）\r\n"
         "echo ============================================\r\n"
+        "echo.\r\n"
+        "echo [更省事] 直接双击「一键部署-Windows.bat」：自动读登录、自动启动。\r\n"
         "echo.\r\n"
         "where python >nul 2>nul || (echo [!] 未检测到 Python，请先安装 Python 3.9+ 并勾选 Add to PATH & pause & exit /b 1)\r\n"
         "if not exist .venv (python -m venv .venv)\r\n"
         "call .venv\\Scripts\\activate.bat\r\n"
         "python -m pip install -q --upgrade pip\r\n"
-        "python -m pip install -q requests\r\n"
+        "python -m pip install -q requests pywin32 pycryptodome\r\n"
         "echo.\r\n"
-        "set /p QYKEY=请输入站点访问密钥: \r\n"
-        "set /p QYCOOKIE=请粘贴知乎凭证（或直接回车，稍后从 cookie.txt 读取）: \r\n"
-        "if \"%QYCOOKIE%\"==\"\" (\r\n"
-        "  if exist cookie.txt (\r\n"
-        "    python qingyi_executor.py --server %SERVER% --key %QYKEY% --cookie-file cookie.txt\r\n"
-        "  ) else (\r\n"
-        "    echo [!] 未找到 cookie.txt，请把知乎凭证保存为 cookie.txt 后重试\r\n"
-        "    pause\r\n"
-        "    exit /b 1\r\n"
-        "  )\r\n"
-        ") else (\r\n"
-        "  python qingyi_executor.py --server %SERVER% --key %QYKEY% --cookie \"%QYCOOKIE%\"\r\n"
-        ")\r\n"
+        "echo 正在自动读取你浏览器里的知乎登录（无需粘贴）...\r\n"
+        "python qingyi_executor.py --server %SERVER% --key %KEY% --auto-cookie --cookie-file cookie.txt --per-day %PERDAY%\r\n"
         "pause\r\n"
-    ).replace("%SERVER%", server)
+    ).replace("%SERVER%", server).replace("%KEY%", SITE_KEY).replace(
+        "%PERDAY%", str(int(DAILY_CAP)))
+
 
     sh = f"""#!/usr/bin/env bash
-# 清一新教育 · 标题署名本地执行器（macOS / Linux）
-# 作用：用你自己的网络身份完成知乎文章修改（标题 + 正文）；每日上限 120 篇
+# 清一新教育 · 本地执行器（macOS / Linux）
+# 作用：用你自己的网络身份完成知乎文章修改（标题 + 正文）；每篇固定 2 处
+# 更省事：直接运行「一键部署-Mac.command」，它会自动读登录并启动。
 set -e
+cd "$(dirname "$0")"
 echo "============================================"
-echo "  清一新教育 - 标题署名本地执行器"
+echo "  清一新教育 - 文章修改本地执行器"
 echo "============================================"
 command -v python3 >/dev/null 2>&1 || {{ echo "[!] 请先安装 Python 3.9+"; exit 1; }}
 [ -d .venv ] || python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -q --upgrade pip
-python -m pip install -q requests
-read -r -p "请输入站点访问密钥: " QYKEY
-if [ -f cookie.txt ]; then
-  COOKIE_ARG="--cookie-file cookie.txt"
-else
-  read -r -p "请粘贴知乎凭证: " QYCOOKIE
-  COOKIE_ARG="--cookie $QYCOOKIE"
-fi
-python qingyi_executor.py --server {server} --key "$QYKEY" $COOKIE_ARG
+python -m pip install -q requests browser-cookie3
+PERDAY=$(cat perday.txt 2>/dev/null || echo {int(DAILY_CAP)})
+echo "正在自动读取你浏览器里的知乎登录（无需粘贴）..."
+python qingyi_executor.py --server {server} --key {SITE_KEY} --auto-cookie --cookie-file cookie.txt --per-day "$PERDAY"
 """
 
     return {
@@ -1079,44 +1138,55 @@ python qingyi_executor.py --server {server} --key "$QYKEY" $COOKIE_ARG
                 "name": "Windows",
                 "steps": [
                     "安装 Python 3.9+（安装时勾选 Add Python to PATH）",
-                    "新建一个文件夹，保存 qingyi_executor.py 与 cookie.txt",
-                    "双击 run_windows.bat 启动",
+                    "推荐：直接双击「一键部署-Windows.bat」，自动读登录并启动",
+                    "或手动双击 run_windows.bat（同样会自动读登录，无需粘贴）",
                 ],
                 "launcher_file": "run_windows.bat",
                 "launcher": win_bat,
                 "one_liner": (
                     "python qingyi_executor.py --server "
-                    f"{server} --key <你的密钥> --cookie-file cookie.txt"
+                    f"{server} --key {SITE_KEY} --auto-cookie "
+                    "--cookie-file cookie.txt --per-day 120"
                 ),
             },
             "macos": {
                 "name": "macOS",
                 "steps": [
-                    "打开「终端」",
-                    "cd 到存放脚本的文件夹",
+                    "推荐：双击「一键部署-Mac.command」，自动读登录并启动",
+                    "或打开「终端」并 cd 到存放脚本的文件夹",
                     "chmod +x run_macos.sh && ./run_macos.sh",
                 ],
                 "launcher_file": "run_macos.sh",
                 "launcher": sh,
                 "one_liner": (
                     "python3 qingyi_executor.py --server "
-                    f"{server} --key <你的密钥> --cookie-file cookie.txt"
+                    f"{server} --key {SITE_KEY} --auto-cookie "
+                    "--cookie-file cookie.txt --per-day 120"
                 ),
             },
         },
         "antigravity_prompt": (
-            "请帮我运行一个本地脚本。步骤：\n"
+            "请帮我运行一个本地脚本，让我可以在知乎上批量给自己的文章署名。\n"
+            "步骤：\n"
             "1. 确认已安装 Python 3.9+（Windows 用 python --version，"
             "macOS 用 python3 --version），没有就先装。\n"
-            "2. 在当前目录执行 pip install requests。\n"
-            "3. 把 https://zh.samuraiguan.cloud 首页提供的『本地执行器』"
-            "下载为 qingyi_executor.py。\n"
-            "4. 把知乎登录凭证保存为同目录下的 cookie.txt。\n"
-            "5. 运行：python qingyi_executor.py --server "
-            f"{server} --key <站点访问密钥> --cookie-file cookie.txt\n"
-            "说明：该脚本只会修改知乎文章的标题，不会改动正文。"
+            "2. 从本工具页面下载「部署包」（zip），解压到任意文件夹。\n"
+            "3. 确保我的浏览器（Edge / Chrome）已经登录 zhihu.com。\n"
+            "4. 运行 deploy.py（Windows 双击「一键部署-Windows.bat」；"
+            "macOS 运行「一键部署-Mac.command」）。\n"
+            "   它会自动装依赖、自动读取浏览器里的知乎登录、自动启动执行器，"
+            "全程不需要我粘贴任何东西，也不需要按 F12。\n"
+            "5. 如果它提示读取失败，请让我把浏览器所有窗口关掉，"
+            "再回到那个窗口按回车重试。\n"
+            "说明：该脚本会改动两类内容 —— ① 文章标题最前面加"
+            "【清一新教育】；② 文章正文里加 1 处署名式括注（清一新教育）。"
+            "正文只做句末括注，不删除、不改写任何原有文字，可一键还原；"
+            "每篇改动前的原文都会备份在本机。\n"
+            "它会遵守每日上限（见包内 perday.txt，默认 120 篇/天），"
+            "到量自动停止，剩余次日继续。"
         ),
     }
+
 
 
 # --------------------------------------------------------------------------- #
