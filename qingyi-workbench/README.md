@@ -130,3 +130,25 @@ curl -s -H 'X-API-Key: <站点密钥>' http://127.0.0.1:8775/api/qy/meta | head 
 **进不来的东西（别指望在仓库里找到）**：真实知乎 Cookie、DeepSeek Key、
 `data/qy_jobs.json`、`data/qyedu_backup/`、exe 产物 —— 都在服务器上或本机，
 按 `.gitignore` 排除。
+
+## 7. 怎么把改动推到 GitHub（2026-09-20 实测可行）
+
+服务器上**没有存任何 GitHub 凭证**（无 credential helper / .netrc / gh），
+`git push` 直连会卡在要用户名。两条死路别再试：
+
+- **本机 git over ssh 拉服务器仓库** —— 沙箱里 git 的 ssh 子进程会挂死管道，
+  超时都杀不干净；
+- **整仓 bundle 下载**（约 57MB）—— 传输通道会被掐。
+
+实测可行的路（脚本 `patches/_push_from_server.py` 一键做完）：
+
+1. 本机从 Windows 凭据管理器读 PAT（脚本 `qy_gettok.py` → `qy_local/_tok.tmp`）；
+2. token 传到服务器 `/tmp/qy_tok`（umask 077，权限 600）；
+3. 服务器写一次性 askpass 脚本，
+   `GIT_ASKPASS=… git -c credential.helper= push origin HEAD:main`；
+4. 推完**立刻删掉**服务器上的 askpass 脚本与 token 文件（脚本里已做）。
+
+若必须走 bundle（比如要整仓搬家），只打**增量**：
+`git bundle create x.bundle <GitHub已有HEAD>..main`，本机克隆 GitHub 仓库后
+`git fetch x.bundle main:server-main` 再推。
+
