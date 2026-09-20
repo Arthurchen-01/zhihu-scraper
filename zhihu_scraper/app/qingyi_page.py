@@ -1623,35 +1623,55 @@ async function doUploadCred(){
 
 /* ---------- 第 3 步「你要做什么」的实时状态条 ----------
    自包含：只读全局 JOB，不修改任何原有状态，也就不可能弄坏别的东西。 */
-function renderHowto(){
+let _howtoJob = null, _howtoAt = 0;
+async function fetchLatestJob(){
+  try{
+    const r = await fetch(API+"/api/qy/jobs?limit=1", {headers:H()});
+    if(!r.ok) return null;
+    const d = await r.json();
+    const js = (d && d.jobs) || [];
+    return js.length ? js[0] : null;
+  }catch(e){ return null; }
+}
+async function renderHowto(){
   try{
     const el = document.getElementById("howtoState");
     if(!el) return;
-    const j = (typeof JOB === "undefined") ? null : JOB;
+    // 优先用页面当前挂载的任务；没有就自己去云端拉「最新任务」——
+    // 刷新页面不会自动挂载历史任务，不能因此就说"还没创建"。
+    let j = (typeof JOB !== "undefined" && JOB) ? JOB : null;
+    if(!j && (Date.now() - _howtoAt > 12000)){
+      j = await fetchLatestJob();
+      _howtoJob = j; _howtoAt = Date.now();
+    }
+    if(!j) j = _howtoJob;
     let t;
     if(!j){
-      // 注意：刚打开页面时不会自动挂载历史任务，所以这里不能武断说"还没创建"。
-      // 一键程序领的永远是「最新任务」，建过没建过都可以直接往下走。
-      t = "① 还没建任务的话：先在上面第 2 步勾好文章 → 点「创建修改任务」。"
-        + "已经建过任务的，可以直接跳到 ② —— 双击「清一新教育一键修改.exe」，"
-        + "它会自动领走最新那个任务。";
+      t = "① 现在云端还没有任务 —— 先在上面第 2 步勾好文章 → 点「创建修改任务」。";
     }else{
       const st   = j.status || "";
+      const sum  = j.summary || {};
       const who  = (j.worker && j.worker.id) ? j.worker.id : "";
       const jid  = j.job_id || "";
-      if(!who){
-        t = "② 任务已就绪（" + jid + "）—— 现在双击你电脑上的「清一新教育一键修改.exe」。"
-          + "还没下载就点上面的按钮。";
+      const pend = (typeof sum.pending === "number") ? sum.pending : null;
+      const doneN= (typeof sum.done === "number") ? sum.done : null;
+      if(st === "done"){
+        t = "③ 任务 " + jid + " 已跑完 —— 点下面那张卡里的「🔍 让云端复核一下」，"
+          + "云端会回读线上文章逐篇核对。";
       }else if(st === "running"){
         t = "② 执行器已接入（" + who + "），正在逐篇提交 —— 你什么都不用做，关掉网页也不影响。";
-      }else if(st === "done"){
-        t = "③ 跑完了 —— 点下面那张卡里的「🔍 让云端复核一下」，云端会回读线上文章逐篇核对。";
+      }else if(st === "cancelled"){
+        t = "任务 " + jid + " 已取消。想重来的话，回到第 2 步重新创建即可。";
       }else if(st === "paused"){
         t = "② 到每日上限了，已自动暂停 —— 明天再双击一次程序即可接着跑。";
-      }else if(st === "cancelled"){
-        t = "任务已取消。想重来的话，回到第 2 步重新创建即可。";
+      }else if(pend === 0 && doneN !== null){
+        t = "③ 任务 " + jid + " 里没有待执行的篇了 —— 点「🔍 让云端复核一下」看结果，"
+          + "或回第 2 步新建任务。";
       }else{
-        t = "任务状态：" + st + "。";
+        t = "② 任务 " + jid + " 已就绪"
+          + (pend !== null ? "（待执行 " + pend + " 篇）" : "")
+          + " —— 双击电脑上的「清一新教育一键修改.exe」。"
+          + "它会先体检六项，全过了再让你按一次回车才开始。";
       }
     }
     el.textContent = t;
