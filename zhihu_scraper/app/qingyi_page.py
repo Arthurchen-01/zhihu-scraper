@@ -1,7 +1,8 @@
 """清一新教育 · 文章修改工作台 前端页面（v5）。
 
 交互设计（每一步只做一件事）：
-  第 1 步  下载部署包 → 双击 → 回来点「载入凭证」→ 自动检索（零粘贴、零 F12）
+  第 1 步  下载一键程序 → 双击 → 回来点「载入凭证」→ 自动检索（零粘贴、零 F12）
+         （可选加速：装浏览器扩展，之后连「关浏览器」都不需要）
   第 2 步  打钩挑文章 → 点一个大按钮
   第 3 步  在你自己电脑上执行（进度实时回传）
   第 4 步  逐篇对照 + 正文零改动证据
@@ -310,6 +311,30 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
         <button class="btn-primary" id="btnExe" onclick="dlExe('btnExe')">⬇️ 下载 Windows 一键程序</button>
         <span class="tiptext" id="hint1">下好直接双击就能跑（首次运行若被 Windows 拦一下，点「更多信息」→「仍要运行」）</span>
       </div>
+      <div class="act" style="margin-top:8px">
+        <button class="btn-ghost" id="btnExt" onclick="dlExt('btnExt')">🧩 浏览器扩展：装一次，以后连浏览器都不用关</button>
+      </div>
+      <div class="tiptext" style="margin-top:6px">
+        不装也能用，只是每次运行前要手动关一下浏览器（那个锁绕不过去）；
+        装上它，一键程序改成从云端取登录，<b>浏览器可以一直开着</b>。
+      </div>
+      <details class="adv" style="margin-top:8px">
+        <summary>扩展怎么装？我们已写好，你的 AI 助手照做即可</summary>
+        <div class="body">
+          <div class="tiptext">
+            扩展是<b>我们写好的成品</b>，助手不需要写任何代码，只要「加载已解压的扩展程序」。
+            压缩包里带一份 <b>AGENTS.md</b>（专门写给 AI 助手看的部署说明）。
+          </div>
+          <div class="act" style="margin-top:10px">
+            <button class="btn-ghost btn-sm" onclick="copyAgentExt()">📋 复制给 AI 助手的话</button>
+            <span class="tiptext">连下载地址和步骤一起复制走。</span>
+          </div>
+          <div class="tiptext" id="extHint" style="margin-top:8px">
+            自己装也行，就 3 下：解压 → 打开 <b>edge://extensions</b>（Chrome 用 <b>chrome://extensions</b>）
+            → 打开「开发者模式」→ 点「加载已解压的扩展程序」→ 选解压出来的文件夹。
+          </div>
+        </div>
+      </details>
       <details class="adv" style="margin-top:8px">
         <summary>其他方式：Mac / 交给 AI 助手 / 仍想用部署包</summary>
         <div class="body">
@@ -618,7 +643,8 @@ async function doLoadCred(){
     // 服务端已经把该怎么做写在 note 里了，不要重复拼接
     msg("credState", /凭证柜/.test(m)
         ? m
-        : ("取凭证据失败：" + m + "。请先在第 1 步下载部署包、在你的电脑上双击「一键部署」，再回来点本按钮。"),
+        : ("取凭证据失败：" + m + "。最省事是装第 1 步的浏览器扩展并点一下同步；"
+           + "或者下载一键程序双击一次，再回来点本按钮。"),
         "err");
     b.disabled = false; b.innerHTML = "📥 载入凭证";
   }
@@ -1421,17 +1447,67 @@ function finishBundle(ok, err){
   }
 }
 
+async function dlExt(btnId){
+  const b = document.getElementById(btnId || "btnExt");
+  const t = b ? b.innerHTML : "";
+  if(b){ b.disabled = true; b.innerHTML = '<span class="spin"></span> 正在准备…'; }
+  try{
+    const r = await fetch(API+"/api/qy/download/extension", {headers:H()});
+    if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||"下载失败"); }
+    const bl = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(bl);
+    a.download = "清一新教育-修改助手-扩展.zip";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 8000);
+    const eh = document.getElementById("extHint");
+    if(eh) eh.innerHTML = "✅ 已下载。解压后打开 <b>edge://extensions</b> 或 <b>chrome://extensions</b>，" +
+      "打开右上角「开发者模式」→ 点「加载已解压的扩展程序」→ 选解压出来的文件夹。" +
+      "装好后点一下扩展图标 →「立即同步到云端」。";
+    toast("扩展已下载：解压后按提示点 3 下装上即可");
+  }catch(e){
+    toast("下载失败：" + e.message);
+  }finally{
+    if(b){ b.disabled = false; b.innerHTML = t; }
+  }
+}
+
+/* 把「怎么装扩展」整段话复制走，直接粘给 AI 助手 */
+function copyAgentExt(){
+  const txt =
+    "请帮我在浏览器里安装一个已经写好的扩展，你不需要写任何代码。\n" +
+    "\n" +
+    "1) 下载这个地址（带请求头 X-API-Key: " + SITE_KEY + "）：\n" +
+    "   " + API + "/api/qy/download/extension\n" +
+    "2) 解压到固定位置：%LOCALAPPDATA%\\QingyiEdu\\extension\n" +
+    "3) 打开 edge://extensions（Chrome 用 chrome://extensions）→ 打开右上角「开发者模式」\n" +
+    "   → 点「加载已解压的扩展程序」→ 选中上面那个文件夹。\n" +
+    "   （注意：浏览器禁止任何脚本注入 chrome:// 页面，所以最后这几下必须人点，不要试图自动化。）\n" +
+    "4) 点工具栏上的扩展图标 →「立即同步到云端」，确认显示「本浏览器知乎登录：已登录」。\n" +
+    "5) 完成后告诉我一声。以后我双击一键程序，就不需要再关浏览器了。\n" +
+    "\n" +
+    "压缩包里有 AGENTS.md，是专门写给你的详细说明，可以先读它。";
+  navigator.clipboard.writeText(txt).then(
+    ()=>toast("已复制 —— 直接粘贴给你的 AI 助手即可"),
+    ()=>toast("复制失败，请手动选中文字复制"));
+}
+
 /* ---------- 常见问题 ---------- */
 function showHelp(){
   alert(
     "常见问题\n" +
     "────────────────────────\n" +
     "1) 点「载入凭证」说凭证柜是空的？\n" +
-    "   说明你电脑上的部署包还没跑，或者跑了超过 6 小时。\n" +
-    "   重新双击一次「一键部署」即可。\n\n" +
-    "2) 部署窗口提示读取失败？\n" +
-    "   浏览器开着会锁住凭证文件。把 Edge / Chrome 所有窗口全部关掉\n" +
-    "   （不是最小化），回到那个窗口按回车重试。\n\n" +
+    "   说明还没有任何东西把登录同步上来（凭证只保留 6 小时）。\n" +
+    "   最快的办法：装第 1 步的浏览器扩展，点一下它的图标同步；\n" +
+    "   或者双击一次一键程序。\n\n" +
+    "2) 窗口一直停在「正在等您关掉浏览器」？\n" +
+    "   浏览器会独占锁住它的登录数据，这是 Windows 层面的锁，绕不过去。\n" +
+    "   把 Edge / Chrome 的【所有窗口】全部关掉（不是最小化），程序会自己继续，\n" +
+    "   不需要按任何键。\n\n" +
+    "2.5) 装浏览器扩展有什么用？\n" +
+    "   装上之后就不需要关浏览器了：扩展会把登录同步到云端，\n" +
+    "   一键程序改成从云端取用。扩展在第 1 步可以下载，交给你的 AI 助手装即可。\n\n" +
     "3) 双击没反应 / 一闪而过？\n" +
     "   多半是没装 Python。到 python.org 装 3.9 以上版本，\n" +
     "   安装时务必勾选 Add Python to PATH，然后再双击一次。\n\n" +
@@ -1448,7 +1524,7 @@ function showHelp(){
 /* ---------- 新手引导 ---------- */
 const TOUR_STEPS = [
   {sel:"#btnExe", t:"第 1 步：下载一键程序并双击",
-   d:"就下载这一个文件，下好双击它就行 —— 不用解压、不用开终端、不用装任何东西。它会自动读到你浏览器里的知乎登录，不用粘贴、不用按 F12。"},
+   d:"就下载这一个文件，下好双击它就行 —— 不用解压、不用开终端、不用装任何东西。它会自动读到你浏览器里的知乎登录，不用粘贴、不用按 F12。嫌每次都要关浏览器麻烦？把下面那个浏览器扩展装上（我们写好的，让你的 AI 助手装），就不用关了。"},
   {sel:"#btnLoadCred", t:"第 1 步：载入凭证",
    d:"部署包跑起来之后，回到这里点一下。凭证会自动填好，并立刻帮你把名下的文章检索出来。"},
   {sel:"#tabs", t:"第 2 步：挑分类",

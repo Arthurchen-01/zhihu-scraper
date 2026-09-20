@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import (FileResponse, HTMLResponse, PlainTextResponse,
                                Response, StreamingResponse)
 from pydantic import BaseModel
@@ -438,14 +438,23 @@ def qy_cred_deposit(req: CredDepositReq):
 
 
 @router.get("/credential-latest")
-def qy_cred_latest():
-    """网页端一键载入最近自动获取的凭证（6 小时内有效）。"""
+def qy_cred_latest(request: Request, key: str = ""):
+    """网页端 / 浏览器扩展 / 一键程序取回最近同步的凭证（6 小时内有效）。
+
+    这里装的是**一份真实的知乎登录态**，不能让任何人凭猜到的 URL 就拿到，
+    所以加了站点密钥校验。key 走 X-API-Key 头或 ?key= 查询参数都可以
+    （查询参数是给手工 curl 排障留的口子）。
+    """
+    if (request.headers.get("X-API-Key") or key or "") != SITE_KEY:
+        raise HTTPException(status_code=403, detail="站点密钥不正确")
     now = time.time()
     live = {k: v for k, v in _CRED_VAULT.items() if now - v["ts"] <= _CRED_TTL}
     if not live:
         return {"ok": False,
                 "note": ("凭证柜还是空的（凭证保留 6 小时）。"
-                         "请先在第 1 步下载部署包、在你的电脑上双击「一键部署」，"
+                         "最省事：装上「清一新教育 · 修改助手」扩展，"
+                         "点一下它的图标即可完成同步；"
+                         "或者在第 1 步下载一键程序并双击一次，"
                          "再回来点「载入凭证」。")}
     k, v = max(live.items(), key=lambda kv: kv[1]["ts"])
     return {"ok": True, "token": k, "cookie": v["cookie"], "note": v["note"],
@@ -655,12 +664,37 @@ _AGENTS_MD = """# 给 AI 助手：请照这套规则，帮用户把「清一新�
 它会自己读浏览器登录、把凭证同步到云端、请云端算好每篇最终稿，然后开始上传；
 跑完还会请云端复核。
 
-唯一要提醒用户的一件事：如果 Edge / Chrome 开着，程序会提示关掉浏览器 ——
+关于「要不要关浏览器」：一键程序会**优先**去云端凭证柜取登录态。
+如果用户装了我们提供的浏览器扩展「清一新教育 · 修改助手」，
+扩展已经把登录同步进云端了 → **浏览器可以一直开着，什么都不用做**。
+
+没装扩展时，如果 Edge / Chrome 开着，程序会提示关掉浏览器 ——
 **它会自动等你，关掉后自己继续，不用按任何键**（浏览器会独占锁住登录数据，
 这是 Windows 的系统级行为，任何工具都绕不过去）。
 
+> 强烈建议顺手把扩展装上（见下一节），用户从此就不需要关浏览器了。
+
 以下情况才需要走「手动部署」：用户是 macOS（暂无预编译程序）；
 用户不想下载 exe；或者用户就是要让你（AI 助手）来代劳。
+
+## 浏览器扩展（强烈建议，一次性）
+
+扩展**我们已经写好**，你不需要写任何代码。它只做一件事：
+把本浏览器的知乎登录同步到云端凭证柜，从而让「关浏览器」这一步彻底消失。
+
+- 下载：`{{SERVER}}/api/qy/download/extension`
+  （zip，请求需带请求头 `X-API-Key: {{KEY}}`）
+- 解压到固定位置：`%LOCALAPPDATA%\\QingyiEdu\\extension`
+- 打开 `edge://extensions`（Chrome 用 `chrome://extensions`）
+  → 打开右上角「开发者模式」→「加载已解压的扩展程序」→ 选那个文件夹
+- 点扩展图标 →「立即同步到云端」，看到「本浏览器知乎登录：已登录」即成功
+
+⚠️ **浏览器禁止任何脚本注入 `chrome://` / `edge://` 页面**，
+所以最后点选文件夹那一两下必须由人完成，不要试图用脚本自动化，必然失败。
+压缩包里的 `AGENTS.md` 有完整步骤，同目录的 `install-extension.ps1`
+可以代劳「放文件 / 开页面 / 路径进剪贴板」。
+
+装好后，用户只需要做一件事：**双击一键程序**。
 
 ## 请按顺序执行
 
@@ -1801,13 +1835,27 @@ def qy_set_config(req: ConfigReq):
 
 # ================= Windows 一键程序分发 =================
 _EXE_NAME = "清一新教育一键修改.exe"
+_EXT_NAME = "清一新教育-修改助手-扩展.zip"
 _EXE_DIR = Path("data/qy_download")
 
 
 @router.get("/download/{plat}")
 def qy_download(plat: str):
-    """分发一键程序：用户下载后双击即用 —— 不用解压、不用终端、不用装 Python。"""
+    """分发客户端：一键程序（双击即用）+ 浏览器扩展（装上就不用关浏览器）。
+
+    注意：扩展分支必须写在 /download/{plat} 这同一个函数里 ——
+    如果另开一条 /download/extension 路由，会被 {plat} 先吃掉（
+    FastAPI 按声明顺序匹配），这是踩过的坑。
+    """
     p = (plat or "").strip().lower()
+    if p in ("extension", "ext", "chrome", "edge", "browser"):
+        for cand in (_EXE_DIR / _EXT_NAME, _EXE_DIR / "qingyi-extension.zip"):
+            if cand.exists():
+                return FileResponse(str(cand), media_type="application/zip",
+                                    filename=_EXT_NAME)
+        raise HTTPException(
+            status_code=404,
+            detail="浏览器扩展包还没上传到服务器，请先联系管理员。")
     if p not in ("windows", "win", "exe"):
         raise HTTPException(
             status_code=404,
@@ -1847,6 +1895,15 @@ def qy_meta():
             "机器行为特征。"
         ),
         "sponsor": SPONSOR,
+        "client_tools": {
+            "windows": "/api/qy/download/windows",
+            "extension": "/api/qy/download/extension",
+            "extension_note": (
+                "浏览器扩展「清一新教育 · 修改助手」：把本浏览器已登录的知乎凭证"
+                "自动同步到云端凭证柜。装上之后本地一键程序直接从云端取凭证，"
+                "不再需要关闭浏览器（浏览器会独占锁定 Cookie 数据库，"
+                "外部程序读不到，这是系统层面的锁）。"),
+        },
         "ai_review": {
             "enabled": bool(_load_ds_key()),
             "model": DEEPSEEK_MODEL,

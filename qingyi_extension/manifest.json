@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "清一新教育 · 修改助手",
+  "version": "1.0.0",
+  "description": "把本浏览器里已登录的知乎凭证自动同步到清一新教育控制台。同步之后，本地的一键修改程序就不用再读取浏览器登录数据，也就再也不需要关掉浏览器了。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "清一新教育 · 修改助手",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "permissions": [
+    "cookies",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://*.zhihu.com/*",
+    "https://zh.samuraiguan.cloud/*"
+  ],
+  "minimum_chrome_version": "102"
+}

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>怎么用 — 清一新教育 · 修改助手</title>
+<style>
+  :root{
+    --bg:#f6f8fb; --panel:#ffffff; --panel-2:#f1f5f9; --line:#e2e8f0;
+    --text:#0f172a; --text-2:#475569; --text-3:#94a3b8;
+    --brand:#0ea5e9; --brand-2:#0284c7; --ok:#10b981;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:30px 20px;background:var(--bg);color:var(--text);
+    font:14.5px/1.7 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  .wrap{max-width:640px;margin:0 auto}
+  .hd{display:flex;align-items:center;gap:11px;margin-bottom:20px}
+  .hd img{width:40px;height:40px;border-radius:10px}
+  h1{font-size:19px;margin:0}
+  .sub{font-size:12.5px;color:var(--text-3)}
+  .card{background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:20px 22px;box-shadow:0 1px 3px rgba(15,23,42,.05);
+    margin-bottom:14px}
+  h2{font-size:14.5px;margin:0 0 10px}
+  ol,ul{margin:0;padding-left:22px}
+  li{margin-bottom:7px}
+  .ok{color:#047857;font-weight:600}
+  .no{color:#b91c1c;font-weight:600}
+  code{background:#e2e8f0;border-radius:4px;padding:1px 5px;font-size:12.5px}
+  .tip{background:#ecfdf5;color:#065f46;border-radius:10px;
+    padding:11px 13px;font-size:13px;margin-top:12px}
+  .warn{background:#fffbeb;color:#92400e;border-radius:10px;
+    padding:11px 13px;font-size:13px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd">
+    <img src="icons/icon-128.png" alt="">
+    <div>
+      <h1>这个扩展是干什么的</h1>
+      <div class="sub">一句话：帮你省掉「关掉浏览器」那一步。</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>原来为什么会卡住</h2>
+    <p style="margin:0 0 10px">你在浏览器里登录知乎之后，登录数据被浏览器<b>独占锁住</b>了。
+    别的程序（包括一键修改程序）在浏览器开着的时候读不到它 ——
+    这是 Windows 层面的锁，绕不过去。所以旧流程要你先关掉浏览器。</p>
+    <p style="margin:0">而这个扩展是<b>跑在浏览器内部</b>的，读自己的登录数据理所当然，
+    所以它能把登录态取出来、送到云端。之后一键修改程序从云端取用即可 ——
+    <span class="ok">浏览器可以一直开着</span>。</p>
+  </div>
+
+  <div class="card">
+    <h2>你要做的（只有一次）</h2>
+    <ol>
+      <li>在本浏览器里打开 <code>zhihu.com</code> 并保持登录。</li>
+      <li>点浏览器右上角的扩展图标 →「立即同步到云端」。</li>
+      <li>看到 <span class="ok">云端凭证柜：刚刚</span> 就成功了。</li>
+    </ol>
+    <div class="tip">之后扩展会自己在后台定期刷新（默认每 30 分钟一次），
+    你不需要反复操作。以后只要双击那个一键修改程序就行。</div>
+  </div>
+
+  <div class="card">
+    <h2>常见疑问</h2>
+    <ul>
+      <li><b>要关浏览器吗？</b> <span class="no">不用</span>。这正是它的意义。</li>
+      <li><b>会把密码交出去吗？</b> 不会。它只读取知乎给本机发的登录凭据
+        （Cookie），与云端之间的通道是加密的，且云端 6 小时后自动丢弃。</li>
+      <li><b>退出登录了怎么办？</b> 扩展会检测到并自动同步一次；
+        如果下拉状态显示「未登录」，重新登录知乎再点一次「立即同步」即可。</li>
+      <li><b>同步失败？</b> 点「设置」看后台状态；先确认本浏览器已登录知乎，
+        再确认控制台地址没有被改过。</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --bg:#f6f8fb; --panel:#ffffff; --panel-2:#f1f5f9; --line:#e2e8f0;
+    --text:#0f172a; --text-2:#475569; --text-3:#94a3b8;
+    --brand:#0ea5e9; --brand-2:#0284c7; --ok:#10b981; --warn:#f59e0b;
+    --err:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{
+    width:340px; margin:0; padding:14px;
+    background:var(--bg); color:var(--text);
+    font:14px/1.55 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  }
+  .hd{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .hd img{width:28px;height:28px;border-radius:7px;flex:none}
+  .hd b{font-size:15px;letter-spacing:.2px}
+  .hd span{margin-left:auto;font-size:11px;color:var(--text-3)}
+  .card{
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:12px; padding:11px 12px; margin-bottom:10px;
+  }
+  .row{display:flex;align-items:center;gap:8px;font-size:13px}
+  .row+.row{margin-top:6px}
+  .row .k{color:var(--text-2);flex:none}
+  .row .v{margin-left:auto;font-weight:600}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .d-ok{background:var(--ok)} .d-bad{background:var(--err)}
+  .d-warn{background:var(--warn)} .d-idle{background:var(--text-3)}
+  .note{
+    font-size:12px;line-height:1.5;color:var(--text-2);
+    background:var(--panel-2); border-radius:9px; padding:8px 10px;
+    margin-top:9px; word-break:break-word;
+  }
+  .note.ok{background:#ecfdf5;color:#065f46}
+  .note.bad{background:#fee2e2;color:#991b1b}
+  .note.warn{background:#fffbeb;color:#92400e}
+  button{
+    width:100%; border:0; border-radius:10px; padding:10px 12px;
+    font:600 13.5px/1 inherit; cursor:pointer;
+  }
+  button+button{margin-top:8px}
+  .b-main{background:var(--brand);color:#fff}
+  .b-main:hover{background:var(--brand-2)}
+  .b-main[disabled]{background:#bae6fd;cursor:default}
+  .b-ghost{background:var(--panel);color:var(--text);
+    border:1px solid var(--line)}
+  .b-ghost:hover{background:var(--panel-2)}
+  .ft{display:flex;justify-content:space-between;font-size:11px;
+    color:var(--text-3);margin-top:2px}
+  .ft a{color:var(--text-3);text-decoration:none}
+  .ft a:hover{color:var(--brand-2);text-decoration:underline}
+  .spin{
+    display:inline-block;width:12px;height:12px;margin-right:6px;
+    border:2px solid rgba(255,255,255,.45);border-top-color:#fff;
+    border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+  <div class="hd">
+    <img src="icons/icon-48.png" alt="">
+    <b>修改助手</b>
+    <span id="ver"></span>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <i class="dot d-idle" id="dotLogin"></i>
+      <span class="k">本浏览器知乎登录</span>
+      <span class="v" id="vLogin">检查中…</span>
+    </div>
+    <div class="row">
+      <i class="dot d-idle" id="dotSync"></i>
+      <span class="k">云端凭证柜</span>
+      <span class="v" id="vSync">未知</span>
+    </div>
+    <div class="note" id="note">正在读取状态…</div>
+  </div>
+
+  <button class="b-main" id="btnSync">立即同步到云端</button>
+  <button class="b-ghost" id="btnConsole">打开控制台</button>
+  <button class="b-ghost" id="btnOpt">设置</button>
+
+  <div class="ft">
+    <span>同步后双击一键程序即可，无需关浏览器</span>
+    <a href="#" id="lnkHelp">怎么用？</a>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
