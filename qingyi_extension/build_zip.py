@@ -31,6 +31,20 @@ ORDER = [
 STAMP = (2026, 9, 20, 11, 0, 0)
 
 
+def _entry(name: str) -> zipfile.ZipInfo:
+    """构造一个完全确定的 ZipInfo。
+
+    注意 `create_system`：zipfile 默认按当前操作系统填（Windows=0 / Unix=3），
+    这会写进中央目录 —— 于是"同样的源码在 Windows 和 Linux 上打出来的包
+    md5 不一样"。显式钉成 3(Unix)，才能做到跨平台同源同 hash。
+    """
+    zi = zipfile.ZipInfo(name, date_time=STAMP)
+    zi.create_system = 3          # 显式钉住，别用平台默认值
+    zi.compress_type = zipfile.ZIP_DEFLATED
+    zi.external_attr = 0o644 << 16
+    return zi
+
+
 def main() -> int:
     missing = [f for f in ORDER if not (SRC / f).exists()]
     if missing:
@@ -40,10 +54,7 @@ def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name in ORDER:
-            zi = zipfile.ZipInfo(name, date_time=STAMP)
-            zi.compress_type = zipfile.ZIP_DEFLATED
-            zi.external_attr = 0o644 << 16
-            z.writestr(zi, (SRC / name).read_bytes())
+            z.writestr(_entry(name), (SRC / name).read_bytes())
 
     b = OUT.read_bytes()
     print("已生成 %s" % OUT)
