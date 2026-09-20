@@ -14,6 +14,14 @@ v5 相对 v4 的改动：
   * 修检索完成后按钮文案被改写、下载包没有任何反馈
   * 部署指引与手动下载从页面主体收进「高级」，消除重复与自相矛盾
   * 用户可见文案去掉「傻瓜」二字；报错文案去掉「粘贴」措辞
+
+v5 追加（云端预算内容 + 云端独立复核）：
+  * 任务建好后云端立刻算出每篇「最终标题 + 最终正文」并缓存（POST /prepare）
+  * 本地执行器只按 /agent/payload 取回原样上传，不再自行判断怎么改
+  * 写入完成后云端回读线上文章逐篇复核（POST /verify），页面显示 ✓/✗ 与原因
+  * 「发给助手的指令」一键复制（GET /agent/brief）
+  * 刷新页面不再丢失进行中的任务（localStorage 记住 job_id）
+  * 凭证柜有效期 10 分钟 → 6 小时
 """
 
 QY_PAGE_HTML = r"""<!DOCTYPE html>
@@ -148,6 +156,12 @@ tr.item.sel{background:#f0f9ff}
 @keyframes rd{from{background:#dcfce7}to{background:transparent}}
 .hide{display:none!important}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.agentbox{margin:14px 0 6px;padding:16px 16px 14px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2)}
+.agenthd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.agenthd strong{font-size:14.5px;color:var(--text)}
+.vrow{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px dashed var(--line);font-size:12.8px;color:var(--text-2)}
+.vrow .vt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow .vr{color:var(--text-3);font-size:12px;margin-top:3px;white-space:normal}
 .jsbox{
   background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
   font-family:ui-monospace,monospace;font-size:11.5px;overflow-x:auto;white-space:pre;color:var(--text-2)
@@ -299,7 +313,7 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
     </li>
     <li>
       <div class="ttl">回到这里，点一下「载入凭证」</div>
-      <div class="tiptext">凭证只暂存 10 分钟，过期重新双击一次部署包就行。</div>
+      <div class="tiptext">凭证保留 6 小时，过期重新双击一次部署包就行。之后每篇文章改什么由云端统一算好，你电脑上只负责提交。</div>
       <div class="act">
         <button class="btn-primary" id="btnLoadCred" onclick="doLoadCred()">📥 载入凭证</button>
         <span class="tiptext" id="credState">还没有载入</span>
@@ -335,7 +349,8 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
   <h2><span class="step">2</span> 打钩挑文章</h2>
   <div class="hint">
     给想加【清一新教育】的文章<strong>打钩</strong>（点标题左边的方框），
-    然后点最下面那个大按钮。不勾选什么都不会发生。
+    然后点最下面那个大按钮。不勾选什么都不会发生。<br>
+    点完之后，<strong>云端会先把每篇文章的最终标题和正文算好</strong>（只读，不会改动任何内容），之后交给助手执行就行。
   </div>
   <div class="tabs" id="tabs"></div>
   <div class="toolbar">
@@ -396,6 +411,27 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
   <div class="hint" id="execLead">
     任务已生成，等待你电脑上的执行器来领走。
   </div>
+
+  <div class="agentbox" id="agentBox">
+    <div class="agenthd">
+      <strong>🤖 最省事：把这段话发给你的 AI 助手</strong>
+      <span class="chip mute" id="prepChip">云端预修改中…</span>
+    </div>
+    <div class="hint" style="margin:8px 0 10px">
+      云端已经把每篇文章的<strong>最终标题和正文</strong>算好并缓存起来了。
+      把下面这段话复制给你的 AI 助手（Antigravity / Claude / Cursor 都行），
+      它就会在你电脑上把执行器跑起来 —— <strong>你不需要再做别的</strong>。
+      写完以后<strong>云端会重新回读每篇文章逐篇复核</strong>，结果就在下面。
+    </div>
+    <div class="jsbox" id="agentInstr" style="white-space:pre-wrap">正在准备…</div>
+    <div class="toolbar" style="margin:10px 0 0">
+      <button class="btn-primary btn-sm" onclick="copyInstr()">📋 复制这段话给助手</button>
+      <button class="btn-ghost btn-sm" id="btnVerify" onclick="doVerify()">🔍 让云端复核一下</button>
+      <span class="tiptext" id="verifyNote">复核会重新回读线上文章，逐篇比对（不采信本地自述）</span>
+    </div>
+  </div>
+
+  <div id="verifyBox" class="hide" style="margin-top:14px"></div>
 
   <div id="execGuide" class="hide">
     <div class="act" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
@@ -838,6 +874,8 @@ async function doCreate(){
     loadLaunchers();
     openStream(JOB.job_id);
     refreshDailyMeter();
+    try{ localStorage.setItem("qy.lastJob", JOB.job_id); }catch(e){}
+    loadBrief(); startBriefPoll();
     b.innerHTML = "✅ 已创建（要再改请重新勾选）";
     toast("修改任务已创建：" + picked.length + " 篇");
     document.getElementById("createTip").textContent =
@@ -887,6 +925,142 @@ async function loadLaunchers(){
     document.getElementById("agPrompt").textContent = j.antigravity_prompt;
   }catch(e){}
 }
+/* ---------- v5 追加：云端预修改进度 / 发给助手的指令 / 云端独立复核 ---------- */
+let BRIEF = null;
+let BRIEF_TIMER = null;
+
+async function loadBrief(){
+  try{
+    const q = (JOB && JOB.job_id) ? ("?job_id=" + JOB.job_id) : "";
+    const r = await fetch(API+"/api/qy/agent/brief"+q, {headers:H()});
+    if(!r.ok) return;
+    const j = await r.json();
+    if(!j.ok) return;
+    BRIEF = j;
+    const el = document.getElementById("agentInstr");
+    if(el) el.textContent = j.instruction || "";
+    const c = j.counts || {};
+    const chip = document.getElementById("prepChip");
+    if(chip){
+      const tot = c.total||0, pre = c.prepared||0;
+      if(j.all_verified){
+        chip.textContent = "✅ 云端复核：全部通过（"+(c.verified||0)+" 篇）";
+        chip.className = "chip ok";
+      }else if((c.verify_failed||0) > 0){
+        chip.textContent = "⚠ 云端复核："+c.verify_failed+" 篇未通过";
+        chip.className = "chip err";
+      }else if(j.preparing){
+        chip.textContent = "云端正在预修改… "+pre+"/"+tot;
+        chip.className = "chip run pulse";
+      }else if(tot && pre >= tot){
+        chip.textContent = "云端已备好 "+pre+" 篇，等你执行";
+        chip.className = "chip ok";
+      }else{
+        chip.textContent = "云端已备好 "+pre+"/"+tot+" 篇";
+        chip.className = "chip warn";
+      }
+    }
+    const nt = document.getElementById("verifyNote");
+    if(nt){
+      nt.textContent = ((c.verified||0)+(c.verify_failed||0) > 0)
+        ? ("上次复核：通过 "+(c.verified||0)+"，未通过 "+(c.verify_failed||0))
+        : "复核会重新回读线上文章，逐篇比对（不采信本地自述）";
+    }
+    const vs = j.verify_summary || {};
+    if(vs.checked || vs.skipped) await loadVerifyPanel();
+  }catch(e){}
+}
+
+function startBriefPoll(){
+  if(BRIEF_TIMER) clearInterval(BRIEF_TIMER);
+  BRIEF_TIMER = setInterval(loadBrief, 9000);
+}
+
+function copyInstr(){
+  const el = document.getElementById("agentInstr");
+  const t = (BRIEF && BRIEF.instruction) || (el ? el.textContent : "");
+  if(!t || t === "正在准备…"){ toast("指令还没准备好，请稍后再试"); return; }
+  navigator.clipboard.writeText(t).then(
+    ()=>toast("已复制 —— 直接粘贴给你的 AI 助手即可"),
+    ()=>toast("复制失败，请手动选中那段文字复制"));
+}
+
+async function doVerify(){
+  if(!JOB){ toast("还没有任务"); return; }
+  const b = document.getElementById("btnVerify");
+  const bt = b ? b.innerHTML : "";
+  if(b){ b.disabled = true; b.innerHTML = '<span class="spin"></span> 云端复核中…'; }
+  try{
+    const r = await fetch(API+"/api/qy/verify/"+JOB.job_id,
+                          {method:"POST", headers:JH(), body:"{}"});
+    const j = await r.json();
+    if(!j.ok){ toast(j.note || "复核未能执行"); }
+    else{
+      const v = j.summary || {};
+      toast("云端复核：校验 "+(v.checked||0)+" 篇，通过 "+(v.passed||0)
+            +"，不通过 "+(v.failed||0));
+    }
+    await loadBrief();
+  }catch(e){ toast("复核失败：" + e.message); }
+  finally{ if(b){ b.disabled = false; b.innerHTML = bt; } }
+}
+
+async function loadVerifyPanel(){
+  if(!JOB) return;
+  const box = document.getElementById("verifyBox");
+  if(!box) return;
+  try{
+    const r = await fetch(API+"/api/qy/jobs/"+JOB.job_id, {headers:H()});
+    if(!r.ok) return;
+    const j = await r.json();
+    const items = (j.job||{}).items || [];
+    const got = items.filter(function(i){ return i.verify && i.verify.status
+                                            && i.verify.status !== "unknown"; });
+    if(got.length === 0){ box.classList.add("hide"); box.innerHTML = ""; return; }
+    const bad = got.filter(function(i){ return i.verify.status !== "pass"; });
+    let h = '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'
+      + '<strong style="font-size:14px">云端独立复核结果</strong>'
+      + '<span class="chip ok">通过 '+(got.length-bad.length)+'</span>'
+      + '<span class="chip err">不通过 '+bad.length+'</span></div>'
+      + '<div class="hint" style="margin-top:0">云端重新回读了线上文章，逐篇比对'
+      + '「标题是否只多了前缀、正文是否只多了一处括注、其余是否逐字未变」。'
+      + '这一栏是云端自己看到的结果，不是本地执行器的自述。</div>';
+    got.forEach(function(i){
+      const v = i.verify || {};
+      const okv = v.status === "pass";
+      const rs = v.reasons || [];
+      h += '<div class="vrow"><span class="chip '+(okv?"ok":"err")+'">'
+        + (okv?"✓ 通过":"✗ 不通过") + '</span>'
+        + '<div style="flex:1;min-width:0"><div class="vt">'
+        + esc(v.live_title || i.title_after || i.title_before || i.id) + '</div>'
+        + (rs.length ? '<div class="vr">'+rs.map(esc).join("；")+'</div>'
+                     : '<div class="vr">标题与正文均与云端方案一致</div>')
+        + '</div></div>';
+    });
+    box.innerHTML = h;
+    box.classList.remove("hide");
+  }catch(e){}
+}
+
+/* 刷新页面后把进行中的任务找回来（否则用户一刷新就看不到进度了） */
+async function resumeJob(){
+  let jid = "";
+  try{ jid = localStorage.getItem("qy.lastJob") || ""; }catch(e){ return; }
+  if(!jid) return;
+  try{
+    const r = await fetch(API+"/api/qy/jobs/"+jid, {headers:H()});
+    if(!r.ok) return;
+    const j = await r.json();
+    if(!j.ok || !j.job) return;
+    JOB = j.job;
+    document.getElementById("taskCard").classList.remove("hide");
+    document.getElementById("jobId").textContent = "任务编号 " + JOB.job_id;
+    document.getElementById("repLink").href = API+"/api/qy/report/"+JOB.job_id;
+    renderJob(JOB);
+    loadBrief(); startBriefPoll();
+  }catch(e){}
+}
+
 function copyAg(){
   const t = document.getElementById("agPrompt").textContent;
   if(!t){ toast("指令还没加载好，请稍后再试"); return; }
@@ -991,10 +1165,20 @@ function renderJob(job){
       failed:["失败","err"],saved_not_published:["待发布","warn"],
       unsupported:["不可改","mute"],pending:["待处理","warn"]};
     const p2 = map2[it.status];
-    if(!p2) return;
-    if(cell.querySelector(".chip").className.indexOf(p2[1]) < 0){
+    if(p2 && cell.querySelector(".chip").className.indexOf(p2[1]) < 0){
       cell.innerHTML = `<span class="chip ${p2[1]}">${p2[0]}</span>`;
       if(it.status==="done"){ row.classList.add("rowdone"); }
+    }
+    // 云端独立复核徽章（换了标题才显示 tip，避免鼠标划过时一片空白）
+    const v = it.verify || {};
+    if(v.status && v.status !== "unknown"){
+      const okv = v.status === "pass";
+      const tip = (v.reasons||[]).join("；") || "云端已回读确认";
+      const html = '<span class="chip ' + (okv?"ok":"err") + ' vbadge" title="'
+        + esc(tip) + '">' + (okv?"云端✓":"云端✗") + '</span>';
+      const old = cell.querySelector(".vbadge");
+      if(!old){ cell.insertAdjacentHTML("beforeend", html); }
+      else if(old.className.indexOf(okv?"ok":"err") < 0){ old.outerHTML = html; }
     }
   });
   if(s.done) refreshDailyMeter();
@@ -1039,6 +1223,13 @@ async function showOverview(){
         : `<div class="zero warn">正文指纹未回读（任务尚未执行或未完成）</div>`;
     const ex = it.body_excerpt
       ? `<div class="excerpt"><strong>正文片段：</strong>${esc(it.body_excerpt)}</div>` : "";
+    const vv = it.verify || {};
+    const vr = (vv.status && vv.status !== "unknown")
+      ? (vv.status === "pass"
+          ? `<div class="zero"><strong>云端复核：✓ 通过</strong> — 云端回读了线上文章，确认标题只多了前缀、正文只多了一处括注，其余逐字未变。</div>`
+          : `<div class="zero warn"><strong>云端复核：✗ 不通过</strong> — `
+            + esc((vv.reasons||[]).join("；")) + `</div>`)
+      : `<div class="zero warn">尚未经过云端复核（到第 3 步点「让云端复核一下」）</div>`;
     h += `<div class="detail" style="margin-bottom:12px">
       <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:9px">
         <span class="chip">${esc(it.kind_label||it.type)}</span>
@@ -1050,7 +1241,7 @@ async function showOverview(){
         <span class="del">- ${esc(it.title_before)}</span>
         <span class="add">+ ${esc(it.title_after)}</span>
       </div>
-      ${ex}${zero}
+      ${ex}${vr}${zero}
     </div>`;
   });
 
@@ -1190,7 +1381,7 @@ function showHelp(){
     "常见问题\n" +
     "────────────────────────\n" +
     "1) 点「载入凭证」说凭证柜是空的？\n" +
-    "   说明你电脑上的部署包还没跑，或者跑了超过 10 分钟。\n" +
+    "   说明你电脑上的部署包还没跑，或者跑了超过 6 小时。\n" +
     "   重新双击一次「一键部署」即可。\n\n" +
     "2) 部署窗口提示读取失败？\n" +
     "   浏览器开着会锁住凭证文件。把 Edge / Chrome 所有窗口全部关掉\n" +
@@ -1220,8 +1411,10 @@ const TOUR_STEPS = [
    d:"标题左边的方框就是开关。也可以用上面的「全选」「选前 20」快速选。"},
   {sel:"#btnCreate", t:"第 2 步：开始修改",
    d:"点这一个按钮，系统会逐篇判断加在哪里并生成任务。"},
-  {sel:"#taskCard", t:"第 3 步：在你自己电脑上执行",
-   d:"修改由你电脑上的执行器完成（走你本人的网络身份）。进度会实时显示在这里。"},
+  {sel:"#agentBox", t:"第 3 步：把这段话发给你的 AI 助手",
+   d:"云端已经算好每篇文章的最终标题和正文。把这段话复制给你的 AI 助手（Antigravity / Claude / Cursor 等），它就会在你电脑上把任务跑完 —— 你不用再做别的。写完以后云端会重新回读每篇文章逐篇复核，结果就在这一块下面。"},
+  {sel:"#taskCard", t:"进度与云端复核",
+   d:"修改由你电脑上的执行器完成（走你本人的网络身份），进度实时显示。完成后云端会自己回读线上文章，逐篇给出「通过 / 不通过」和原因。"},
   {sel:"#perDay", t:"每天改多少",
    d:"默认每天最多 120 篇，到量自动停止，保护账号。可以改，改完重新下载一次部署包。"},
   {sel:"#ovCard", t:"第 4 步：查看结果",
@@ -1286,6 +1479,7 @@ function tourShow(i){
 function tourNext(){ tourShow(TOUR_I+1); }
 function tourPrev(){ if(TOUR_I>0){ tourShow(TOUR_I-1); } }
 function startTour(force){ tourEnd(false); tourShow(0); }
+try{ resumeJob(); }catch(e){}
 try{
   if(!localStorage.getItem("qy_tour_done")){
     setTimeout(function(){ tourShow(0); }, 1400);
