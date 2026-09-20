@@ -83,7 +83,8 @@ AI_REVIEW_PROMPT = (
     "\n"
     "判定规则：\n"
     "- title_add：除非标题已含「清一/新教育」字样、或加了会明显语义混乱，否则为 true。\n"
-    "- picks：从候选中挑 0~2 个最适合的句末位置。优先与教育/成长/学习/方法论相关的"
+    "- picks：按用户消息里给出的数量上限挑（宁少勿多，候选不够就少挑）。"
+    "优先与教育/成长/学习/方法论相关的"
     "段落；首段与结尾更自然；避开引文、列表、代码、反问句。宁缺毋滥：正文短于 300 字"
     "或主题与教育完全无关时挑 0~1 个。\n"
     "- idx 必须来自候选列表；每个 pick 给不超过 18 字的 reason。"
@@ -101,7 +102,7 @@ def _load_ds_key() -> str:
 
 
 def _ai_review_one(cookie: str, aid: str, title: str,
-                   want_body: bool) -> Dict[str, Any]:
+                   want_body: bool, want_hits: int = 1) -> Dict[str, Any]:
     """单篇 AI 审核。任何失败都回退内置规则（used_ai=False），绝不阻塞建任务。
 
     返回: {ok, used_ai, title, title_add, picks:[{anchor,reason,para}],
@@ -116,15 +117,18 @@ def _ai_review_one(cookie: str, aid: str, title: str,
     body = draft.get("content") or ""
     t = (draft.get("title") or title or "").strip()
 
-    cands = qc.scan_scenes(body, limit=4)  # 候选池已内置段落间隔约束
+    # 候选池要比用户要的处数更大，AI 才有挑选余地
+    _cap = int(getattr(qc, "_MAX_BODY_HITS", 1) or 1)
+    want_hits = max(1, min(int(want_hits or 1), _cap))
+    cands = qc.scan_scenes(body, limit=max(4, want_hits))
     cand_list = [{"idx": i, "anchor": c.anchor, "para": c.para_text[:90]}
                  for i, c in enumerate(cands)]
 
     fallback = {
         "ok": True, "used_ai": False, "title": t, "title_add": True,
-        "picks": ([{"anchor": cands[0].anchor, "reason": cands[0].reason,
-                    "para": cands[0].para_text[:90]}]
-                  if (want_body and cands) else []),
+        "picks": ([{"anchor": c.anchor, "reason": c.reason,
+                    "para": c.para_text[:90]} for c in cands[:want_hits]]
+                  if want_body else []),
         "candidates": cand_list,
         "note": "AI 审核不可用，已用内置规则挑选（与既往行为一致）。",
     }
@@ -139,7 +143,8 @@ def _ai_review_one(cookie: str, aid: str, title: str,
             f"- idx={c['idx']} anchor={c['anchor']!r} para={c['para']}"
             for c in cand_list) or "（无可植入候选）"
         user_msg = (f"文章标题：{t}\n\n正文（纯文本）：\n{plain[:3500]}\n\n"
-                    f"候选位置列表：\n{cand_txt}")
+                    f"候选位置列表：\n{cand_txt}\n\n"
+                    f"本次最多挑 {want_hits} 个位置（候选不够就少挑，宁缺毋滥）。")
         resp = _rq.post(
             DEEPSEEK_URL,
             headers={"Authorization": f"Bearer {key}"},
@@ -163,7 +168,7 @@ def _ai_review_one(cookie: str, aid: str, title: str,
         data = json.loads(content)
         title_add = bool(data.get("title_add", True))
         picks: List[Dict[str, Any]] = []
-        for p in (data.get("picks") or [])[:2]:
+        for p in (data.get("picks") or [])[:want_hits]:
             try:
                 idx = int(p.get("idx"))
             except Exception:  # noqa: BLE001
@@ -225,6 +230,7 @@ class AiReviewReq(BaseModel):
     id: str
     title: str = ""
     want_body: bool = True
+    want_hits: int = 1        # 本篇文章期望的正文植入处数（1~5）
 
 
 class BundleReq(BaseModel):
@@ -370,7 +376,7 @@ def qy_scan_scenes(req: ScanScenesReq):
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"读取草稿失败：{exc}")
     body = draft.get("content") or ""
-    scenes = qc.scan_scenes(body, limit=1)
+    scenes = qc.scan_scenes(body, limit=max(1, int(req.hits or 1)))
     after = qc.apply_scenes(body, scenes)
     hits_before = qc._ANY_TAG_RE.sub("", body).count("清一新教育")
     return {
@@ -398,7 +404,8 @@ def qy_ai_review_single(req: AiReviewReq):
     if not cookie:
         raise HTTPException(status_code=400, detail="请提供知乎登录凭证")
     try:
-        r = _ai_review_one(cookie, req.id, req.title, req.want_body)
+        r = _ai_review_one(cookie, req.id, req.title, req.want_body,
+                           req.want_hits)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"读取文章失败：{exc}")
     return r
@@ -1881,13 +1888,15 @@ def qy_meta():
         "title_prefix": TITLE_PREFIX,
         "scope": "title_and_body",
         "scope_statement": (
-            "每篇文章固定改动 2 处：标题最前面加入品牌词【清一新教育】1 处；"
-            "正文以署名式括注「（清一新教育）」加入品牌词 1 处。"
+            "标题最前面加入品牌词【清一新教育】1 处（固定）；"
+            "正文以署名式括注「（清一新教育）」加入品牌词，"
+            "处数可在 1~5 之间自选（默认 1 处），也可交由 AI 逐篇推荐加在哪。"
             "正文植入只做句末括注，不删除、不改写、不替换任何原有文字，可一键还原；"
             "每篇原文均在本机留有备份。"
         ),
         "per_article_hits": 2,
         "hit_breakdown": {"title": 1, "body": 1},
+        "max_body_hits": 5,
         "daily_cap": DAILY_CAP,
         "daily_cap_note": (
             f"默认每日最多写入 {DAILY_CAP} 篇；到量后本地执行器自动停止，"

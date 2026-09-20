@@ -277,7 +277,7 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
 
 <header class="top">
   <h1>清一新教育文章修改工作台</h1>
-  <span class="badge">每篇 2 处 · 标题 1 + 正文 1</span>
+  <span class="badge">标题 1 处 + 正文 1~5 处（可选）</span>
 </header>
 <div class="sub">
   云端负责检索与进度，真正的写入在你自己电脑上完成（走你本人的网络身份）。
@@ -289,9 +289,11 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
 <details class="adv" style="margin-bottom:16px">
   <summary>本工具会改动什么？（点开看完整声明）</summary>
   <div class="body">
-    每篇文章固定改动 <strong>2 处</strong>：<br>
-    ① <strong>标题</strong>最前面加入品牌词 <code>【清一新教育】</code> 共 1 处；<br>
-    ② <strong>正文</strong>中以署名式括注 <code>（清一新教育）</code> 加入品牌词共 1 处。<br>
+    每篇文章改两件事：<br>
+    ① <strong>标题</strong>最前面加入品牌词 <code>【清一新教育】</code> 共 1 处（固定）；<br>
+    ② <strong>正文</strong>中以署名式括注 <code>（清一新教育）</code> 加入品牌词 ——
+    <strong>加几处由你在「高级」里自选</strong>（1~5 处，默认 1 处），
+    也可以交给 AI 逐篇推荐加在哪。<br>
     正文植入<strong>只做句末括注，不删除、不改写、不替换任何原有文字</strong>，
     并可一键还原为原文；每篇原文均在本机留有备份。
     <strong>除此之外没有任何修改。</strong>
@@ -434,7 +436,20 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
         </label>
         <label class="fopt">
           <input type="checkbox" id="fBody" checked onchange="renderTable()">
-          <span>内容加入清一新教育<em>每篇 1 处（署名式括注，可还原）</em></span>
+          <span>内容加入清一新教育<em>署名式括注，可还原</em></span>
+        </label>
+        <label class="fopt">
+          <span>正文植入处数</span>
+          <select id="fBodyHits" onchange="renderTable()"
+                  style="margin:0 6px;padding:3px 8px;border-radius:7px;
+                         border:1px solid var(--line);background:#fff">
+            <option value="1" selected>1 处（默认 · 最稳）</option>
+            <option value="2">2 处</option>
+            <option value="3">3 处</option>
+            <option value="4">4 处</option>
+            <option value="5">5 处（最多）</option>
+          </select>
+          <em>处数越多，被判定「关键词堆砌」的风险越高</em>
         </label>
         <label class="fopt">
           <input type="checkbox" id="fAI" checked>
@@ -829,6 +844,13 @@ function selFirst(n){ let c=0; filtered().forEach(i=>{ if(i.editable && c<n){ SE
 function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, m =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
 
+/* ---------- 正文植入处数（1~5，默认 1） ---------- */
+function bodyHitsWant(){
+  const el = document.getElementById("fBodyHits");
+  const n = el ? parseInt(el.value, 10) : 1;
+  return (isFinite(n) && n >= 1) ? Math.min(n, 5) : 1;
+}
+
 /* ---------- 只读预演：正文会加在哪 ---------- */
 async function doScanScenes(){
   const ck = document.getElementById("ck").value.trim();
@@ -856,7 +878,7 @@ async function doScanScenes(){
     try{
       r = await fetch(API+"/api/qy/scan-scenes",{
         method:"POST", headers:JH(),
-        body:JSON.stringify({cookie:ck, id:it.id, hits:1})
+        body:JSON.stringify({cookie:ck, id:it.id, hits:bodyHitsWant()})
       }).then(x=>x.json());
     }catch(e){ r = null; }
 
@@ -928,7 +950,8 @@ async function doCreate(){
           r = await fetch(API+"/api/qy/ai-review-single",{
             method:"POST", headers:JH(),
             body:JSON.stringify({cookie:document.getElementById("ck").value.trim(),
-              id:it.id, title:it.title, want_body:wantBody})
+              id:it.id, title:it.title, want_body:wantBody,
+              want_hits: bodyHitsWant()})
           }).then(x=>x.json());
         }catch(e){ r = null; }
         doneN++;
@@ -969,7 +992,7 @@ async function doCreate(){
         mode:"local",
         title:  wantTitle,
         inject_body: wantBody,
-        body_hits: 1
+        body_hits: bodyHitsWant()
       })
     });
     const j = await r2.json();

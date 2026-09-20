@@ -38,10 +38,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 BRAND_TAG = "（清一新教育）"
 
-# 硬上限：每篇正文最多植入 1 处。
-# 标题 1 处 + 正文 1 处 = 全篇 2 处，是达成"检索可达"的最小充分量；
-# 再多既无收益，又会显著提高被判定为关键词堆砌的风险。
-_MAX_BODY_HITS = 1
+# 正文植入处数的硬上限（调用方可在 1.._MAX_BODY_HITS 之间自选）。
+# 默认 1 处：标题 1 + 正文 1 = 全篇 2 处，是达成"检索可达"的最小充分量。
+# 放宽到 5，是因为用户明确要求「正文可以自己选加几处」；
+# 但必须记住：同一篇里重复堆同一个词，是平台判定"内容注水 / 关键词堆砌"的
+# 典型特征 —— 处数越多风险越高。**这是上限，不是推荐值。**
+_MAX_BODY_HITS = 5
 
 _BLOCK_TAG_RE = re.compile(r"<(p|h[1-6]|blockquote|figure|pre|li)\b[^>]*>", re.I)
 _ANY_TAG_RE = re.compile(r"<[^>]+>")
@@ -165,12 +167,11 @@ def _score(para: str, block_no: int, total: int, has_hint: bool) -> Tuple[float,
 def scan_scenes(body_html: str, limit: int = 1) -> List[Scene]:
     """从前往后扫描，挑出最自然的前 N 个可植入场景（只读，不写入）。
 
-    硬约束——「每篇正文最多只植入一处」：
-    标题已经拥有 1 处，正文再补 1 处，全篇共 2 处即达成检索可达性。
-    因此在正文里重复堆同一个词，既无额外收益，又是平台判定"内容注水"的
-    典型特征。故本函数：
+    N 由调用方给定（默认 1），两处受约束：
       * 正文只要已有品牌词 → 直接返回空（幂等，绝不重复植入）；
-      * 调用方即便传更大的 limit，也会被 _MAX_BODY_HITS 夹住。
+      * 任何 limit 都会被 _MAX_BODY_HITS 夹住。
+    重复堆同一个词是平台判定"内容注水"的典型特征，处数越多风险越高，
+    所以默认保持 1 处，只有用户显式要更多时才增加。
     """
     body_text = _ANY_TAG_RE.sub("", body_html or "")
     if "清一新教育" in body_text:
