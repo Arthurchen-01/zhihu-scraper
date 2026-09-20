@@ -1,0 +1,2190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>清一新教育文章修改工作台 · 可视化验收报告 (v13)</title>
+<style>
+:root{
+  --bg:#f4f6fb; --bg-soft:#eef2f9; --bg-soft2:#f8fafc;
+  --panel:#ffffff;
+  --line:#e7ebf3; --line-2:#d9e1ee;
+  --text:#0b1220; --text-2:#4b5768; --text-3:#8b95a7;
+  --brand:#2563eb; --brand-2:#1d4ed8; --brand-soft:#eef4ff;
+  --cyan:#06b6d4;
+  --ok:#059669; --ok-soft:#ecfdf5;
+  --warn:#d97706; --warn-soft:#fffbeb;
+  --err:#dc2626;
+  --grad:linear-gradient(135deg,#2563eb 0%,#06b6d4 100%);
+  --grad-soft:linear-gradient(135deg,#eff5ff 0%,#ecfeff 100%);
+  --r-sm:10px; --r:14px; --r-lg:18px;
+  --sh-1:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.05);
+  --sh-2:0 2px 4px rgba(16,24,40,.04),0 10px 24px -8px rgba(16,24,40,.10);
+  --sh-3:0 6px 12px rgba(16,24,40,.05),0 22px 48px -14px rgba(16,24,40,.18);
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --top:56px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;color:var(--text);font-size:14px;line-height:1.72;
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",
+    "Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  background:
+    radial-gradient(920px 500px at 10% -10%, rgba(37,99,235,.09), transparent 62%),
+    radial-gradient(780px 440px at 94% 1%, rgba(6,182,212,.08), transparent 60%),
+    var(--bg);
+  background-attachment:fixed;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+.wrap{max-width:1060px;margin:0 auto;padding:calc(var(--top) + 40px) 22px 120px}
+
+/* ---------- 顶栏 ---------- */
+.qy-top{
+  position:fixed;left:0;right:0;top:0;z-index:70;height:var(--top);
+  display:flex;align-items:center;gap:12px;padding:0 18px;
+  background:rgba(255,255,255,.76);
+  -webkit-backdrop-filter:saturate(180%) blur(16px);
+  backdrop-filter:saturate(180%) blur(16px);
+  border-bottom:1px solid var(--line);
+}
+.qy-brand{display:flex;align-items:center;gap:9px;font-weight:750;font-size:13.5px;
+  letter-spacing:-.2px;white-space:nowrap;color:var(--text)}
+.qy-brand i{width:22px;height:22px;border-radius:7px;background:var(--grad);flex:none;
+  box-shadow:0 5px 14px -4px rgba(37,99,235,.65)}
+.qy-brand s{text-decoration:none;color:var(--text-3);font-weight:500;font-size:12.5px}
+.qy-top .qy-sp{flex:1}
+.qy-search{position:relative;display:flex;align-items:center}
+.qy-search input{
+  width:190px;height:32px;border-radius:9px;border:1px solid var(--line-2);
+  background:#fff;padding:0 30px 0 30px;font-size:12.5px;color:var(--text);
+  outline:none;transition:width .3s var(--ease),border-color .2s,box-shadow .2s;
+  font-family:inherit;
+}
+.qy-search input:focus{width:250px;border-color:var(--brand);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+.qy-search svg{position:absolute;left:9px;width:13px;height:13px;stroke:var(--text-3);
+  fill:none;stroke-width:2;pointer-events:none}
+.qy-search kbd{position:absolute;right:7px;font-size:10.5px;color:var(--text-3);
+  border:1px solid var(--line-2);border-radius:4px;padding:0 4px;line-height:15px;background:#fff}
+.qy-btn{
+  display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;
+  border-radius:9px;border:1px solid var(--line-2);background:#fff;color:var(--text-2);
+  font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:inherit;
+  transition:background .18s,border-color .18s,color .18s,transform .12s var(--ease),box-shadow .18s;
+}
+.qy-btn:hover{background:var(--brand-soft);border-color:#c3d8ff;color:var(--brand-2)}
+.qy-btn:active{transform:scale(.97)}
+.qy-btn.pri{background:var(--grad);border-color:transparent;color:#fff;
+  box-shadow:0 6px 16px -6px rgba(37,99,235,.7)}
+.qy-btn.pri:hover{filter:brightness(1.07);color:#fff}
+.qy-prog{position:absolute;left:0;right:0;bottom:-1px;height:2px}
+.qy-prog i{display:block;height:100%;width:0;background:var(--grad);
+  border-radius:0 2px 2px 0;transition:width .1s linear}
+
+/* ---------- 左目录 ---------- */
+.qy-toc{
+  position:fixed;top:calc(var(--top) + 24px);width:188px;
+  left:max(16px, calc(50vw - 530px - 206px));
+  max-height:calc(100vh - var(--top) - 60px);overflow:auto;
+  z-index:50;padding:2px 0 8px;display:none;
+  scrollbar-width:thin;
+}
+.qy-toc::-webkit-scrollbar{width:5px}
+.qy-toc::-webkit-scrollbar-thumb{background:#cdd6e6;border-radius:9px}
+@media(min-width:1440px){.qy-toc{display:block}}
+.qy-toc.open{
+  display:block;background:#fff;border:1px solid var(--line);border-radius:16px;
+  padding:12px 10px;box-shadow:0 30px 72px -22px rgba(16,24,40,.4);
+  left:16px;top:calc(var(--top) + 12px);width:236px;
+  max-height:calc(100vh - var(--top) - 36px);
+  animation:qyTocIn .26s var(--ease);
+}
+@keyframes qyTocIn{from{opacity:0;transform:translateY(-9px) scale(.98)}to{opacity:1;transform:none}}
+.qy-toc-bd{position:fixed;inset:0;z-index:45;background:rgba(15,23,42,.16);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  opacity:0;pointer-events:none;transition:opacity .24s var(--ease)}
+.qy-toc-bd.on{opacity:1;pointer-events:auto}
+@media(min-width:1440px){.qy-toc-bd{display:none}}
+.qy-toc-t{font-size:10.5px;font-weight:750;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--text-3);padding:0 0 8px 12px}
+.qy-toc a{
+  position:relative;display:block;padding:6px 10px 6px 12px;border-radius:8px;
+  color:var(--text-2);text-decoration:none;font-size:12.5px;line-height:1.45;
+  transition:background .16s,color .16s;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.qy-toc a:hover{background:#fff;color:var(--text)}
+.qy-toc a.on{background:#fff;color:var(--brand-2);font-weight:650;
+  box-shadow:var(--sh-1)}
+.qy-toc a.on::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;
+  border-radius:0 3px 3px 0;background:var(--grad)}
+.qy-toc a .d{display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:#cbd5e1;margin-right:7px;vertical-align:middle;transition:background .2s,transform .2s}
+.qy-toc a.on .d{background:var(--brand);transform:scale(1.35)}
+
+/* ---------- Hero ---------- */
+.qy-hero{
+  position:relative;background:var(--panel);border:1px solid var(--line);
+  border-radius:22px;padding:30px 30px 26px;margin-bottom:22px;
+  box-shadow:var(--sh-3);overflow:hidden;
+}
+.qy-hero::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--grad)}
+.qy-hero::after{content:"";position:absolute;right:-70px;top:-110px;width:320px;height:320px;
+  border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle at 34% 34%,
+    rgba(37,99,235,.16), rgba(6,182,212,.10) 46%, rgba(6,182,212,0) 72%);
+  filter:blur(6px)}
+.qy-hero-tag{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;
+  letter-spacing:.05em;color:var(--brand-2);background:var(--brand-soft);
+  border:1px solid #d8e6ff;border-radius:999px;padding:3px 11px;margin-bottom:13px}
+.qy-hero-tag::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--brand);
+  box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+h1{position:relative;font-size:29px;line-height:1.22;margin:0 0 10px;
+  letter-spacing:-.75px;font-weight:780}
+.qy-hero-sub{position:relative;margin:0 0 20px;color:var(--text-2);font-size:13.5px;max-width:74ch}
+.qy-hero-stats{position:relative;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:11px}
+.stat{background:var(--bg-soft2);border:1px solid var(--line);border-radius:13px;
+  padding:13px 15px;transition:transform .25s var(--ease),box-shadow .25s var(--ease),
+  border-color .2s,background .2s}
+.stat:hover{transform:translateY(-2px);box-shadow:var(--sh-2);background:#fff;border-color:var(--line-2)}
+.stat .n{font-size:25px;font-weight:780;letter-spacing:-.9px;line-height:1.15;
+  font-variant-numeric:tabular-nums}
+.stat .l{font-size:12px;color:var(--text-2);margin-top:3px}
+.stat.ok .n{color:var(--ok)}
+.stat.brand .n{background:var(--grad);-webkit-background-clip:text;background-clip:text;
+  color:transparent}
+.stat.warn .n{color:var(--warn)}
+
+/* 旧 .sub 兼容 */
+.sub{color:var(--text-2);font-size:13px;margin-bottom:26px}
+
+/* ---------- 卡片 ---------- */
+.card{
+  position:relative;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--r-lg);padding:22px;margin-bottom:20px;box-shadow:var(--sh-2);
+  transition:box-shadow .3s var(--ease),border-color .2s,transform .3s var(--ease);
+  scroll-margin-top:calc(var(--top) + 18px);
+}
+.card:hover{box-shadow:var(--sh-3);border-color:var(--line-2)}
+.card.qy-w{padding:0;overflow:hidden}
+.card.qy-latest{border:none!important;background:
+  linear-gradient(#fff,#fff) padding-box, var(--grad) border-box!important;
+  border:2px solid transparent!important;box-shadow:0 1px 2px rgba(16,24,40,.05),
+  0 16px 40px -16px rgba(37,99,235,.35)}
+.card.qy-latest::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;
+  background:var(--grad)}
+
+h2{font-size:16.5px;margin:0 0 14px;display:flex;align-items:center;gap:10px;
+  letter-spacing:-.25px;line-height:1.4}
+h2 .n{
+  display:inline-flex;align-items:center;justify-content:center;min-width:25px;height:25px;
+  padding:0 6px;border-radius:8px;background:var(--grad);color:#fff;font-size:12px;
+  font-weight:750;flex:none;box-shadow:0 4px 12px -5px rgba(37,99,235,.75)
+}
+.card-head{cursor:pointer;user-select:none;padding:18px 54px 18px 22px;margin:0;
+  position:relative;transition:background .18s}
+.card-head:hover{background:var(--bg-soft2)}
+.card-head::after{
+  content:"";position:absolute;right:24px;top:50%;width:7px;height:7px;margin-top:-5px;
+  border-right:2px solid var(--text-3);border-bottom:2px solid var(--text-3);
+  transform:rotate(45deg);transform-origin:60% 60%;
+  transition:transform .32s var(--ease),border-color .2s;
+}
+.card-head:hover::after{border-color:var(--brand)}
+.card.collapsed .card-head::after{transform:rotate(-45deg) translateY(-1px)}
+.card.collapsed .card-head{border-bottom:1px solid transparent}
+.qy-bwrap{display:grid;grid-template-rows:1fr;transition:grid-template-rows .38s var(--ease)}
+.card.collapsed .qy-bwrap{grid-template-rows:0fr}
+.card-body{overflow:hidden;min-height:0;padding:0 22px 22px;transition:padding .38s var(--ease)}
+.card.collapsed .card-body{padding-top:0;padding-bottom:0}
+.card-preview{display:none;padding:0 54px 18px 22px;font-size:12.5px;
+  color:var(--text-3);line-height:1.62;
+  -webkit-mask-image:linear-gradient(90deg,#000 78%,transparent);
+  mask-image:linear-gradient(90deg,#000 78%,transparent)}
+.card.collapsed .card-preview{display:block}
+
+h3{font-size:14px;margin:22px 0 10px;color:var(--text);letter-spacing:-.1px;
+  display:flex;align-items:center;gap:8px}
+h3::before{content:"";width:3px;height:13px;border-radius:2px;background:var(--grad);flex:none}
+.card-body>:first-child{margin-top:0}
+.card-body>h3:first-child{margin-top:2px}
+.meta{font-size:12.5px;color:var(--text-2);margin-bottom:14px;padding:11px 14px;
+  background:var(--bg-soft2);border-radius:11px;border:1px solid var(--line);
+  border-left:3px solid #c7d7f7}
+.meta b{color:var(--text)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+
+/* ---------- 表格 ---------- */
+.qy-tbl{border:1px solid var(--line);border-radius:13px;overflow:hidden;margin:12px 0;
+  background:#fff}
+.qy-tbl-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:0}
+th,td{padding:10px 13px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:none}
+th{background:var(--bg-soft);font-weight:650;font-size:12.5px;color:var(--text-2);
+  letter-spacing:.01em}
+tbody tr{transition:background .16s}
+table tr:hover td{background:var(--brand-soft)}
+.card-body>:first-child.qy-tbl{margin-top:4px}
+
+/* ---------- 行内元素 ---------- */
+code{background:#eef2f8;padding:1.5px 6px;border-radius:6px;font-size:12.4px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#1e293b;
+  border:1px solid #e3e9f2}
+a{color:var(--brand-2)}
+.qy-prewrap{position:relative;margin:14px 0}
+pre{background:#0b1220;color:#dbe4f3;padding:17px 18px;border-radius:13px;
+  overflow:auto;font-size:12.3px;line-height:1.68;margin:0;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 14px 30px -16px rgba(11,18,32,.75)}
+.qy-copy{
+  position:absolute;top:9px;right:9px;height:26px;padding:0 9px;border-radius:7px;
+  border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.1);
+  color:#c7d5ec;font-size:11.5px;font-weight:650;cursor:pointer;font-family:inherit;
+  opacity:0;transform:translateY(-3px);
+  transition:opacity .2s var(--ease),transform .2s var(--ease),background .18s;
+}
+.qy-prewrap:hover .qy-copy{opacity:1;transform:none}
+.qy-copy:hover{background:rgba(255,255,255,.2);color:#fff}
+.qy-copy.done{background:rgba(16,185,129,.28);color:#a7f3d0;border-color:rgba(16,185,129,.45)}
+
+.shot{
+  border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;
+  margin:16px 0 8px;box-shadow:var(--sh-2);transition:box-shadow .3s var(--ease),
+  transform .3s var(--ease);cursor:zoom-in;position:relative;
+}
+.shot:hover{box-shadow:var(--sh-3);transform:translateY(-2px)}
+.shot img{display:block;width:100%;height:auto;transition:transform .5s var(--ease)}
+.shot:hover img{transform:scale(1.012)}
+.shot::after{
+  content:"点击放大";position:absolute;right:12px;top:12px;font-size:11px;font-weight:650;
+  color:#fff;background:rgba(11,18,32,.62);padding:3px 9px;border-radius:999px;
+  -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  opacity:0;transform:translateY(-4px);transition:opacity .22s,transform .22s;pointer-events:none
+}
+.shot:hover::after{opacity:1;transform:none}
+.cap{font-size:12.5px;color:var(--text-2);padding:11px 15px;background:var(--bg-soft2);
+  border-top:1px solid var(--line);line-height:1.65}
+.cap b{color:var(--text)}
+
+.pill{
+  display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:650;
+  padding:2.5px 10px;border-radius:999px;background:var(--ok-soft);color:#047857;
+  border:1px solid #bbf7d0;white-space:nowrap;line-height:1.5
+}
+.pill.fix{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+.pill.warn{background:var(--warn-soft);color:#b45309;border-color:#fde68a}
+.pill.pl{background:#f1f5f9;color:#475569;border-color:#e2e8f0}
+
+.note{background:var(--brand-soft);border:1px solid #dbe7ff;border-left:3px solid var(--brand);
+  border-radius:0 12px 12px 0;padding:13px 16px;font-size:13px;color:var(--text-2);margin:14px 0}
+.note b{color:var(--text)}
+.ok-t{color:var(--ok);font-weight:700}
+.warn-t{color:var(--warn);font-weight:700}
+ul{margin:8px 0;padding-left:22px}
+li{margin:5px 0}
+li::marker{color:var(--brand)}
+
+footer{text-align:center;color:var(--text-3);font-size:12px;margin-top:40px;
+  padding-top:20px;border-top:1px solid var(--line)}
+
+/* ---------- 进场动画 ---------- */
+.qy-rv{opacity:0;transform:translateY(18px)}
+.qy-rv.in{opacity:1;transform:none;
+  transition:opacity .55s var(--ease),transform .55s var(--ease)}
+
+/* ---------- 回到顶部 ---------- */
+.qy-top-btn{position:fixed;right:24px;bottom:26px;z-index:60;width:42px;height:42px;
+  border-radius:13px;border:1px solid var(--line-2);background:rgba(255,255,255,.9);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  color:var(--text-2);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:var(--sh-2);opacity:0;pointer-events:none;transform:translateY(10px);
+  transition:opacity .25s var(--ease),transform .25s var(--ease),background .18s,color .18s}
+.qy-top-btn.on{opacity:1;pointer-events:auto;transform:none}
+.qy-top-btn:hover{background:var(--brand);color:#fff;border-color:transparent}
+.qy-top-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.4;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 灯箱 ---------- */
+.qy-lb{position:fixed;inset:0;z-index:120;background:rgba(8,12,22,.84);
+  -webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);
+  display:flex;align-items:center;justify-content:center;padding:44px;
+  opacity:0;pointer-events:none;transition:opacity .26s var(--ease)}
+.qy-lb.on{opacity:1;pointer-events:auto}
+.qy-lb img{max-width:100%;max-height:100%;border-radius:14px;
+  box-shadow:0 44px 90px -24px rgba(0,0,0,.8);transform:scale(.965);
+  transition:transform .34s var(--ease)}
+.qy-lb.on img{transform:scale(1)}
+.qy-lb-hint{position:fixed;left:0;right:0;bottom:22px;text-align:center;color:#9fb0c9;
+  font-size:12px;letter-spacing:.02em}
+
+/* ---------- 搜索无结果 ---------- */
+.qy-none{display:none;text-align:center;padding:56px 20px;color:var(--text-3);
+  font-size:13.5px;background:#fff;border:1px dashed var(--line-2);border-radius:var(--r-lg)}
+.qy-none.on{display:block}
+mark{background:#fef08a;color:inherit;border-radius:3px;padding:0 2px}
+
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+  .qy-rv{opacity:1;transform:none}
+}
+@media print{
+  .qy-top,.qy-toc,.qy-top-btn,.qy-lb,.qy-copy{display:none!important}
+  body{background:#fff}
+  .wrap{max-width:none;padding:0}
+  .card{break-inside:avoid;box-shadow:none;border:1px solid #ddd}
+  .card.collapsed .qy-bwrap{grid-template-rows:1fr}
+  .card-preview{display:none}
+  .qy-rv{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="qy-hero">
+  <div class="qy-hero-tag">可视化验收报告 · 2026-09-20（v13）</div>
+  <h1>清一新教育文章修改工作台</h1>
+  <p class="qy-hero-sub">
+    验收对象 <code>https://zh.samuraiguan.cloud/api/qy/console</code> ·
+    用<b>页面截图</b> + <b>文本快照</b>两种方式交叉印证界面真实状态 ·
+    截图存于 <code>qy_local/shots/</code>
+  </p>
+  <div class="qy-hero-stats">
+    <div class="stat brand"><div class="n" data-count="12">12</div><div class="l">轮迭代全部落地（v2~v13）</div></div>
+    <div class="stat ok"><div class="n" data-count="20">20</div><div class="l">张页面截图逐屏留证</div></div>
+    <div class="stat"><div class="n" data-count="6">6</div><div class="l">道只读闸门 · 任意一道不过就停</div></div>
+    <div class="stat warn"><div class="n" data-count="3">3</div><div class="l">条架构不变量 · 改代码前先看</div></div>
+  </div>
+</header>
+
+<!-- ================= 0 · v13 更新 ================= -->
+<div class="card">
+  <h2><span class="n">◆</span> 第十三轮 · 界面重做：从「一堆白盒子」到有层次、有反馈</h2>
+  <div class="meta">
+    你提的原话：「<b>这个各种渲染看起来极其低级啊，就是完全没有任何交互的感觉</b>」。<br>
+    爹把你看到的两样东西（这份<b>验收报告</b> + <b>工作台页面</b>）都摊开逐行看了 ——
+    你说得对，而且是同一个病根。这一轮就是把两边的界面重做一遍。
+  </div>
+
+  <h3>A. 病根在哪（逐条查证，不是感觉）</h3>
+  <table>
+    <tr><th style="width:150px">位置</th><th>原来是什么样</th></tr>
+    <tr>
+      <td><b>验收报告</b></td>
+      <td>15 张卡片<b>同一种白盒子</b>（1px 边框 + 一层阴影）；没有折叠、
+          没有悬停反馈、没有进场动效；16 张截图<b>不能点开</b>；
+          代码块<b>没法复制</b>；50 多 KB 一路滚到底，中途没有任何路标。</td>
+    </tr>
+    <tr>
+      <td><b>工作台页面</b></td>
+      <td>97 个选择器基本靠 <b>1px 边框 + 纯色块</b>拼出来：卡片之间没有层次、
+          按钮<b>没有按下反馈</b>、折叠块直接蹦开没有过渡、滚动<b>没有任何反馈</b>。</td>
+    </tr>
+    <tr>
+      <td><b>最扎眼的那个</b></td>
+      <td>报告里 9 张卡片带着历史上不同时期留下的<b>杂色 inline 边框</b> ——
+          琥珀 / 红 / 紫 / 绿 / 天蓝……<b>同一个东西 9 种颜色</b>。
+          这就是「低级」最直接的来源。</td>
+    </tr>
+  </table>
+
+  <h3>B. 报告页现在能干什么</h3>
+  <table>
+    <tr><th style="width:200px">能力</th><th>说明</th></tr>
+    <tr><td><b>顶部粘性工具栏</b></td><td>毛玻璃质感，右侧带一条<b>阅读进度条</b>，随时知道读到哪了</td></tr>
+    <tr><td><b>左侧目录 + 滚动高亮</b></td><td>宽屏常驻；窄屏点「目录」拉出抽屉（带遮罩，Esc 关）。
+        当前所在章节实时高亮</td></tr>
+    <tr><td><b>卡片折叠</b></td><td>标题整行可点，历史轮次<b>默认折起</b>并留一行摘要预览；
+        顶部有「全部折叠 / 全部展开」</td></tr>
+    <tr><td><b>搜索</b></td><td>输入即过滤章节、实时计数、无结果给提示（快捷键 <code>/</code>）</td></tr>
+    <tr><td><b>截图灯箱</b></td><td>点任意截图放大，暗底毛玻璃，Esc 或点任意处关闭</td></tr>
+    <tr><td><b>代码块复制</b></td><td>悬停出现「复制」，复制成功变绿提示</td></tr>
+    <tr><td><b>进场动画</b></td><td>卡片滚动进入视口时轻微上浮淡入；顶部的数字从 0 滚上去</td></tr>
+    <tr><td><b>其余</b></td><td>回到顶部按钮、表格行悬停、打印样式（自动展开 + 隐藏工具栏）、
+        尊重 <code>prefers-reduced-motion</code></td></tr>
+  </table>
+
+  <h3>C. 工作台页面现在有什么</h3>
+  <table>
+    <tr><th style="width:200px">元素</th><th>升级后</th></tr>
+    <tr><td>整体</td><td>统一色板 / 圆角 / <b>三层阴影</b> / 渐变主色 / 细滚动条</td></tr>
+    <tr><td>按钮</td><td>渐变底 + 悬停上浮 + <b>按下缩放</b> + 键盘焦点环</td></tr>
+    <tr><td>序号圆点 <code>.step</code></td><td>蓝→青渐变圆，白字，带投影</td></tr>
+    <tr><td>状态胶囊 <code>.chip</code></td><td>跑动中的胶囊带<b>脉冲小点</b></td></tr>
+    <tr><td>进度条 <code>.pbar</code></td><td>渐变填充 + <b>流动微光</b></td></tr>
+    <tr><td>页面顶部</td><td>2px <b>滚动进度条</b></td></tr>
+    <tr><td>卡片</td><td>进场时轻微上浮（<b>跳过 <code>.dim</code>/<code>.hide</code></b>，不破坏原有语义）</td></tr>
+    <tr><td>折叠块 <code>details</code></td><td>展开有过渡动效，右侧箭头旋转</td></tr>
+  </table>
+
+  <h3>D. 覆盖层第一次盖错了 —— 自己抓出来修掉</h3>
+  <p>第一版覆盖层是「按类名批量改样式」，结果<b>盖错了几处语义完全不同的类</b>。
+     爹在页面上逐个核对原规则后，补了一层修正层：</p>
+  <table>
+    <tr><th style="width:170px">类</th><th style="width:230px">它的真实语义</th><th>第一版盖成</th></tr>
+    <tr><td><code>.step</code></td><td>23px 的<b>序号圆点</b>（不是区块）</td>
+        <td><span class="pill warn">盖成灰色区块</span> → 改回渐变圆</td></tr>
+    <tr><td><code>.notice</code></td><td><b>琥珀色警示条</b></td>
+        <td><span class="pill warn">盖成蓝色</span> → 改回琥珀</td></tr>
+    <tr><td><code>.logs</code> / <code>.diff</code></td><td><b>深色终端块</b></td>
+        <td><span class="pill warn">盖成白底</span> → 改回深色并加质感</td></tr>
+    <tr><td><code>.zero</code></td><td><b>绿色成功块</b></td>
+        <td><span class="pill warn">盖成灰色</span> → 改回绿色</td></tr>
+    <tr><td><code>.jsbox</code></td><td><b>浅色</b>代码框</td>
+        <td><span class="pill warn">盖成深色</span> → 改回浅色</td></tr>
+    <tr><td><code>.scanbox</code></td><td>需要<b>能滚动</b>（原有 max-height）</td>
+        <td><span class="pill warn">被加了 overflow:hidden</span> → 改回 auto</td></tr>
+    <tr><td><code>.badge</code></td><td>柔和的浅蓝小标签</td>
+        <td><span class="pill warn">满渐变太抢戏</span> → 改回柔和浅蓝</td></tr>
+  </table>
+  <div class="note">
+    <b>教训：</b>「按类名批量覆盖样式」之前，必须先把<b>每个类的原始规则</b>拉出来读一遍。
+    光看类名猜语义（<code>.step</code> 像区块、<code>.zero</code> 像空状态）一定会盖错。
+  </div>
+
+  <h3>E. 截图</h3>
+  <div class="shot">
+    <img src="shots/18_v13_page_ui.png" alt="工作台页面 · 重做后">
+    <div class="cap"><b>工作台页面（重做后）</b>：序号变成渐变圆点、按钮是渐变底、
+      标题旁的小标签是柔和浅蓝胶囊、赞助条是琥珀渐变，
+      顶部有一条 2px 阅读进度条；右侧链接、折叠块箭头都统一了。</div>
+  </div>
+  <div class="shot">
+    <img src="shots/19_v13_page_jobpanel.png" alt="工作台 · 进度与统计面板">
+    <div class="cap"><b>工作台 · 进度与统计面板</b>：四个数字卡（成功绿 / 跳过蓝 / 失败红 / 待处理蓝）、
+      渐变进度条、深色终端块、以及绿/灰/红三种语义的按钮。
+      <span style="color:#92400e">注：该面板平时在 <code>.card.hide</code> 里（要先检索出文章列表才显示），
+      截图时临时揭开以便呈现，未做任何修饰。</span></div>
+  </div>
+  <div class="shot">
+    <img src="shots/17_v13_report_ui.png" alt="验收报告 · 重做后">
+    <div class="cap"><b>本报告（重做后）</b>：上方是渐变顶栏 + 吸顶工具栏（含搜索框、折叠按钮、目录按钮），
+      下面是 Hero 区（渐变顶线、小标签、四个会滚动的数字卡）。</div>
+  </div>
+  <div class="shot">
+    <img src="shots/20_v13_report_toc.png" alt="报告 · 目录抽屉">
+    <div class="cap"><b>报告 · 目录抽屉</b>：点右上「目录」拉出全部章节（11 轮迭代 + 6 个常设章节），
+      背景遮罩虚化，点任意处或按 Esc 关闭。</div>
+  </div>
+
+  <h3>F. 怎么保证没改坏功能</h3>
+  <ul>
+    <li><b>只加不改</b>：工作台页原有 <code>&lt;style&gt;</code> 原样保留做兜底，
+        新的两层样式追加在后面。所有 <code>id</code> / <code>onclick</code> / 业务逻辑一行没动。</li>
+    <li>关键符号计数核对：<code>btnCreate</code> / <code>doCreate</code> /
+        <code>doInspect</code> / <code>fBodyHits</code> 合计 <b>9 处</b>，改前改后一致。</li>
+    <li>两个页面在浏览器里<b>控制台零报错、零警告</b>。</li>
+    <li><code>python3 -m py_compile</code> 通过，服务 active，<code>/api/qy/console</code> 返回 200
+        （体积 84KB → 104KB，多出来的全是新增样式与脚本）。</li>
+    <li>提交 <code>1f9fb92</code>，已确认 <code>HEAD == origin/main</code>，工作区干净。</li>
+  </ul>
+</div>
+
+<!-- ================= 0 · v12 更新 ================= -->
+<div class="card" style="border:2px solid #fcd34d;background:linear-gradient(180deg,#fffbeb 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第十二轮 · 正文「加几处」你来定（1~5）+ AI 帮你挑位置；顺带补上「总控文件」</h2>
+  <div class="meta">
+    你提的原话：「<b>云端 github 写好了东西是不？云端是否有总控文件写好我的需求？不然我上下文一没，
+    直接要重开了。就比如我要的不仅是标题，还有文章内容也要添加，可以选择往里加几个，也可以 ai 推荐。</b>」<br>
+    这一句话里其实是<b>三件事</b>，下面逐个交代。前两件是查证结论，第三件是这一轮真正改的东西。
+  </div>
+
+  <h3>A. 先说总控文件 —— 你担心得对，之前<b>确实没有</b></h3>
+  <table>
+    <tr><th style="width:200px">查了什么</th><th>结果</th></tr>
+    <tr>
+      <td>仓库根目录有哪些 <code>*.md</code></td>
+      <td><code>AGENTS.md</code> / <code>README.md</code> / <code>README_EN.md</code> /
+          <code>SYSTEM_DESIGN.md</code> / <code>API_AND_MCP_GUIDE.md</code>，以及一份
+          <code>清一武道馆_全网舆情监控与存证系统_总需求与技术架构规范.md</code></td>
+    </tr>
+    <tr>
+      <td>那份「总需求」是不是本工作台的？</td>
+      <td><span class="pill warn">不是</span> 它是<b>上一个项目</b>（舆情监控与存证系统）的。
+          清一新教育文章修改工作台<b>此前没有任何总控文件</b> ——
+          需求只散落在聊天记录里，你换个会话就真得从头讲。</td>
+    </tr>
+  </table>
+
+  <div class="note">
+    <b>现在有了。</b>新增
+    <code>清一新教育文章修改工作台_总控与需求交接.md</code>
+    （<b>394 行 / 20,674 字节</b>），已提交并推送到
+    <code>github.com/Arthurchen-01/zhihu-scraper</code> 的 <code>main</code> 分支。
+    新会话只要读这一份，就知道要做什么、做到哪、为什么这么设计、坑在哪、下一步干什么，
+    <b>不需要翻聊天记录，也不需要再问你一遍</b>。
+  </div>
+
+  <p>这份文件里有 14 节，重点几节是：</p>
+  <table>
+    <tr><th style="width:270px">章节</th><th>作用</th></tr>
+    <tr><td><b>§2 用户的判定标准</b></td>
+        <td>把你亲口说过的话（不许解压/敲命令、要原子闸门+参与感、指引必须常驻可见、
+            扩展由我们写好……）逐条摘录，<b>验收时照着打勾</b>，不是「尽量」</td></tr>
+    <tr><td><b>§3 需求全集（v2~v12）</b></td>
+        <td>每轮需求 + 状态 + 单点需求清单（含「正文可加几处」「AI 推荐」）</td></tr>
+    <tr><td><b>§4 架构不变量</b></td>
+        <td>①云端永不写知乎 ②本地不做内容判断 ③本地自报不算数，必须云端回读复核 ——
+            <b>改代码前先看这三条</b></td></tr>
+    <tr><td><b>§7 云端接口清单</b></td>
+        <td>前缀是 <code>/api/qy</code>（不是 <code>/qy</code>）、列表会剥 <code>items</code>
+            等坑，一次说清</td></tr>
+    <tr><td><b>§12 已知的坑</b></td>
+        <td>环境类 / 代码类 / 语义类，都是<b>真踩过的</b>，附现象和正确做法</td></tr>
+    <tr><td><b>§14 给新会话的第一件事</b></td>
+        <td>接手者（人或 AI）的第一份清单</td></tr>
+  </table>
+  <p>同时在 <code>AGENTS.md</code>（必读清单 + 文档职责）和 <code>README.md</code>
+     （清一新教育章节）挂上了入口，以后不会有人「找不到需求文档」。</p>
+
+  <h3>B. 「文章内容也要添加」 —— 这个其实早就能加，但「加几处」是<b>坏的</b></h3>
+  <p>查下来，正文植入<b>一直有</b>（署名式句末括注 <code>（清一新教育）</code>），
+     但<b>「加几处」这个参数从来没生效过</b> —— 三处叠加，一起把它夹死成 1 处：</p>
+  <table>
+    <tr><th style="width:300px">位置</th><th>原来写的是</th><th style="width:170px">后果</th></tr>
+    <tr><td><code>zhihu_scraper/qy_content.py</code></td>
+        <td><code>_MAX_BODY_HITS = 1</code></td>
+        <td rowspan="3">不管你在页面上选几处，
+            最终都只加 <b>1 处</b>；
+            AI 审核也只会推荐 1 个位置</td></tr>
+    <tr><td><code>zhihu_scraper/app/qingyi_page.py</code></td>
+        <td>前端建任务时写死 <code>body_hits: 1</code></td></tr>
+    <tr><td><code>zhihu_scraper/app/qingyi_api.py</code></td>
+        <td><code>/scan-scenes</code> <b>无视</b>传入的 <code>hits</code>，固定预览 1 处</td></tr>
+  </table>
+
+  <h3>C. 现在：处数你自己选，1~5 处</h3>
+  <p>页面「高级：修改内容设置 / 先预览正文植入位置」里多了一个下拉框，
+     <b>只读预演、建任务、AI 审核三处用的是同一个值</b>，不会再打架。</p>
+
+  <div class="shot">
+    <img src="shots/16_v12_bodyhits.png" alt="正文植入处数选择器">
+    <div class="cap"><b>页面实拍（第十二轮）</b>：「修改内容」区新增
+      <b>「正文植入处数」</b> 下拉（图中选的是 3 处），右侧紧跟一句提醒
+      「处数越多，被判定「关键词堆砌」的风险越高」；下面是
+      「开启智能审核 · 逐篇判断加在哪里；不可用时自动回退内置规则」和
+      「只读预演：看正文会加在哪」。<br>
+      <span style="color:#92400e">说明：这个面板位于「检索结果卡片」内部，
+      需先检索出文章列表才会出现；截图时列表为空，故临时把该卡片展开以呈现控件本身。
+      控件、选项、文案均与线上一致，未做任何修饰。</span></div>
+  </div>
+
+  <p>下拉框里就是这些选项：</p>
+  <pre>1 处（默认 · 最稳） / 2 处 / 3 处 / 4 处 / 5 处（最多）</pre>
+  <div class="note">
+    <b>为什么默认还是 1 处？</b> —— 同一篇里重复堆同一个词，正是平台判定
+    「内容注水 / 关键词堆砌」的典型特征。所以 5 是<b>上限</b>，不是推荐值。
+    扫描器还带「两个植入点之间至少隔 2 个段落」的约束，短文章实际只能挑出 2~4 处，宁缺毋滥。
+  </div>
+
+  <h3>D. 「也可以 AI 推荐」 —— 也打通了</h3>
+  <p>AI 审核接口新增 <code>want_hits</code> 参数：候选池按你选的上限去取，
+     提示词明确要求「按上限挑、<b>宁少勿多</b>」，返回结果再按上限截断。
+     AI 不可用（没配 Key / 超时 / 返回不合法）时，<b>自动回退内置规则</b>挑前 N 个位置，
+     不会因为 AI 挂了就一篇都改不了。</p>
+
+  <h3>E. 引擎实测：同一篇文章，选几处就加几处</h3>
+  <p>直接用线上真实引擎（<code>qy_content.scan_scenes</code>）跑同一篇正文，
+     只改上限，看实际落点：</p>
+  <pre>_MAX_BODY_HITS = 5
+
+  limit=1 -> 实际 1 处, block_no=[0]
+  limit=2 -> 实际 2 处, block_no=[0, 7]
+  limit=3 -> 实际 3 处, block_no=[0, 2, 7]
+  limit=5 -> 实际 4 处, block_no=[0, 2, 4, 7]     ← 这篇只挑得出 4 处，宁缺毋滥
+  limit=9 -> 实际 4 处, block_no=[0, 2, 4, 7]     ← 上限再大也不会超
+
+  1 处后品牌词出现次数 = 1
+  3 处后品牌词出现次数 = 3      ← 加了 3 处，正文里正好 3 个品牌词
+  3 处结果可还原     = True      ← 一键还原回原文，逐字一致
+  幂等（已含品牌词再扫）= []      ← 已改过的文章不会被重复植入</pre>
+
+  <p>接口层的声明也跟着改了（<code>GET /api/qy/meta</code>）：</p>
+  <pre>max_body_hits   = 5
+scope_statement = 标题最前面加入品牌词【清一新教育】1 处（固定）；
+                  正文以署名式括注「（清一新教育）」加入品牌词，
+                  处数可在 1~5 之间自选（默认 1 处），也可交由 AI 逐篇推荐加在哪。…</pre>
+
+  <h3>F. 顺带修的一处：第 3 步状态条原来「只有刚建完任务才显示」</h3>
+  <p>你说「我要怎么更新到自己的知乎，我没看到任何指引」那次（第九轮）补了一张常驻卡，
+     但那张卡的状态文案<b>只在刚创建完任务、页面内存里还挂着任务对象时</b>才有内容。
+     你刷新一下页面，它就又变回「还没创建任务」了 —— 这是新的坑。</p>
+  <p>改法：<code>renderHowto()</code> 现在会先去
+     <code>GET /api/qy/jobs?limit=1</code> 取<b>云端最新任务</b>，再按真实状态渲染。
+     实测刷新后显示的是：</p>
+  <pre>② 任务 qy20260919-009-d16d 已就绪（待执行 1 篇）</pre>
+  <p>也就是说，<b>状态来自云端，不来自你这次是否刚点过按钮</b>。</p>
+
+  <h3>G. 提交记录</h3>
+  <table>
+    <tr><th style="width:120px">提交</th><th>内容</th></tr>
+    <tr><td><code>01877af</code></td>
+        <td>docs(qingyi): 新增「总控与需求交接」—— 上下文丢了也能一把接回来
+            （+ AGENTS.md / README.md 挂入口）</td></tr>
+    <tr><td><code>dda2bec</code></td>
+        <td>feat(qingyi): 正文植入处数可选 1~5 + AI 按需推荐</td></tr>
+    <tr><td><code>20fe77e</code></td>
+        <td>feat(qingyi): 第 3 步状态条改成「读云端最新任务」+ 客户端入口源码入库</td></tr>
+  </table>
+  <p>已确认 <code>HEAD == origin/main == 01877af</code>，工作区干净。</p>
+</div>
+
+<!-- ================= 0 · v10 更新 ================= -->
+<div class="card" style="border:2px solid #fcd34d;background:linear-gradient(180deg,#fffbeb 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第十轮 · 一键程序改成「六道闸门 + 一次确认」—— 不再闷头开跑</h2>
+  <div class="meta">
+    你提的原话：「<b>本地这个只要双击了就直接开始启动了是吧，但是这里 bug 很多啊，
+    比如云端还没搞定就下载双击了……没有一个原子式的，这样用户慌啊，
+    你得让他有参与感，同时还很简单</b>」。
+    查下来你说的两点都成立：①确实没有原子闸门；②确实一路狂奔到写入，中间没有停顿。
+    这一轮就是治它。
+  </div>
+
+  <h3>A. 旧行为到底哪里会让人慌（逐条查证）</h3>
+  <table>
+    <tr><th style="width:230px">情况</th><th>旧程序会怎么做</th></tr>
+    <tr>
+      <td>云端还没建任务，用户就双击了</td>
+      <td><span class="pill warn">会慌</span> 它<b>照样进到第 4 步「开始修改」</b>，
+          然后开着一个窗口<b>无限轮询等任务</b>。用户以为在跑，其实什么都没发生，
+          也不知道该干嘛。</td>
+    </tr>
+    <tr>
+      <td>云端备稿失败（登录过期 / 文章被改）</td>
+      <td><span class="pill warn">会慌</span> 只打印一行提示，<b>仍然继续往下执行</b>。</td>
+    </tr>
+    <tr>
+      <td>「凭证就绪」→「写你的知乎」之间</td>
+      <td><span class="pill warn">没有停顿</span> 用户<b>没有任何中止的机会</b>，
+          连"马上要改哪几篇"都来不及看一眼。</td>
+    </tr>
+    <tr>
+      <td>跑完当前这单之后</td>
+      <td><span class="pill warn">不退出</span> 默认不带 <code>--once</code>，
+          窗口一直挂着空转。</td>
+    </tr>
+  </table>
+
+  <h3>B. 现在：六道闸门，任何一道不过就停在那儿，且不动你的知乎</h3>
+  <table>
+    <tr><th style="width:88px">闸门</th><th>判断什么</th><th style="width:270px">不过时它会说</th></tr>
+    <tr><td><b>1/6</b></td><td>设备识别（是不是 Windows）</td>
+        <td>「本程序是 Windows 版」，并给出 mac 的仓库地址</td></tr>
+    <tr><td><b>2/6</b></td><td>云端有没有「可以跑」的任务</td>
+        <td>分五种措辞：连不上 / 还没有任务 / 已经跑完 / 已被取消 / 正在被别人跑 /
+            没有待执行的篇 —— 每种都告诉你<b>具体该点哪里</b></td></tr>
+    <tr><td><b>3/6</b></td><td>每日上限（读网页上的选择）</td>
+        <td>——（只显示，不拦）</td></tr>
+    <tr><td><b>4/6</b></td><td>知乎登录态（云端凭证优先，回退读浏览器）</td>
+        <td>「等了一会儿还是没拿到登录」，并给三条从易到难的办法；
+            浏览器锁着时<b>自动倒计时等待</b>，不用按键</td></tr>
+    <tr><td><b>5/6</b></td><td>云端备稿（<code>/api/qy/prepare</code> 必须 ok）</td>
+        <td>把云端给的原因原样打出来 + 常见三种情况</td></tr>
+    <tr><td><b>6/6</b></td><td>动手前<b>逐篇</b>校验最终稿真的取得到</td>
+        <td>缺任何一篇就整体不动 —— 免得<b>只改一半、留下半成品</b></td></tr>
+  </table>
+  <div class="note">
+    <b>关键点：</b>六道闸门全部只读。任何一道不过，它打印「差什么 / 你该做什么」后
+    <b>干净退出</b>，并在最后一行明确写：<b>「这轮对你的知乎没有任何改动，可以放心。」</b>
+  </div>
+
+  <h3>C. 参与感：六道全绿之后，它把「马上要发生什么」摆给你看</h3>
+  <pre>  ════════════════════════════════════════════════════════════════
+    一切就绪 · 接下来这几篇会被修改
+  ════════════════════════════════════════════════════════════════
+    任务号     qy20260919-009-d16d
+    账号       谢迪安
+    本次执行   1 篇（这单共 1 篇）
+    每日上限   180 篇/天
+    改动位置   每篇：标题 1 处 + 正文 1 处（正文其余内容一字不改）
+
+    第 1 篇
+      原标题：和鱼棋逢对手的记忆只能靠anki拯救
+      新标题：【清一新教育】和鱼棋逢对手的记忆只能靠anki拯救
+
+    一切就绪 —— 按【回车】开始修改；输入 q 再回车 = 什么都不改，退出。
+    &gt;&gt;&gt;</pre>
+  <p style="margin:6px 0 0">
+    用户<b>按一次回车它才动手</b>，按 <code>q</code> 就什么都不改直接退出。
+    另外，默认<b>只跑一轮</b>：跑完当前这单就收工退出，<b>绝不留一个空转的窗口</b>
+    （想要值守模式用 <code>--watch</code>；无人值守用 <code>--yes</code> 跳过确认）。
+  </p>
+
+  <h3>D. 顺手把第 3 步的状态条也改成「读真实任务」</h3>
+  <p style="margin:6px 0 10px">
+    旧的状态条只在页面自己挂载过任务时才显示状态，而<b>刷新页面不会自动挂载历史任务</b>，
+    所以打开页面时永远落到「① 还没建任务的话……」这句兜底文案 ——
+    <b>哪怕你其实早就建好了</b>。现在它会自己去云端拉「最新任务」，按真实状态说话。
+  </p>
+
+  <div class="shot">
+    <img src="shots/15_v10_gate_step3.png" alt="第 3 步卡片：六道体检 + 按回车确认 + 实时真实状态">
+    <div class="cap"><b>图 15.</b> 线上实测（v10）。卡片 ② 明确写了「先体检、再问你一声」
+      与「任何一道不过会当场停下 —— 这时不会动你的知乎」；
+      底部状态条现在报的是<b>真实状态</b>：
+      「② 任务 qy20260919-009-d16d 已就绪（待执行 1 篇）……它会先体检六项，
+      全过了再让你按一次回车才开始。」刷新后一眼就知道自己处在哪一步。</div>
+  </div>
+
+  <h3>E. 实测证据（不是"应该能跑"）</h3>
+  <div class="grid" style="margin-bottom:10px">
+    <div class="stat ok"><div class="n">6/6</div><div class="l">闸门逐条单测全部命中正确分支</div></div>
+    <div class="stat ok"><div class="n">通过</div><div class="l">真实任务全链路 --prep-only（只读）</div></div>
+    <div class="stat ok"><div class="n">通过</div><div class="l">新 exe 打包自检</div></div>
+    <div class="stat ok"><div class="n">一致</div><div class="l">下载包 md5 与本地产物一致</div></div>
+  </div>
+  <table>
+    <tr><th style="width:230px">验的东西</th><th>结果</th></tr>
+    <tr>
+      <td>六条「停」的分支</td>
+      <td class="ok-t">逐条构造场景单测：
+          连不上 / 无任务 / 已完成 / 已取消 / 正在被别人跑 / 无待执行篇 ——
+          <b>全部命中正确的分支与措辞</b>。</td>
+    </tr>
+    <tr>
+      <td>真实任务全链路（只读）</td>
+      <td class="ok-t">对 <code>qy20260919-009-d16d</code> 跑 <code>--prep-only</code>：
+          六道闸门全绿、汇总页正确显示出那一篇的标题前后对照，
+          然后安全退出（<b>未执行任何写入</b>）。</td>
+    </tr>
+    <tr>
+      <td>新 exe 实跑（打包后）</td>
+      <td class="ok-t">在闸门 4 因 Edge 正在运行、锁定了 Cookie 数据文件而<b>正确停住</b>，
+          打印「请把 Edge / Chrome 的所有窗口全部关掉」并<b>自动倒计时等待</b>，
+          <b>没有往下执行</b>。这正是要的行为。</td>
+    </tr>
+    <tr>
+      <td>exe 指纹</td>
+      <td class="ok-t"><code>md5 08590b2b763361f4c47c1d07eb1f717a</code>（13,683,635 字节）；
+          服务器上 <code>/api/qy/download/windows</code> 回传的包
+          <b>md5 完全一致</b>，用户下载到的就是测过的那个。</td>
+    </tr>
+    <tr>
+      <td>页面控制台</td>
+      <td class="ok-t">实测 <b>无任何 error / warning</b>；状态条文案与云端任务状态一致。</td>
+    </tr>
+  </table>
+
+  <h3>F. 代码去向</h3>
+  <table>
+    <tr><th style="width:230px">改了什么</th><th>位置 / 提交</th></tr>
+    <tr><td>exe 的入口与六道闸门</td>
+        <td><code>clients/qingyi_deploy.py</code>（<b>本轮新纳入仓库</b>，
+            此前只在本地构建目录，别人拿仓库无法复现这个 exe）</td></tr>
+    <tr><td>第 3 步卡片文案 + 实时状态条</td>
+        <td><code>zhihu_scraper/app/qingyi_page.py</code></td></tr>
+    <tr><td>提交</td>
+        <td><code>230fc1a</code>（六道闸门+一次确认）、
+            <code>20fe77e</code>（状态条读真实任务 + 客户端入口入库）</td></tr>
+  </table>
+</div>
+
+<!-- ================= 0 · v9 更新 ================= -->
+<div class="card" style="border:2px solid #fca5a5;background:linear-gradient(180deg,#fef2f2 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第九轮 · 「云端弄好后，我怎么把改动推到自己知乎」—— 原来整张指引卡是藏起来的</h2>
+  <div class="meta">
+    你问的原话：「<b>云端弄好之后我要怎么更新到自己的知乎，我没看到任何指引</b>」。
+    查下来这不是你没找到，而是<b>真的没有</b> —— 那张写「怎么执行」的卡片被设成了默认隐藏，
+    只有「已经建过任务」的人才会看到。已修好，并补了一次端到端实测。
+  </div>
+
+  <h3>A. 你看到的「没有任何指引」，根因在这里</h3>
+  <table>
+    <tr><th style="width:210px">现象</th><th>真实原因（已定位到代码行）</th></tr>
+    <tr>
+      <td>页面上找不到「怎么把改动推到我知乎」</td>
+      <td>写这段指引的卡片 <code>#taskCard</code>（第 3 步）带着
+          <code>class="card hide"</code>，<b>只有创建任务成功后才会出现</b>。
+          任务还没建、或刚刷新页面时，它整张是不可见的 →
+          你自然「看到任何指引都没有」。</td>
+    </tr>
+    <tr>
+      <td>即使卡片出现了，里面也是空的</td>
+      <td>卡片内的 <code>#execGuide</code> 段落<b>被永久写上 <code>hide</code></b>：
+          JS 里只有「加 hide」的分支，<b>从来没有「移除 hide」的分支</b>。
+          也就是说这段说明<b>任何情况下都不显示</b>。</td>
+    </tr>
+  </table>
+  <div class="note">
+    <b>这是设计缺陷，不是你的操作问题。</b> 指引本该「一进页面就在」，却被绑在了
+    「任务已创建」这个前置条件后面 —— 而人恰恰是在<b>还没建任务</b>时才最需要指引。
+  </div>
+
+  <h3>B. 修复方式（三处改动）</h3>
+  <table>
+    <tr><th style="width:210px">改动</th><th>做了什么</th></tr>
+    <tr>
+      <td>新增常驻卡片 <code>#howtoCard</code></td>
+      <td><span class="pill fix">已修复</span> 在页面固定位置新增一张<b>永远可见</b>的
+          「<b>第 3 步 · 把改动推到你的知乎 —— 你要做的就这三下</b>」卡片，
+          不依赖任何前置条件。原任务卡顺延为「第 4 步」，复核卡为「第 5 步」。</td>
+    </tr>
+    <tr>
+      <td>解封 <code>#execGuide</code></td>
+      <td><span class="pill fix">已修复</span> 去掉初始的 <code>hide</code>，
+          补上「显示」分支 —— 现在它一定会渲染出来。</td>
+    </tr>
+    <tr>
+      <td>新增实时状态条 <code>renderHowto()</code></td>
+      <td><span class="pill fix">已完成</span> 每 4 秒刷新一次，把当前任务状态
+          （有没有任务 / 几篇待执行 / 是否已完成）直接写在卡片底部，
+          纯读不写，不影响任何逻辑。</td>
+    </tr>
+  </table>
+
+  <h3>C. 修好之后，你要做的就这三下</h3>
+  <ol>
+    <li><b>① 网页第 2 步勾好文章 → 点「创建修改任务」</b>
+        —— 云端随即把每篇的<b>最终标题 + 正文植入位置</b>算好并缓存。</li>
+    <li><b>② 下载并双击 <code>清一新教育一键修改.exe</code></b>
+        —— 它会自动：读登录 → 同步凭证到云端 → 请云端备好最终稿 →
+        逐篇<b>写回你的知乎</b>（标题 + 正文各 1 处）→ 每篇即时回报进度。
+        <b>不需要解压、不需要敲命令、不需要装 Python。</b></li>
+    <li><b>③ 回到网页点「🔍 让云端复核一下」</b>
+        —— 云端会<b>重新回读你线上的真实文章</b>，独立判断哪几篇没按要求完成。</li>
+  </ol>
+
+  <div class="shot">
+    <img src="shots/14_v9_howto_step3.png" alt="新增的常驻「第 3 步 · 把改动推到你的知乎」卡片">
+    <div class="cap"><b>图 14.</b> 新增的常驻指引卡（实测于线上 <code>/api/qy/console</code>，
+      高 555px，无需任何前置条件即显示）。卡内三条就是上面这三下，底部状态条实时反映任务进度。</div>
+  </div>
+
+  <h3>D. 顺手把「到底能不能推到知乎」也端到端验了一遍</h3>
+  <div class="grid" style="margin-bottom:10px">
+    <div class="stat ok"><div class="n">200</div><div class="l">页面 /api/qy/console（84.4 KB）</div></div>
+    <div class="stat ok"><div class="n">200</div><div class="l">exe 下载（13.67 MB）</div></div>
+    <div class="stat ok"><div class="n">200</div><div class="l">扩展包下载（37.9 KB）</div></div>
+    <div class="stat ok"><div class="n">通过</div><div class="l">exe 打包自检（真实 Windows）</div></div>
+  </div>
+  <table>
+    <tr><th style="width:210px">验的东西</th><th>结果</th></tr>
+    <tr>
+      <td>页面是否真的带这四样</td>
+      <td class="ok-t">带。线上页面同时含 <code>id="howtoCard"</code>、<code>id="execGuide"</code>、
+          <code>id="howtoState"</code>、<code>btnExe3</code>，说明新卡与内嵌指南都已生效。</td>
+    </tr>
+    <tr>
+      <td>exe 下载的是不是「会写回」的那一版</td>
+      <td class="ok-t">是。exe 内捆绑的执行器含
+          <code>apply_payload()</code>、<code>/agent/payload</code>、<code>patch_draft()</code>、
+          <code>publish_article()</code> —— 即「<b>取云端算好的最终稿 → 原样写回</b>」的 v5 设计。
+          （仓库根目录那份旧的 <code>qingyi_executor.py</code> 不含这些，是残留副本，未被打包。）</td>
+    </tr>
+    <tr>
+      <td>exe 在真实 Windows 上能不能起来</td>
+      <td class="ok-t"><code>--selftest</code> 实测输出：<code>frozen: True</code>、
+          <code>python 3.13.14</code>、<code>requests / win32crypt / Crypto.Cipher.AES</code>
+          三个依赖 <b>全部 OK</b>、内置执行器可导入、<code>auto_detect_cookie</code> 与
+          <code>main</code> 均可调用。</td>
+    </tr>
+    <tr>
+      <td>凭证柜接口有没有鉴权</td>
+      <td class="ok-t">有。<code>/api/qy/credential-latest</code> 不带密钥返回
+          <b>401</b>，带密钥才可读。目前柜子为空（6 小时有效期），
+          需要你先装扩展点一次「同步」，或直接双击 exe 让它自动读浏览器。</td>
+    </tr>
+  </table>
+
+  <h3>E. 你当前那个任务，已经备好、就等 exe 来领</h3>
+  <table>
+    <tr><th style="width:170px">项目</th><th>值</th></tr>
+    <tr><td>任务号</td><td><code>qy20260919-009-d16d</code></td></tr>
+    <tr><td>状态</td><td><span class="pill warn">pending（待执行，无 worker 占用）</span></td></tr>
+    <tr><td>篇数</td><td>1 篇</td></tr>
+    <tr><td>该篇</td><td>《和鱼棋逢对手的记忆只能靠anki拯救》→
+        《<b>【清一新教育】</b>和鱼棋逢对手的记忆只能靠anki拯救》</td></tr>
+    <tr><td>云端缓存稿</td><td><span class="pill">已备好</span>
+        <code>pre = {plan_title, body_added:1, body_len:1294}</code>，正文 1 处植入已定位</td></tr>
+    <tr><td>每日上限</td><td>180 篇/天（以网页选择为准）</td></tr>
+  </table>
+  <div class="note">
+    <b>一句话结论：</b>这个任务现在就差「双击 exe」这一步。双击之后它会自动领走
+    <code>qy20260919-009-d16d</code>，把上面那篇的标题与正文写成云端算好的版本，
+    再回报进度；之后你点「🔍 让云端复核一下」即可看到独立复核结果。
+  </div>
+</div>
+
+<!-- ================= 0 · v7 更新 ================= -->
+<div class="card" style="border:2px solid #c4b5fd;background:linear-gradient(180deg,#f5f3ff 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第七轮 · 扩展由我们写好、agent 只负责装；exe 有图标了</h2>
+  <div class="meta">
+    这一轮回答你提的两件事：①「浏览器扩展可以我们写好，然后直接让他的 agent 部署」
+    ②「exe 安装好只要在运行就可以？有没有图标？弄好看点」。
+    <b>两件都做完了</b>，下面全是实测证据。
+  </div>
+
+  <h3>A. 你先问的那个「更简单的方式」，答案就是这个扩展</h3>
+  <table>
+    <tr><th style="width:190px">问题</th><th>回答</th></tr>
+    <tr>
+      <td>扩展是你们写、我只让 agent 装？</td>
+      <td class="ok-t">正是这么做的。扩展是<b>成品代码</b>（我们写好），
+          你的 agent 只需要「加载已解压的扩展程序」——
+          <b>它不需要写一行代码</b>。压缩包里带了一份
+          <code>AGENTS.md</code>，就是专门写给 AI 助手看的部署说明书。</td>
+    </tr>
+    <tr>
+      <td>exe 装好只要在运行就可以？</td>
+      <td class="ok-t">它<b>根本不是安装程序</b>：没有安装步骤、不写注册表、不进「程序列表」。
+          就是一个可执行文件，<b>双击就跑</b>，跑完关掉窗口就结束。
+          工作文件放在 <code>%LOCALAPPDATA%\QingyiEdu</code>，不在 exe 旁边。</td>
+    </tr>
+    <tr>
+      <td>有图标吗？</td>
+      <td class="ok-t">有了，而且<b>7 个尺寸都嵌进去了</b>（16/24/32/48/64/128/256），
+          任务栏、桌面、文件属性各处的清晰度都照顾到。
+          文件属性里现在显示中文名「清一新教育 · 文章一键修改」。</td>
+    </tr>
+  </table>
+
+  <h3>B. 扩展解决的是哪一个具体问题</h3>
+  <p style="margin:6px 0 10px">
+    上一轮我实测了四种办法，全都读不到浏览器里的知乎登录 ——
+    因为浏览器用的是<b>排他锁</b>。而扩展跑在浏览器内部，读自己的 Cookie 天经地义。
+    于是分工变成：
+  </p>
+  <table>
+    <tr><th style="width:170px">角色</th><th>职责</th></tr>
+    <tr><td>🧩 扩展（浏览器内）</td><td>读本机知乎登录 → 送到云端凭证柜。<b>只读，不改任何东西</b>。</td></tr>
+    <tr><td>🧠 云端（控制面）</td><td>算好每篇最终标题与正文、当裁判独立回读复核。</td></tr>
+    <tr><td>⚙️ exe（你的电脑）</td><td>搬运：把云端算好的原样提交。<b>改成优先从云端取凭证</b>，不再碰浏览器。</td></tr>
+  </table>
+  <div class="note">
+    <b>结果：</b>装上扩展之后，「关浏览器」这一步<b>彻底消失</b>。
+    没装扩展的老路径也还在（会自动回退到直接读浏览器），所以装不装都能用。
+  </div>
+
+  <h3>B2. 它在页面上的样子（线上真实截图）</h3>
+  <div class="shot">
+    <img src="shots/12_v7_step1_extension.png" alt="第 1 步的浏览器扩展入口">
+    <div class="cap">
+      <b>截图 12</b> · 第 1 步里新增的「🧩 浏览器扩展：装一次，以后连浏览器都不用关」；
+      展开后是「扩展怎么装？我们已写好，你的 AI 助手照做即可」+
+      「📋 复制给 AI 助手的话」（连下载地址和请求头一起复制走）。
+      下面「其他方式」里仍保留 Mac / 部署包的老路径，没有把旧路砍掉。
+    </div>
+  </div>
+
+  <h3>B3. 图标长什么样</h3>
+  <div class="shot">
+    <img src="brand/icon-sheet.png" alt="图标各尺寸 1:1 实渲染">
+    <div class="cap">
+      <b>图 13</b> · 同一份 <code>icon.ico</code> 内嵌的 7 个尺寸，按 1:1 像素铺开。
+      16px 时对勾徽章自动淡出，只剩下一个干净的「清」字 —— 小尺寸下仍然认得出来。
+      配色取自控制台本身（靛 <code>#4F46E5</code> → 天蓝 <code>#0EA5E9</code>，
+      对勾用成功色 <code>#10B981</code>），放在一起不打架。
+    </div>
+  </div>
+
+  <h3>C. 实测证据（每条都可复现）</h3>
+  <table>
+    <tr><th style="width:300px">验证项</th><th>实测结果</th></tr>
+    <tr>
+      <td>扩展→云端（模拟扩展请求，带 <code>chrome-extension://</code> 来源）</td>
+      <td class="ok-t">POST 返回 <code>{"ok":true,"token":"8e7b7009c645","ttl":21600}</code></td>
+    </tr>
+    <tr>
+      <td>云端→一键程序（取凭证）</td>
+      <td class="ok-t">取回成功，<code>note</code> 字段为「浏览器扩展」、<code>per_day</code>=120</td>
+    </tr>
+    <tr>
+      <td>exe 的「云端优先」分支真的能用</td>
+      <td class="ok-t">取到凭证（17 秒前同步）→ 向知乎校验通过 →
+          <b>认出账号「冠军班 陈冠宇」</b>。全程没有碰浏览器。</td>
+    </tr>
+    <tr>
+      <td>下载扩展包</td>
+      <td class="ok-t">HTTP 200 · 37,936 字节 · md5 <code>76fda5f2…</code> · 15 个文件</td>
+    </tr>
+    <tr>
+      <td>下载 exe（新的带图标版）</td>
+      <td class="ok-t">HTTP 200 · 13,675,798 字节 · md5 <code>c0596c73…</code></td>
+    </tr>
+    <tr>
+      <td>图标真的嵌进 exe 了吗</td>
+      <td class="ok-t">把 exe 二进制里的图标资源逐个比对：<b>7 个尺寸全部逐字节一致</b></td>
+    </tr>
+    <tr>
+      <td>凭证接口不再公开</td>
+      <td class="ok-t">不带密钥一律 401；带密钥才返回。
+          （里面装的是一份真实的知乎登录态，不能让人凭 URL 猜走。）</td>
+    </tr>
+    <tr>
+      <td>测试凭证有没有残留</td>
+      <td class="ok-t">凭证柜是内存态，验证完重启服务即清空，复查为空 ✓</td>
+    </tr>
+  </table>
+
+  <h3>D. 让 agent 装扩展的路径（三选一）</h3>
+  <table>
+    <tr><th style="width:150px">方式</th><th>做法</th><th style="width:110px">可行性</th></tr>
+    <tr>
+      <td>引导式（推荐）</td>
+      <td>把 zip 交给你的 agent；它跑 <code>install-extension.ps1</code>
+          （自动放文件 + 开扩展页 + 路径进剪贴板），剩下就是「开发者模式 → 加载已解压 → Ctrl+V」</td>
+      <td class="ok-t">稳</td>
+    </tr>
+    <tr>
+      <td>全手动</td>
+      <td>解压 → 打开 <code>edge://extensions</code> → 开发者模式 → 加载已解压 → 选文件夹</td>
+      <td class="ok-t">稳</td>
+    </tr>
+    <tr>
+      <td>命令行 <code>--load-extension</code></td>
+      <td>看起来最省事，但要配独立配置目录（里面没有知乎登录）；
+          配合用户已有配置时新版浏览器已禁用该参数</td>
+      <td class="warn-t">不推荐</td>
+    </tr>
+  </table>
+  <div class="note">
+    <b>一句实话：</b>最后点选文件夹那 2~3 下必须有人动手。
+    因为 Chrome / Edge <b>禁止任何脚本注入 <code>chrome://</code> 页面</b>——
+    这是浏览器故意设的防注入限制，写代码绕不过去。
+    除了上架官方商店（自用工具没必要），没有别的合法途径。
+    <code>install-extension.ps1</code> 已经把其余一切代劳了。
+  </div>
+
+  <h3>E. 这一轮的交付物</h3>
+  <ul>
+    <li><b>浏览器扩展</b>（<code>qingyi_extension/</code>，MV3）：
+        <code>manifest.json</code> / <code>background.js</code>（读 Cookie + 定时同步） /
+        弹窗 / 设置页 / 帮助页 / <code>AGENTS.md</code>（给 agent） /
+        <code>install-extension.ps1</code> / <code>build_zip.py</code></li>
+    <li><b>云端</b>：新增 <code>/api/qy/download/extension</code> 分发扩展；
+        <code>/credential-latest</code> 加密钥校验；<code>/meta</code> 补客户端清单</li>
+    <li><b>控制台第 1 步</b>：多了一个「🧩 浏览器扩展」入口 +
+        「📋 复制给 AI 助手的话」按钮（连下载地址和步骤一起复制走）</li>
+    <li><b>exe</b>：嵌图标 + 版本信息 + 彩色控制台横幅（中英文对齐按显示宽度算）+
+        新增 <code>--no-pause</code> + 「云端优先取凭证」</li>
+    <li>代码已推送：<code>Arthurchen-01/zhihu-scraper</code> →
+        <code>dd1c4f8</code>（主体）→ <code>2274db5</code>（打包可复现修正，见下）</li>
+  </ul>
+
+  <h3>F. 顺手发现并修掉的一个真问题：打包跨平台不可复现</h3>
+  <div class="note">
+    我在 Windows 上和服务器的 Linux 上分别用同一个 <code>build_zip.py</code> 打同一个源码，
+    <b>得到了两个不同的 md5</b>（大小一模一样，只有哈希不同）。
+    原因是 <code>zipfile.ZipInfo</code> 的 <code>create_system</code> 字段会按当前操作系统
+    自动填（Windows=0 / Unix=3），而它会被写进 zip 的中央目录。
+    <br>
+    已显式钉成 <code>3</code>。修完之后两边重新打包，md5 完全一致
+    —— 现在真的做到「同源码 → 同包 → 同 hash」，谁在哪台机器上重建都能对上。
+  </div>
+
+  <h3>G. 补掉一个真缺口：手动拿到凭证的人，之前没地方「上传」</h3>
+  <div class="meta">
+    你问的那句「我现在知道怎么弄到 cookie 了，但是没理解怎么上传」——
+    我去查了页面，发现问题不在你：<b>那一区本来就没有上传按钮</b>。
+    原来只有一个输入框和「🔍 重新检索」，凭证填进去只能给当前这个页面用，
+    <b>根本送不到云端</b>，所以一键程序也拿不到。现在补齐了。
+  </div>
+  <div class="shot">
+    <img src="shots/13_v8_manual_upload.png" alt="手动上传凭证">
+    <div class="cap">
+      <b>截图 13</b> · 「高级」区现在是三个按钮：
+      「☁️ 上传这份凭证到云端」+「📋 从剪贴板粘贴」+「🔍 重新检索我的内容」。
+      上面还写清了「上传的是知乎发给你这台电脑的登录凭据，云端只保留 6 小时、到点自动丢弃」。
+      实测点击后返回编号 <code>e5368cef5877</code>，第 1 步的状态也同步变成
+      「✅ 凭证已上传云端」。
+    </div>
+  </div>
+  <div class="note">
+    <b>「上传」一共只有三个入口，都不需要你敲命令：</b>
+    <ol class="mini" style="margin:8px 0 0">
+      <li><b>扩展自动上传（最省事）</b> —— 点浏览器右上角扩展图标 →
+          「立即同步到云端」。之后每 30 分钟它自己刷新。</li>
+      <li><b>一键程序自动上传</b> —— 双击一下，它读到登录就直接送云端，
+          顺便把「每日上限」和账号名都对一遍。</li>
+      <li><b>手动上传（就是这次补的）</b> —— 页面第 1 步 →「高级：手动填写凭证」→
+          把凭证贴进框里 → 点「☁️ 上传这份凭证到云端」。</li>
+    </ol>
+    三条路最后都落到同一个地方：<code>POST /api/qy/credential-deposit</code> →
+    云端凭证柜（内存态，6 小时 TTL）→ 一键程序用
+    <code>GET /api/qy/credential-latest</code> 取回来用。
+  </div>
+</div>
+
+<!-- ================= 0 · v6 更新 ================= -->
+<div class="card" style="border:2px solid #86efac;background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第六轮 · 把「解压」和「终端」从用户身上彻底拿掉</h2>
+  <div class="meta">
+    你的判定标准：<b>「中间只要还有必须手动解压、或者在终端跑命令这种动作，就是不合格」</b>。
+    下面先如实审计旧流程，再说现在改成了什么。
+  </div>
+
+  <h3>A. 审计：用户到底要做几步</h3>
+  <table>
+    <tr><th style="width:150px">用户动作</th><th>改之前</th><th>现在</th></tr>
+    <tr><td>下载</td><td>下载一个 zip</td><td>下载 <b>1 个文件</b>（exe，12.7MB）</td></tr>
+    <tr><td><b>手动解压</b></td><td class="warn-t">必须 —— 包里有 8 个文件</td><td class="ok-t"><b>不需要</b>（就一个文件）</td></tr>
+    <tr><td><b>终端 / 命令</b></td><td class="warn-t">双击 .bat 弹黑窗口跑脚本</td><td class="ok-t"><b>不需要</b>（双击即跑，没有命令行）</td></tr>
+    <tr><td>装 Python</td><td class="warn-t">没装就直接失败，还得自己去 python.org 下载安装并勾 Add to PATH</td><td class="ok-t"><b>不需要</b>（运行环境已打进 exe）</td></tr>
+    <tr><td>装依赖</td><td>部署器自动 <code>pip install</code>（要联网）</td><td class="ok-t"><b>不需要</b>（依赖已在 exe 内）</td></tr>
+    <tr><td>粘贴 Cookie / F12</td><td>不需要</td><td>不需要</td></tr>
+    <tr><td>关浏览器</td><td class="warn-t">要关，而且还要<b>回窗口按回车重试</b></td><td class="warn">要关，但<b>程序自动等你</b>，不用按任何键</td></tr>
+    <tr><td>首次运行拦截</td><td>—</td><td class="warn">未签名程序会被 Windows 拦一次，点「更多信息 → 仍要运行」</td></tr>
+  </table>
+
+  <div class="note">
+    <b>对你给的那条标准：现在合格了。</b>
+    没有手动解压、没有终端命令、不需要装 Python / pip / 任何东西 ——
+    就是「下载一个文件 → 双击」。
+    剩下的两条（关浏览器、首次拦截点两下）<b>不是命令也不是解压</b>，
+    是操作系统的必然行为，下面单独说明，并给出唯一能连它们也省掉的路子。
+  </div>
+
+  <h3>B. 现在用户实际要做什么（Windows）</h3>
+  <ol class="mini">
+    <li>在网页上勾文章 → 点创建任务（云端立刻把每篇最终稿算好）</li>
+    <li>点「⬇️ 下载 Windows 一键程序」→ 得到一个 <code>清一新教育一键修改.exe</code></li>
+    <li><b>双击它</b>。然后就没有然后了 —— 它自己会：读浏览器登录 → 把凭证同步到云端
+        → 请云端算好每篇最终稿 → 逐篇原样上传 → 跑完请求云端复核。</li>
+  </ol>
+  <div class="note">
+    <b>实测输出（真机，只准备不写入）：</b>
+    <pre>[1/4] 设备识别 : Windows · 内置运行环境 Python 3.13
+      工作目录 : C:\Users\...\AppData\Local\QingyiEdu
+[2/4] 每日上限 : 120 篇/天（以你在网页上的选择为准）
+[3/4] 读取本机浏览器里的知乎登录（不需要粘贴、不需要 F12）...
+      [!] Edge 正在运行并锁定了数据文件。请完全关闭浏览器后重试。
+
+      >>> 请把 Edge / Chrome 的【所有窗口】全部关掉（不是最小化）。
+          我在这里自动等您，关掉之后会自动继续 —— 不用按任何键。
+      … 仍在等待浏览器解锁（剩余约 284 秒）</pre>
+    注意第二行：<b>「120 篇/天」是这台程序从云端读回来的</b> ——
+    你在网页上选的上限会被同步到云端，所以改了设置也不用重新下载任何东西。
+    自检结果：识别设备 ✓ / 读到云端上限 ✓ / 中文友好提示（无堆栈）✓ /
+    自动等待提示 ✓ / 明确说要关浏览器 ✓ / 等待进度输出 ✓ —— <b>6/6 通过</b>。
+  </div>
+
+  <h3>C. 「关浏览器」为什么绕不过去（我实测了四种办法）</h3>
+  <table>
+    <tr><th style="width:300px">尝试方式</th><th>结果</th></tr>
+    <tr><td>Python 直接 open() 读 Cookie 库</td><td class="warn-t">失败：PermissionError 13</td></tr>
+    <tr><td>shutil.copy2 先复制一份再读</td><td class="warn-t">失败：WinError 32「另一个程序正在使用此文件」</td></tr>
+    <tr><td>Win32 <code>CreateFileW</code> 带宽松共享标志（允许读写删共享）</td><td class="warn-t">失败：同一个错误 —— 说明 Edge 用的是<b>独占锁</b>，不是普通共享锁</td></tr>
+    <tr><td>SQLite <code>immutable=1</code> 只读挂载原文件</td><td class="warn-t">失败：unable to open database file</td></tr>
+  </table>
+  <div class="note">
+    四种方式全部失败。这是 Chrome / Edge 在 Windows 上的<b>系统级行为</b>，
+    任何工具都绕不过（不是我们实现的问题）。
+    <br><b>所以我把代价从这里拿掉了</b>：程序不再要求你"回来按回车"，
+    而是<b>自己轮询等待</b> —— 你只要把浏览器关掉，它自己就继续了。
+    <br>顺带说明：<b>关闭浏览器不会让你退出登录</b>，重新打开还是登录状态，只是那几十秒不能上网。
+  </div>
+
+  <h3>D. 还能更简单吗？—— 只有一条路，代价我先说清</h3>
+  <table>
+    <tr><th style="width:170px">方案</th><th>用户动作</th><th>代价 / 结论</th></tr>
+    <tr>
+      <td><b>现在这个（单文件 exe）</b><br><span class="pill">已上线</span></td>
+      <td>下载 1 个文件 → 双击 →（关一次浏览器）</td>
+      <td>唯一代价是首次运行 Windows 拦一下（未签名），点两下放行。
+          这是一次性的。</td>
+    </tr>
+    <tr>
+      <td><b>浏览器扩展</b><br><span class="pill pl">唯一能省掉关浏览器</span></td>
+      <td>装一次扩展，之后全在浏览器里点</td>
+      <td>扩展能直接读 Cookie（不受那把锁限制），所以<b>连关浏览器都不用</b>。
+          代价：要上架 Chrome / Edge 商店（需开发者账号 + 审核）；
+          用「开发者模式加载」反而比装 exe 更麻烦。<b>需要你决定要不要走这条。</b></td>
+    </tr>
+    <tr>
+      <td><b>浏览器书签小工具</b><br><span class="pill pl">0 下载 0 安装</span></td>
+      <td>拖一次书签，之后在知乎页面点一下</td>
+      <td>理论上下载量为 0（写入直接在你自己浏览器里发生，身份天然正确）。
+          代价：要重构写入路径（跨域/CORS/限速/页面不能跳走），
+          且「拖书签」对普通用户也不直观。<b>工程量大，收益不确定。</b></td>
+    </tr>
+    <tr>
+      <td><b>交给 AI 助手（agent）</b><br><span class="pill">已有</span></td>
+      <td>把仓库地址复制给 agent</td>
+      <td>用户动作最少（一句话），但前提是已经装了这类软件。
+          装 Python、解压、跑命令都由 agent 承担 —— 这些活不是用户在做。
+          页面上「助手执行框」那段话就是给这条用的。</td>
+    </tr>
+    <tr>
+      <td>Mac</td>
+      <td>走部署包或 agent</td>
+      <td>无法在 Windows 上交叉编译 mac 版，所以 Mac 暂无单文件程序。
+          页面已按设备区分：Windows 显示一键程序，Mac 显示部署包 + agent 路线。</td>
+    </tr>
+  </table>
+
+  <h3>E. 另外两处顺手改掉的</h3>
+  <ul>
+    <li><b>每日上限改成从云端读</b>：以前这个值写在下载的 <code>perday.txt</code> 里，
+        所以改完设置必须重新下载一次部署包。现在网页上的选择会同步到云端
+        （<code>POST /api/qy/config</code>），一键程序启动时读回去
+        （<code>GET /api/qy/config</code>）—— 改设置后再也不用重新下载。</li>
+    <li><b>窗口里能看到实时进度</b>：输出改成逐行刷新，不再是"跑完才一口气冒出来"。</li>
+  </ul>
+
+  <div class="note">
+    <b>逐条回应你的问题：</b>
+    ① 用户需要做什么 → 见上面 B，一共 3 步，其中只有「下载」和「双击」是他要动手的。
+    ② 是否还有手动解压 / 终端命令 → <b>没有了，已彻底移除</b>。
+    ③ 是否还有更简单的方式 → 见 D：唯一能再省掉「关浏览器」的是浏览器扩展，
+    那需要上架商店，要你拍板；其余方案要么更麻烦，要么收益不确定。
+  </div>
+</div>
+
+<!-- ================= 0 · v5 更新 ================= -->
+<div class="card" style="border:2px solid #7dd3fc;background:linear-gradient(180deg,#e0f2fe 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第五轮更新（v5）· 云端定规则 + 云端自己验，本地只负责搬</h2>
+  <div class="meta">
+    按你最新两段话完成：<b>「获取和预修改在云端，本地只跟云端同步、把云端改好的内容传上去」</b> +
+    <b>「我只要网页上改，然后把 github 发给 agent，它按规则走；云端会检查 agent 有没有按要求完成」</b>。
+    下面每一项都做了真机 / 线上实测。
+  </div>
+  <table>
+    <tr><th style="width:230px">你的要求</th><th>完成情况</th></tr>
+    <tr>
+      <td><b>读取 + 预修改都放云端</b><br>「本地不要下载什么东西，云端算好，本地同步就行」</td>
+      <td><span class="pill">已完成 · 线上实测</span>
+        现在 <b>云端自己把每篇文章的最终稿算好并缓存</b>，本地一行内容都不用改：<br>
+        ① 你在网页上点完按钮、任务一建好，云端<b>立刻在后台开始预算</b>
+        （<code>POST /api/qy/prepare</code>，建任务时自动触发，<b>你什么都不用做</b>）；<br>
+        ② 云端逐篇拉取线上草稿 → 按规则算出「最终标题 + 最终正文」→
+        存成缓存文件 <code>data/qy_pre/{任务号}/{文章号}.json</code>，
+        内含 <code>title / content</code>（最终稿）、<code>pre_title / pre_content</code>（原稿）、
+        <code>pre_body_sha256 / expected_body_sha256</code>（改动前后指纹）；<br>
+        ③ <b>线上实测</b>（只读）：新建任务 <code>qy20260920-011-0278</code>，不点任何多余按钮，
+        1.5 秒内 <code>brief.counts.prepared</code> 即为 <b>1</b>——
+        云端已备好最终稿，等待执行器搬运。</td>
+    </tr>
+    <tr>
+      <td><b>本地只做「同步 + 上传」</b></td>
+      <td><span class="pill">已完成 · 线上实测</span>
+        执行器现在<b>不再自己决定改哪里</b>：它先调
+        <code>GET /api/qy/agent/payload/{任务号}/{文章号}</code> 取回云端算好的最终稿，
+        然后<b>原样提交</b>（<code>apply_payload()</code>，<code>source="cloud_payload"</code>）。<br>
+        <b>实测取回的最终稿</b>：标题 <code>【清一新教育】和鱼棋逢对手的记忆只能靠anki拯救</code>；
+        正文长度 <b>1287 → 1294（恰好 +7 字符 = 只多了「（清一新教育）」这一处括注）</b>，
+        品牌括注出现次数 <b>1</b>，其余文字逐字未动。<br>
+        若云端没有缓存（例如老任务），本地才回退到自算，行为与旧版一致，不会跑不动。</td>
+    </tr>
+    <tr>
+      <td><b>云端要能检查 agent 有没有按要求完成</b><br>「不采信本地自述」</td>
+      <td><span class="pill">已完成 · 说谎会被抓</span>
+        新增 <code>POST /api/qy/verify/{任务号}</code>：<b>云端自己去知乎重新回读线上文章</b>，
+        逐字节比对「标题是否只多了前缀、正文是否只多了一处括注、其余是否逐字未变」。<br>
+        <b>对抗性实测（关键）：</b>让执行器<b>谎报「已完成」但实际一个字都没写</b>，再调云端复核 ——
+        云端判 <b>不通过</b>，理由两条，全部命中：<br>
+        · <code>标题未按云端方案修改（线上仍是原标题）</code><br>
+        · <code>正文品牌词增减异常（原文 0 处 → 线上 0 处，应恰好 +1）</code><br>
+        并且 <code>brief.all_verified</code> 保持 <b>false</b>。
+        <span style="color:#0f172a"><b>也就是说：本地嘴上说做完了不算数，云端看到才算数。</b></span><br>
+        校验口径说明：正文指纹取的是<b>可见文字归一化后的 SHA-256</b>，不是原始 HTML ——
+        因为知乎每次保存都会重排富文本（补 <code>data-pid</code>、改写图片域名），
+        拿 HTML 比会天天误报「正文被改了」。</td>
+    </tr>
+    <tr>
+      <td><b>我只要网页上改，然后把 github 发给 agent</b></td>
+      <td><span class="pill">已完成</span>
+        任务卡里新增 <b>「助手执行框」</b>：里面是一段<b>一键复制</b>的交付指令，
+        直接丢给你电脑上的 agent（Antigravity / Claude / Cursor 都行）即可，内容包含：<br>
+        <code>仓库</code> github.com/Arthurchen-01/zh-editor ｜ <code>控制面</code> zh.samuraiguan.cloud ｜
+        <code>站点密钥</code> ｜ <code>任务号</code> ｜ <code>每篇规则（固定 2 处，不许改别的字）</code> ｜
+        <code>「不要自己改写内容，云端已算好，取回原样上传即可」</code>。<br>
+        并明确写着：<b>完成后云端会逐篇回读复核，请把复核结果贴回来。</b>
+        配套 <code>AGENTS.md</code> 已按同一口径重写（含「不许自己改写文章内容」这条硬约束）。
+        <br>页面还带一个 <b>「🔍 让云端复核一下」</b> 按钮和复核结果面板，
+        逐篇显示 <b>云端 ✓ / ✗</b> 与不通过原因，文章行内也有复核徽章。</td>
+    </tr>
+    <tr>
+      <td><b>顺带修掉的老毛病</b></td>
+      <td><span class="pill fix">已修</span>
+        ① 凭证柜保留时长 <b>10 分钟 → 6 小时</b>：本地跑完一整轮后，云端复核要复用同一份凭证，
+        10 分钟根本不够，会导致「复核说没凭证」。<br>
+        ② 刷新页面不再丢任务：从 <code>localStorage</code> 恢复进行中的任务。<br>
+        ③ 打包时把<b>真实控制面地址和站点密钥</b>写进 <code>AGENTS.md</code> / <code>使用说明.txt</code>
+        （此前是 <code>{{SERVER}}</code> 占位符，agent 拿到会不知道连哪里）。</td>
+    </tr>
+  </table>
+  <div class="note">
+    <b>v5 全流程（你的视角，一共就 2 步）：</b>
+    ① 网页上勾文章、点按钮建任务 → 云端自己把每篇最终稿算好（你不用管）<br>
+    ② 把页面上那段「交给 agent 的话」复制给你电脑上的 agent → 它按规则取回云端稿子上传 →
+    <b>云端自己回读复核</b>，通过/不通过都摆回页面上，写得不对还会告诉你错在哪。<br>
+    <span class="warn-t">注：</span>「真实 cookie 的完整写入跑通」仍需你本人关闭浏览器后双击一键部署执行；
+    本报告中的 v5 验证全部是<b>只读</b>动作（读草稿、算最终稿、回读比对），没有改动任何线上文章。
+  </div>
+</div>
+
+<!-- ================= 0 · v4 更新 ================= -->
+<div class="card" style="border:1.5px solid #bfdbfe;background:linear-gradient(180deg,#eff6ff 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第四轮更新（v4）· 零粘贴闭环 + 双仓库上线</h2>
+  <div class="meta">按你最新四点要求完成，全部真机实测（本机 Windows 11 真环境）。</div>
+  <table>
+    <tr><th style="width:230px">你的要求</th><th>完成情况</th></tr>
+    <tr>
+      <td><b>Cookie 不许粘贴、不许 F12</b></td>
+      <td><span class="pill">已完成 · 真机实测</span>
+        建立「<b>凭证柜</b>」闭环，全程零粘贴：<br>
+        ① 网页第 1 步改为 <b>「⬇️ 下载部署包 → 双击一键部署 → 📥 载入凭证」</b>三个按钮流程，
+        粘贴框降级为普通备选（标签写明「一般无需手动填写」）；<br>
+        ② 部署器 <code>deploy.py</code> 在用户电脑上用 <b>Windows DPAPI + AES-GCM</b>
+        自动解密 Edge/Chrome 的知乎登录（本机实测：DPAPI 密钥解密成功，32 字节 AES 密钥）；
+        Mac 用 browser-cookie3（Safari/Firefox/Chrome 依次尝试）；<br>
+        ③ 凭证上传云端凭证柜（<code>/api/qy/credential-deposit</code>，<b>仅内存、10 分钟自动过期、不落盘</b>），
+        网页点「📥 载入凭证」自动取回并填好、自动开始检索 —— 实测全链路连通；<br>
+        ④ Edge 运行中锁定数据库时（Windows 系统级排他锁，任何工具都绕不开），
+        部署器给出傻瓜指引并允许 <b>「关闭浏览器后按回车重试」共 3 次</b>。
+        知乎官方扫码接口已实测下线（4040），故采用此方案替代。</td>
+    </tr>
+    <tr>
+      <td><b>识别设备（Mac 等），让他的 agent 去部署</b></td>
+      <td><span class="pill">已完成</span>
+        ① 网页自动识别访客设备并显示徽章「🖥️ 已识别你的设备：Windows/macOS」（实测生效），
+        按设备显示对应的「一键部署-Windows.bat / 一键部署-Mac.command」；<br>
+        ② 部署器 <code>deploy.py</code> 自己识别设备、自装依赖（Windows: pywin32+pycryptodome；Mac: browser-cookie3）、
+        自读凭证、自启动执行器；<br>
+        ③ 包内附 <b><code>AGENTS.md</code></b>：把文件夹丢给任何 AI 助手（Antigravity/Claude/Cursor），
+        说「帮我把这个工具跑起来」即可 —— AI 照着做就能部署。</td>
+    </tr>
+    <tr>
+      <td><b>github 上线了没？zh-editor 仓库</b></td>
+      <td><span class="pill">已上线 · blob 校验通过</span>
+        <a href="https://github.com/Arthurchen-01/zh-editor" target="_blank"><b>github.com/Arthurchen-01/zh-editor</b></a>
+        已填装 9 个文件（1849 行）：README（中文傻瓜说明）、deploy.py、qingyi_executor.py、
+        双平台一键部署脚本、AGENTS.md、requirements.txt、使用说明、.gitignore（<b>cookie.txt 永不入库</b>）。
+        commit <code>5f1af63</code>，远端哈希与本地一致；5 个关键文件 blob 哈希逐一比对通过；
+        仓库描述 + 主页链接（指向工作台）已设置。</td>
+    </tr>
+    <tr>
+      <td><b>本地各版本能不能行？端到端验证</b></td>
+      <td><span class="pill">已完成 · 真机实测</span>
+        在本机（真实 Windows）完成：<br>
+        ① 工作台云端包下载 → 8 个文件全部解压完好、执行器语法 AST 验证通过；<br>
+        ② 执行器 <code>--help</code> 正常、含新增 <code>--auto-cookie</code>；启动自检生成执行器 ID
+        <code>LAPTOP-…-windows-9488</code>；<br>
+        ③ <code>--list-only</code> 只读预演跑到知乎凭证校验环节（假凭证被正确拒绝，
+        报错为中文引导而非堆栈崩溃）—— 真 cookie 时此环节即正常列出待注入文章；<br>
+        ④ 凭证柜端点真机冒烟：存入 → 取回 → 过期清空 全部符合设计；<br>
+        ⑤ 双仓库推送后 <b>服务器文件 ↔ GitHub blob 哈希逐一比对 6/6 通过</b>
+        （zhihu-scraper v4 提交 <code>ccae8ea</code>：3 文件 +432/-52）。<br>
+        <span class="warn-t">注：</span>「真实 cookie 的完整写文章跑通」需你本人关闭 Edge 后
+        双击一键部署完成（浏览器锁是系统级设计，任何人无法替你绕过）。</td>
+    </tr>
+  </table>
+  <div class="note">
+    <b>v4 零粘贴全流程（用户视角）：</b>
+    打开工作台 → 点「⬇️ 下载部署包」→ 解压 → 双击「一键部署」（自动读浏览器登录、自动启动执行器）
+    → 回网页点「📥 载入凭证」→ 勾选文章 → 「🤖 AI 审核 + 创建修改任务」→ 执行器自动逐篇完成（每篇 2 处）。
+    <br><b>agent 视角：</b>
+    <code>git clone https://github.com/Arthurchen-01/zh-editor</code> → 读 AGENTS.md → 装依赖 →
+    <code>python deploy.py</code>。完。
+  </div>
+</div>
+
+<!-- ================= 0 · v3 更新 ================= -->
+<div class="card" style="border:1.5px solid #a7f3d0;background:linear-gradient(180deg,#ecfdf5 0%,#fff 100%)">
+  <h2><span class="n">◆</span> 第三轮更新（v3）· AI 审核 + 傻瓜化</h2>
+  <div class="meta">按你最新四点要求完成，全部真机实测。</div>
+  <table>
+    <tr><th style="width:230px">你的要求</th><th>完成情况</th></tr>
+    <tr>
+      <td><b>AI 审核植入</b><br>「不是随便加，加几个、在哪里加要模型审核」</td>
+      <td><span class="pill">已完成 · 真机实测</span>
+        已接入 <b>DeepSeek</b>（你的 API Key 已配置在服务器，不入 GitHub 仓库）。
+        点「🤖 AI 审核 + 创建修改任务」后，AI <b>逐篇阅读全文</b>，
+        决定：① 标题是否加；② 正文从候选句末位置里挑 <b>0~2 处</b>、并给出理由。
+        审核提示词已内置到代码。实测文章《和鱼棋逢对手的记忆只能靠anki拯救》：
+        AI 返回「标题加 1 处 · 正文加 1 处（首段点明学习记忆核心问题）」。
+        AI 不可用时自动回退内置规则，任务照常。见 <b>截图 11</b>。</td>
+    </tr>
+    <tr>
+      <td><b>看不懂的文案换个词</b></td>
+      <td><span class="pill">已重写</span>
+        第 1 步改为「先让系统认识你」、第 2 步改为「这一步做两件事：① 打钩 ② 点大按钮」，
+        检索按钮改为「🔍 开始检索我的文章」，弹窗提示全部口语化
+        （如「还没有勾选任何文章：请在下方列表里打钩……」）。</td>
+    </tr>
+    <tr>
+      <td><b>要有进度渲染、完成与未完成条目要有区分</b></td>
+      <td><span class="pill">已完成</span>
+        AI 审核时显示 <b>进度条 + 逐篇状态行</b>（每篇完成后即显示方案徽章）；
+        列表里 <b>✓ 已完成</b>（绿底）/ <b>⏳ 待处理</b>（黄标）/ 审核中（蓝底）三种状态一目了然。</td>
+    </tr>
+    <tr>
+      <td><b>傻瓜用户执行器 + 步步教学幕布</b></td>
+      <td><span class="pill">已完成</span>
+        ① 执行器改为<b>一键下载包</b>：点一个按钮 → 下载 zip（内含执行器 + 你的凭证 + 「一键启动」脚本 + 使用说明），
+        解压后<b>双击即可</b>，无需再粘贴任何东西。② 页面进入后自动开始
+        <b>步步教学</b>：当前步骤聚光灯高亮，其余区域<b>半透明幕布压暗</b>，可上一步/下一步/跳过，
+        右上角「❓ 新手引导」随时重放。见 <b>截图 10</b>。扫码登录暂未做（需调用知乎官方扫码接口，风控敏感，建议先用一键凭证）。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ================= 0 · v2 更新 ================= -->
+<div class="card" style="border:1.5px solid #bae6fd;background:linear-gradient(180deg,#f0f9ff 0%,#fff 100%)">
+  <h2><span class="n">★</span> 本次更新（v2）</h2>
+  <div class="meta">以下三项按你最新要求完成，均已上线并截图验证。</div>
+  <table>
+    <tr><th style="width:190px">你的要求</th><th>完成情况</th></tr>
+    <tr>
+      <td><b>赞助放最上面，要小</b></td>
+      <td><span class="pill">已完成</span>
+        赞助条已从页脚移到<b>页面最顶部</b>（标题上方，偏移 26px，高仅 67px）。
+        样式改为 <b>3 行小字条</b>（字号 12.5px，浅黄底细边），去掉了原来的大卡片、
+        双列信息卡与底部说明横幅。见 <b>截图 09</b>。</td>
+    </tr>
+    <tr>
+      <td><b>主站要有明显标识，点了进工作台</b></td>
+      <td><span class="pill">已完成</span>
+        主站 <code>zh.samuraiguan.cloud</code> 登录后<b>首屏最顶部</b>新增横幅入口：
+        蓝紫渐变描边、🏷️ 图标、标题「清一新教育 · 文章修改工作台」、
+        标签「标题 + 内容」、说明文字与右侧「点击进入 →」。
+        已用真实点击测试：<b>点击后成功跳转</b>到 <code>/api/qy/console</code>。见 <b>截图 08</b>。</td>
+    </tr>
+    <tr>
+      <td><b>再解释一下本地工具</b></td>
+      <td><span class="pill">已解释</span>
+        见本报告 <b>第 4 节</b>「本地执行器是什么、怎么用」。同时顺手修正了执行器里
+        与现状不符的文案（原写「仅修改标题，正文保持原样」，现按任务实际范围动态显示）。</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ================= 1 ================= -->
+<div class="card">
+  <h2><span class="n">1</span> 验收结论速览</h2>
+  <div class="grid">
+    <div class="stat ok"><div class="n">已通过</div><div class="l">≤5 篇小范围试跑</div></div>
+    <div class="stat brand"><div class="n">2 处</div><div class="l">每篇改动（标题1+正文1）</div></div>
+    <div class="stat brand"><div class="n">120</div><div class="l">每日上限（篇/天）</div></div>
+    <div class="stat ok"><div class="n">5 / 5</div><div class="l">备份可还原</div></div>
+    <div class="stat ok"><div class="n">已推送</div><div class="l">zhihu-scraper d444316<br>zh-editor 8af042e</div></div>
+    <div class="stat ok"><div class="n">0 解压</div><div class="l">Windows 只需下载 + 双击</div></div>
+    <div class="stat ok"><div class="n">云端复核</div><div class="l">谎报完成会被抓（实测）</div></div>
+  </div>
+  <div class="note">
+    <b>三条硬结论：</b>
+    <ul>
+      <li><b>范围可控</b>：每篇文章恰好改动 2 处 —— 标题前置 <code>【清一新教育】</code>，正文以署名式括注 <code>（清一新教育）</code> 补 1 处；正文只追加、不删改，可一键还原。</li>
+      <li><b>节奏可控</b>：每日写入上限 120 篇，到量后本地执行器<b>自动停止</b>，剩余篇数次日继续。计数落在执行器本机并落盘，<b>重启执行器也不能绕过</b>。</li>
+      <li><b>写入来自本地</b>：云端只做只读检索、编排与进度聚合；真正的知乎写入由用户自己电脑上的执行器发出，走本人网络身份。</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ================= 2 ================= -->
+<div class="card">
+  <h2><span class="n">2</span> 页面截图（逐屏）</h2>
+  <div class="meta">以下截图均取自线上真实页面，非示意图。</div>
+
+  <h3>2.1 工作台首屏 —— 作用范围声明</h3>
+  <div class="shot">
+    <img src="shots/01_console_top.png" alt="工作台首屏">
+    <div class="cap">
+      <b>截图 01</b> · 标题「清一新教育文章修改工作台」，徽标「每篇 2 处 · 标题 1 + 正文 1」，
+      声明区明确写出改动范围与「除此之外没有任何修改」。
+    </div>
+  </div>
+
+  <h3>2.2 只读检索真实结果</h3>
+  <div class="shot">
+    <img src="shots/02_inspect_result.png" alt="检索结果">
+    <div class="cap">
+      <b>截图 02</b> · 真实账号检索完成：识别到「冠军班 陈冠宇（chang-ge-yu-29）」。
+      此处为<b>只读</b>操作，不产生任何写入。
+    </div>
+  </div>
+
+  <h3>2.3 勾选列表与两个功能开关</h3>
+  <div class="shot">
+    <img src="shots/03_list_after_inspect.png" alt="列表与开关">
+    <div class="cap">
+      <b>截图 03</b> · 「标题加入清一新教育」/「内容加入清一新教育」两个开关，
+      右侧标注「每篇合计 2 处」，并有「全面检索可加入场景」按钮。
+    </div>
+  </div>
+
+  <h3>2.5 主站入口标识 —— v2 新增，登录后首屏最顶部</h3>
+  <div class="shot">
+    <img src="shots/08_home_entry_banner.png" alt="主站入口横幅">
+    <div class="cap">
+      <b>截图 05（v2 新增）</b> · 进入 <code>zh.samuraiguan.cloud</code> 登录后，首屏最顶部即是这条横幅：
+      🏷️ 图标 + 「清一新教育 · 文章修改工作台」+ 蓝底标签「标题 + 内容」，
+      下方一行说明「给文章标题和内容添加 <code>【清一新教育】</code> 标识 · 每篇固定 2 处 ·
+      只做句末括注不改写原文 · 可一键还原」，右侧「点击进入 →」。
+      实测宽 1156px、高 82px，渐变描边悬浮有上浮效果。
+      <br><b>交互已验证：</b>程序化点击该横幅 → 浏览器地址变为
+      <code>https://zh.samuraiguan.cloud/api/qy/console</code>，落地页标题
+      「清一新教育文章修改工作台」。
+    </div>
+  </div>
+
+  <h3>2.6 工作台页首赞助条 —— v2 移到顶部并缩小</h3>
+  <div class="shot">
+    <img src="shots/09_console_sponsor_top.png" alt="工作台页首赞助条">
+    <div class="cap">
+      <b>截图 06（v2 新增）</b> · 赞助条现在位于工作台<b>页面最顶部</b>（在标题「清一新教育文章修改工作台」之前）。
+      实测：距页顶 26px，在标题（偏移 107px）与作用范围声明（偏移 191px）之前；高度仅 <b>67px</b>，共 <b>3 行小字</b>。
+      <br><b>三行内容：</b>① 🤝 清一新教育-冠军一班-谢迪安友情资助 ｜ 本工具免费提供…
+      ② 📞 支持本计划 / 企业 AI 供应对接：谢迪安 / 陈冠宇 · 微信号：<code>{微信号·待补}</code>
+      ③（署名与联系方式仅显示在本页面，<b>不写入任何文章正文</b>）
+      <br>原页脚的大卡片（双列信息卡 + 底部横幅）已<b>整块移除</b>（页脚残留计数 = 0）。
+    </div>
+  </div>
+
+  <h3>2.8 步步教学（v3 新增）—— 聚光灯 + 幕布</h3>
+  <div class="shot">
+    <img src="shots/10_v3_tour.png" alt="步步教学">
+    <div class="cap">
+      <b>截图 10（v3 新增）</b> · 进入工作台 1.4 秒后自动开始 7 步教学：
+      当前步骤高亮（蓝色描边聚光灯），页面其余部分<b>半透明幕布压暗</b>。
+      气泡里有步骤序号、标题、说明与「上一步 / 下一步 / 跳过」。
+      点「跳过，不再显示」后 localStorage 记住；右上角「❓ 新手引导」随时重放。
+      实测：自动启动 ✓ / 前进到第 5 步 ✓ / 跳过并记忆 ✓。
+    </div>
+  </div>
+
+  <h3>2.9 AI 审核 + 创建任务（v3 新增）—— 逐篇进度渲染</h3>
+  <div class="shot">
+    <img src="shots/11_v3_ai_review.png" alt="AI 审核进度">
+    <div class="cap">
+      <b>截图 11（v3 新增）</b> · 点「🤖 AI 审核 + 创建修改任务」后的真实画面：
+      进度条走完 100%，每篇一行<b>方案徽章</b>——
+      「方案：标题加 1 处 · 正文加 1 处 <span style="color:#15803d">AI 已审核</span> ·
+      《和鱼棋逢对手的记忆只能靠anki拯救》「首段点明学习记忆核心问题」」，
+      随后任务卡自动展开（任务编号 qy20260919-009-d16d，已取消，仅作验收）。
+      整条链路：拉正文（只读）→ DeepSeek 审核 → 按计划建任务 → 执行器按计划写入。
+    </div>
+  </div>
+
+  <h3>2.10 修改对照报告（真实任务回执）</h3>
+  <div class="shot">
+    <img src="shots/06_report_page.png" alt="修改对照报告">
+    <div class="cap">
+      <b>截图 12</b> · 任务 <code>qy20260919-008-c9d9</code> 的报告页：标题 diff、
+      正文植入位置与片段、正文改动核对（与计划一致 ✓）、以及可还原说明。
+    </div>
+  </div>
+</div>
+
+<!-- ================= 3 ================= -->
+<div class="card">
+  <h2><span class="n">3</span> 文本快照（截图之外的客观证据）</h2>
+  <div class="meta">以下内容由页面/接口实时读出，与截图互为印证 —— 这解决了「截图无法被程序化校验」的问题。</div>
+
+  <h3>3.1 检索统计（真实账号）</h3>
+  <table>
+    <tr><th>指标</th><th>数值</th><th>说明</th></tr>
+    <tr><td>条目合计</td><td><b>262</b></td><td>文章 + 想法 + 回答</td></tr>
+    <tr><td>已含品牌词</td><td><b>7</b></td><td>标题已署名</td></tr>
+    <tr><td>待处理</td><td><b>237</b></td><td>尚未署名</td></tr>
+    <tr><td>本次试跑</td><td><b>≤5 篇</b></td><td>严格按「仅 5 篇以内」授权执行</td></tr>
+  </table>
+
+  <h3>3.2 当日用量接口返回</h3>
+  <pre>GET /api/qy/daily-usage
+{
+  "ok": true,
+  "day": "2026-09-19",
+  "used": 9,
+  "cap": 120,
+  "remaining": 111,
+  "note": "服务端可见的当日成功数；执行器本机计数为硬闸门。"
+}</pre>
+
+  <h3>3.3 每日上限逻辑实测</h3>
+  <pre>上限设为 3 篇后逐篇写入：
+  初始:     今日已写入 0 / 3 篇 | exhausted = False
+  第 1 篇后: 今日已写入 1 / 3 篇 | remaining = 2 | exhausted = False
+  第 2 篇后: 今日已写入 2 / 3 篇 | remaining = 1 | exhausted = False
+  第 3 篇后: 今日已写入 3 / 3 篇 | remaining = 0 | exhausted = True   ← 到量即停
+  重启后:   今日已写入 3 / 3 篇 | exhausted = True                    ← 重启不可绕过
+  跨天后:   今日已写入 0 / 5 篇 | exhausted = False                   ← 自动归零</pre>
+
+  <h3>3.4 修改对照报告（节选）</h3>
+  <pre># 清一新教育文章修改工作台 · 修改对照报告
+- 任务编号：qy20260919-008-c9d9
+- 修改范围：标题 1 处 + 正文 1 处（每篇合计 2 处）
+- 执行模式：本地执行器
+- 执行器：LAPTOP-6IIVIPGL-windows-8554
+
+## 海鲜市场偶遇前沿AI开发者
+- 链接：https://zhuanlan.zhihu.com/p/2013745774530420892
+- 状态：标题注入成功；正文自然植入 1 处（署名式括注，不删改原文，可一键还原）
+
+标题修改对照
+- 海鲜市场偶遇前沿AI开发者
++ 【清一新教育】海鲜市场偶遇前沿AI开发者
+
+正文植入位置（署名式括注，未删改任何原有文字）
+- 第 2 段 · 中段（第 2/21 段），且与教育语义同域
+- 正文品牌提及：0 → 1（+1）
+- 可一键还原为原文。
+
+正文改动核对：与计划的植入结果一致 ✓</pre>
+
+  <h3>3.5 GitHub 推送结果（含 v2 更新）</h3>
+  <pre>仓库：github.com/Arthurchen-01/zhihu-scraper
+分支：main
+最新提交：5c73f52  feat(qingyi): 赞助条移至页首并缩小；主站新增工作台入口标识；修正执行器范围文案
+上一提交：69a06c3  feat(qingyi): 清一新教育文章修改工作台（控制面/数据面分离）
+
+v2 提交变更：3 files changed, 92 insertions(+), 57 deletions(-)
+  zhihu_scraper/app/qingyi_page.py  | 赞助条移至页首 + 缩小
+  zhihu_scraper/app/web.py          | 主站入口横幅 + 8 条 CSS 规则
+  zhihu_scraper/qingyi_worker.py    | 范围文案按任务动态显示
+
+推送后校验（blob 哈希逐文件比对，3/3 完全一致）：
+  zhihu_scraper/app/qingyi_page.py  -> a57f06e619fabef1...
+  zhihu_scraper/app/web.py          -> 01f04aaa8943ab7b...
+  zhihu_scraper/qingyi_worker.py    -> 9560133d9f150a12...
+
+上一轮推送（69a06c3，9 files changed, 3520 insertions(+)）：
+  .gitignore / README.md / qingyi_api.py / qingyi_page.py / web.py
+  / qingyi.py / qingyi_jobs.py / qingyi_worker.py / qy_content.py
+  推送前已扫描确认无 Cookie 明文、无硬编码站点密钥；
+  .gitignore 排除 data/qy_jobs.json、data/qyedu_backup/、.snapshots/</pre>
+
+  <h3>3.6 v5 端到端只读验证（本次会话实测输出）</h3>
+  <div class="meta">
+    全程只读：投递凭证 → 建任务（<b>不点任何多余按钮</b>）→ 等云端自动预算 → 取回最终稿 →
+    云端复核 → 删除临时任务。
+  </div>
+  <pre>1) 凭证投递  cookie_len=2428
+  [PASS] deposit ok  21600                       ← TTL 6 小时
+2) 建任务  job=qy20260920-011-0278
+  [PASS] job created
+3) 云端预算  counts={'total':1,'prepared':1,'pending':1,...} preparing=False
+  [PASS] auto-prepared without manual step  prepared=1   ← 全自动，无需手动预修改
+  [PASS] brief.all_verified is false before upload
+4) 预算稿  title=【清一新教育】和鱼棋逢对手的记忆只能靠anki拯救
+            body_len=1294  brand_hits=1
+  [PASS] title has 【清一新教育】 prefix
+  [PASS] body has exactly 1 brand tag
+  [PASS] body grew by exactly the tag (+7)  1287 -> 1294
+  [PASS] expected_body_sha256 present
+5) 云端复核  ok=True
+  summary={"checked":0,"passed":0,"failed":0,"skipped":1,"all_passed":false}
+  [PASS] verify ran with live credential
+  [PASS] nothing falsely verified                ← 没上传就绝不会被判「通过」
+  [PASS] all_verified stays false
+6) 删除临时任务  ok=True
+
+==== E2E ALL PASS ====</pre>
+
+  <h3>3.7 v5 对抗性验证：本地谎报完成，云端当场抓住</h3>
+  <pre>让执行器上报 status=done，但线上一个字都没改，然后请求云端复核：
+
+POST /api/qy/verify/qy20260919-009-d16d
+{
+  "ok": true,
+  "summary": {"checked": 1, "passed": 0, "failed": 1, "skipped": 0, "all_passed": false},
+  "details": [{
+    "id": "2012970947553014369",
+    "verify": "fail",
+    "reasons": [
+      "标题未按云端方案修改（线上仍是原标题）",
+      "正文品牌词增减异常（原文 0 处 → 线上 0 处，应恰好 +1）"
+    ]
+  }]
+}
+
+GET /api/qy/agent/brief?job_id=...   →   all_verified: false</pre>
+  <div class="note">
+    <b>这一条是 v5 的核心：</b>复核依据是<b>云端去线上重新读回来的东西</b>，
+    不是本地执行器的自述。所以「agent 有没有按要求完成任务」是可判定的、会被自动拦下来的。
+  </div>
+
+  <h3>3.8 v5 推送结果（两个仓库）</h3>
+  <pre>① 控制面 / 工作台：github.com/Arthurchen-01/zhihu-scraper  （main）
+   7b3d2c3  feat(qingyi): v5 前端助手框 —— 复制给 agent，云端独立复核
+   55faf9b  docs(qingyi): v5 交给 agent 的说明与凭证 TTL —— 一页复制即执行
+   d53def2  feat(qingyi): v5 云端预算内容 + 云端独立复核 —— 本地只搬运，规则由云端定
+   （已 rebase 到远端 44a158c 之上，推送为快进 44a158c..7b3d2c3）
+
+② 本地执行器（交给 agent 的那个仓库）：github.com/Arthurchen-01/zh-editor （main）
+   8af042e  feat: v5 —— 云端预算内容、本地只上传、云端独立复核
+
+③ 字节校验：zh-editor 7 个文件与服务器部署包 md5 逐一比对  7/7 全等
+   （qingyi_executor.py / deploy.py / AGENTS.md / requirements.txt /
+     一键部署-Windows.bat / 一键部署-Mac.command / 使用说明.txt）
+
+④ v6 一键程序：github.com/Arthurchen-01/zhihu-scraper （main）
+   d444316  feat(qingyi): Windows 单文件一键程序 —— 双击即用，不用解压/终端/装 Python
+   （3 files changed, 163 insertions(+), 17 deletions(-)）
+   远端 main == 本地 HEAD == d444316（带凭据 ls-remote 核对通过）
+
+⑤ 一键程序本体（不进 git，由服务器分发）
+   文件名  ：清一新教育一键修改.exe
+   大小    ：13,314,381 字节（12.7 MB）
+   md5     ：f1024e0f2973c7e262dad560df6a2e7d
+   服务器  ：/opt/zhihu-scraper/data/qy_download/QingyiEduOneClick.exe
+   下载校验：GET /api/qy/download/windows 落盘 md5 与本地一致；
+             Content-Disposition 已带中文文件名</pre>
+</div>
+
+<!-- ================= 4 ================= -->
+<div class="card">
+  <h2><span class="n">4</span> 本地执行器是什么、怎么用</h2>
+  <div class="meta">
+    这就是你问的「本地工具」。它是一个 <b>单文件 Python 脚本</b>：
+    <code>qingyi_executor.py</code>（v5 现为 66,284 字节 / 语法校验通过；
+    执行器的<b>写入逻辑没变</b>，只是执行顺序改成「先取云端稿子 → 原样上传 → 最后请求云端复核」）。
+  </div>
+
+  <h3>4.1 它是什么</h3>
+  <div class="note">
+    <b>一句话：</b>它是唯一真正去改知乎文章的程序，运行在<b>你自己的电脑</b>上。
+    云端（<code>zh.samuraiguan.cloud</code>）只负责检索、排任务、收进度，<b>不碰写入通道</b>。
+  </div>
+  <table>
+    <tr><th style="width:150px">项目</th><th>说明</th></tr>
+    <tr><td>文件形态</td><td>单个 <code>.py</code> 文件，自包含，无需安装任何本项目代码</td></tr>
+    <tr><td>唯一依赖</td><td><code>pip install requests</code>（就这一个第三方库）</td></tr>
+    <tr><td>运行环境</td><td>你电脑上任意 Python 3.8+；Windows / macOS 都能跑</td></tr>
+    <tr><td>它做什么</td><td>轮询云端领任务 → 逐篇改标题+正文 → 每篇写完立即回报进度</td></tr>
+    <tr><td>它不做什么</td><td>不改专栏归属、不改话题、不改评论设置、不动图片、不动发布状态</td></tr>
+    <tr><td>备份</td><td>每篇改动前，原文自动存到你本机备份目录，可一键还原</td></tr>
+  </table>
+
+  <h3>4.2 怎么用（三步）</h3>
+  <pre>① 下载：在工作台页面点「下载执行器」，或直接取
+   https://zh.samuraiguan.cloud/api/qy/executor/script  →  存为 qingyi_executor.py
+
+② 放凭证：在同一个文件夹里新建 cookie.txt，粘贴你的知乎 Cookie
+
+③ 运行（在文件所在文件夹打开终端）：
+   python qingyi_executor.py --server https://zh.samuraiguan.cloud --key guanjun2026 --cookie-file cookie.txt</pre>
+
+  <h3>4.3 常用命令参数</h3>
+  <table>
+    <tr><th style="width:180px">参数</th><th>作用</th></tr>
+    <tr><td><code>--once</code></td><td>只跑一轮就退出（适合先小范围试）</td></tr>
+    <tr><td><code>--list-only</code></td><td><b>只读预演</b>：只列出待处理文章，绝不写入。想先看看会改哪些，用这个</td></tr>
+    <tr><td><code>--per-day 120</code></td><td>每日上限，默认 120；填 0 表示不限</td></tr>
+    <tr><td><code>--max-items 5</code></td><td>本次最多处理 5 篇（你想限量的场景就用它）</td></tr>
+    <tr><td><code>--per-hour 12</code></td><td>每小时上限</td></tr>
+    <tr><td><code>--gap-min 25 --gap-max 75</code></td><td>篇与篇之间的随机间隔秒数</td></tr>
+    <tr><td><code>--backup-dir D:\备份</code></td><td>指定原文备份目录</td></tr>
+  </table>
+
+  <h3>4.4 内置的安全机制（都在这个脚本里）</h3>
+  <table>
+    <tr><th>机制</th><th>取值</th><th>作用</th></tr>
+    <tr><td>每日上限</td><td><b>120 篇/天</b></td><td>到量即停，剩余次日继续；计数落盘，重启不可绕过</td></tr>
+    <tr><td>每小时上限</td><td>12 篇/小时</td><td>抑制短时爆发</td></tr>
+    <tr><td>篇间间隔</td><td>25 ~ 75 秒随机</td><td>去掉机械等距特征</td></tr>
+    <tr><td>阶段性休息</td><td>每 5 篇停 3~7 分钟</td><td>模拟自然节奏</td></tr>
+    <tr><td>连续失败熔断</td><td>3 次即中止</td><td>遇到风控信号不再硬打</td></tr>
+    <tr><td>身份轮换</td><td>逐篇换 UA / 头序</td><td>降低请求指纹一致性</td></tr>
+    <tr><td>Ctrl+C 可中断</td><td>随时</td><td>中断后已完成的进度仍保留在云端</td></tr>
+  </table>
+
+  <h3>4.5 为什么写入一定要放本地（不能云端代劳）</h3>
+  <div class="note">
+    把 200+ 篇文章的改写从机房 IP 一次性打出去，是平台风控最敏感的形态。
+    改为本地执行后，编辑行为来自你日常使用的网络与设备，行为特征与
+    「本人手动逐篇修改」一致。这也是为什么做成「云端只读编排 + 本地写入」两段式。
+  </div>
+
+  <h3>4.6 完整链路（v5）</h3>
+  <pre>① 浏览器 投递凭证（凭证柜，保留 6 小时）
+      ↓
+② 云端 /api/qy/inspect          只读枚举本人资产（文章/想法/回答）
+      ↓
+③ 云端 /api/qy/jobs             把勾选结果固化成任务（每篇固定 2 处）
+      ↓
+③' 云端 自动预修改（你什么都不用做）：
+      逐篇拉草稿 → 算出「最终标题 + 最终正文」→ 缓存 data/qy_pre/{任务}/{文章}.json
+      ↓
+④ 网页「助手执行框」一键复制 → 交给你电脑上的 agent
+      ↓
+⑤ 本地执行器 轮询领取任务
+      ↓
+⑤' 本地从 /api/qy/agent/payload 取回云端最终稿 → 原样提交
+      PATCH 文章草稿（标题 + 正文） → POST 发布 → 回读自检
+      ↓
+⑥ 每篇写完立即上报云端 → 页面进度条实时推进
+      ↓
+⑦ 本地请求云端复核：POST /api/qy/verify/{任务号}
+      ↓
+⑧ 云端重新回读线上文章，逐字节比对 → pass / fail + 原因
+      ↓
+⑨ 页面显示逐篇「云端 ✓ / ✗」与不通过原因；/api/qy/report/{id} 生成对照报告</pre>
+  <div class="note">
+    <b>写入链路是纯 HTTP 的</b>（已逆向验证）：<code>PATCH zhuanlan.zhihu.com/api/articles/{id}/draft</code>
+    → <code>POST www.zhihu.com/api/v4/content/publish</code>。不需要开浏览器，所以执行器可以是一个单文件 Python 脚本。
+    <br><b>v5 的关键差别：</b>第 ③' 步把「怎么改」搬到了云端，第 ⑦⑧ 步把「算不算做完」交给了云端 ——
+    本地既不做决策，也不做验收。
+  </div>
+</div>
+
+<!-- ================= 5 ================= -->
+<div class="card">
+  <h2><span class="n">5</span> 架构对照：云端 vs 本地</h2>
+  <table>
+    <tr><th></th><th>云端（控制面）</th><th>本地执行器（数据面）</th></tr>
+    <tr><td>部署位置</td><td>zh.samuraiguan.cloud（机房 IP）</td><td><b>你自己的电脑</b></td></tr>
+    <tr><td>能做什么</td><td>只读检索、任务编排、进度聚合、报告渲染</td><td>真正的知乎写入（标题 + 正文）</td></tr>
+    <tr><td><b>v5 决定改哪里</b></td><td class="ok-t"><b>云端</b>（算出每篇最终标题+正文并缓存）</td><td>不决定，只管把云端稿子原样上传</td></tr>
+    <tr><td><b>v5 谁说了算</b></td><td class="ok-t"><b>云端复核</b>（回读线上文章逐字节比对）</td><td>自述不算数</td></tr>
+    <tr><td>能否写文章</td><td class="warn-t">不能</td><td class="ok-t">是（唯一写入方）</td></tr>
+    <tr><td>网络身份</td><td>机房 IP</td><td><b>你本人家宽 IP + 本机设备</b></td></tr>
+    <tr><td>每日上限闸门</td><td>展示用量（只读）</td><td><b>硬闸门</b>（落盘计数，重启不可绕过）</td></tr>
+  </table>
+  <div class="note">
+    <b>关于「一天 120 篇」：</b>按此节奏，237 篇待处理内容约需 <b>2 天</b>完成，
+    而不是一次性全量上线 —— 这正是你要的「不要一次上传这么多」。
+    上限本身在页面上可选 60 / 120 / 180 / 不限，默认 120。
+  </div>
+</div>
+
+<!-- ================= 6 ================= -->
+<div class="card">
+  <h2><span class="n">6</span> 待你确认 / 待补事项</h2>
+  <table>
+    <tr><th>事项</th><th>状态</th><th>说明</th></tr>
+    <tr>
+      <td>微信号（支持本计划 + 企业 AI 供应对接）</td>
+      <td><span class="pill warn">待补</span></td>
+      <td>你说等注册好工作微信再给。目前已用占位符 <code>{微信号·待补}</code> 占好位，届时一处替换即可全站生效。</td>
+    </tr>
+    <tr>
+      <td>批量执行剩余 237 篇</td>
+      <td><span class="pill pl">待你发话</span></td>
+      <td>你明确说「仅仅在 5 篇以内」，因此<b>没有</b>启动批量。试跑已验证通过，随时可以按 120 篇/天的节奏开始。</td>
+    </tr>
+    <tr>
+      <td>上传 GitHub</td>
+      <td><span class="pill">已完成</span></td>
+      <td>已推送至 <code>github.com/Arthurchen-01/zhihu-scraper</code> 的 <code>main</code> 分支，
+          最新提交 <code>7b3d2c3</code>（v5 前端助手框 + 云端复核面板）；
+          本地执行器仓库 <code>github.com/Arthurchen-01/zh-editor</code> 最新提交 <code>8af042e</code>（v5），
+          <b>7 个文件与服务器部署包 md5 逐一比对全等</b>。</td>
+    </tr>
+    <tr>
+      <td>赞助条位置与大小</td>
+      <td><span class="pill">已按要求调整</span></td>
+      <td>已从页脚移到页首，缩为 3 行小字（高 67px）。</td>
+    </tr>
+    <tr>
+      <td>主站入口标识</td>
+      <td><span class="pill">已完成</span></td>
+      <td>主站首屏顶部横幅，点击直达工作台，已实测跳转成功。</td>
+    </tr>
+    <tr>
+      <td>DeepSeek API Key</td>
+      <td><span class="pill">已配置</span></td>
+      <td>存于服务器 <code>data/deepseek_key.txt</code>（权限 600，已被 .gitignore 排除，
+          <b>不进 GitHub 仓库</b>）。AI 审核提示词内置在 <code>qingyi_api.py</code>。</td>
+    </tr>
+  </table>
+</div>
+
+<footer>
+  清一新教育文章修改工作台 · 可视化验收报告 ·
+  截图目录 <code>qy_local/shots/</code> ·
+  署名「清一新教育-冠军一班-谢迪安友情资助」
+</footer>
+
+</div>
+
+<script>
+/* ===== 清一新教育 · 验收报告 交互层 ===== */
+(function () {
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- 1. 顶栏 ---------- */
+  var top = document.createElement('div');
+  top.className = 'qy-top';
+  top.innerHTML =
+    '<div class="qy-brand"><i></i>清一新教育<span style="font-weight:400;color:#8b95a7">·</span>' +
+    '<s>验收报告</s></div>' +
+    '<div class="qy-sp"></div>' +
+    '<div class="qy-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/>' +
+    '<path d="M20 20l-3.2-3.2"/></svg>' +
+    '<input id="qyQ" type="search" placeholder="搜这报告…" autocomplete="off">' +
+    '<kbd>/</kbd></div>' +
+    '<button class="qy-btn" id="qyFold">全部折叠</button>' +
+    '<button class="qy-btn pri" id="qyMenu">目录</button>' +
+    '<div class="qy-prog"><i id="qyBar"></i></div>';
+  document.body.insertBefore(top, document.body.firstChild);
+
+  var bar = top.querySelector('#qyBar');
+  var menuBtn = top.querySelector('#qyMenu');
+
+  /* ---------- 2. 表格包壳（圆角 + 横向滚动） ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('.card table'), function (t) {
+    var box = document.createElement('div');
+    box.className = 'qy-tbl';
+    var sc = document.createElement('div');
+    sc.className = 'qy-tbl-scroll';
+    t.parentNode.insertBefore(box, t);
+    box.appendChild(sc);
+    sc.appendChild(t);
+  });
+
+  /* ---------- 3. 代码块加复制按钮 ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('pre'), function (p) {
+    if (p.parentNode.classList.contains('qy-prewrap')) return;
+    var w = document.createElement('div');
+    w.className = 'qy-prewrap';
+    p.parentNode.insertBefore(w, p);
+    w.appendChild(p);
+    var b = document.createElement('button');
+    b.className = 'qy-copy';
+    b.type = 'button';
+    b.textContent = '复制';
+    b.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var txt = p.innerText;
+      var done = function () {
+        b.textContent = '已复制';
+        b.classList.add('done');
+        setTimeout(function () { b.textContent = '复制'; b.classList.remove('done'); }, 1400);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(done, function () { fallback(txt, done); });
+      } else { fallback(txt, done); }
+    });
+    w.appendChild(b);
+  });
+  function fallback(txt, cb) {
+    var ta = document.createElement('textarea');
+    ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta); cb();
+  }
+
+  /* ---------- 4. 卡片：标题当把手 + 折叠 + 预览行 ---------- */
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.card'));
+  cards.forEach(function (card, idx) {
+    var h2 = card.querySelector(':scope > h2');
+    if (!h2) return;
+
+    /* 旧卡片身上那 9 套杂色 inline 边框（红/紫/绿/天蓝…）全部清掉，
+       只给「排第一的最新一轮」加渐变色环，其余走统一样式 */
+    card.removeAttribute('style');
+    card.classList.add('qy-w');
+    h2.classList.add('card-head');
+
+    var wrap = document.createElement('div');
+    wrap.className = 'qy-bwrap';
+    var body = document.createElement('div');
+    body.className = 'card-body';
+    var n = h2.nextSibling;
+    while (n) { var nx = n.nextSibling; body.appendChild(n); n = nx; }
+    wrap.appendChild(body);
+    card.appendChild(wrap);
+
+    var title = (h2.textContent || '').replace(/\s+/g, ' ').trim();
+    card.dataset.qyTitle = title;
+    card.dataset.qyText = (body.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+    var pv = document.createElement('div');
+    pv.className = 'card-preview';
+    var raw = (body.textContent || '').replace(/\s+/g, ' ').trim();
+    pv.textContent = raw.slice(0, 132) + (raw.length > 132 ? ' …' : '');
+    card.appendChild(pv);
+
+    card.dataset.qyRound = title.indexOf('轮') >= 0 ? '1' : '0';
+    card.dataset.qyIdx = idx;
+
+    h2.addEventListener('click', function () { card.classList.toggle('collapsed'); });
+  });
+
+  /* 默认：历史轮次折起来，最新一轮和常设章节展开 */
+  if (cards.length) cards[0].classList.add('qy-latest');
+  var roundCards = cards.filter(function (c) { return c.dataset.qyRound === '1'; });
+  roundCards.forEach(function (c, i) { if (i > 0) c.classList.add('collapsed'); });
+
+  var foldBtn = top.querySelector('#qyFold');
+  var allFolded = false;
+  foldBtn.addEventListener('click', function () {
+    allFolded = !allFolded;
+    cards.forEach(function (c) { c.classList.toggle('collapsed', allFolded); });
+    foldBtn.textContent = allFolded ? '全部展开' : '全部折叠';
+  });
+
+  /* ---------- 5. 目录 ---------- */
+  var toc = document.createElement('nav');
+  toc.className = 'qy-toc';
+  toc.innerHTML = '<div class="qy-toc-t">目录</div>';
+  cards.forEach(function (card, i) {
+    if (!card.dataset.qyTitle) return;
+    if (!card.id) card.id = 'qy-sec-' + i;
+    var a = document.createElement('a');
+    a.href = '#' + card.id;
+    var t = card.dataset.qyTitle;
+    a.innerHTML = '<span class="d"></span>' + t.replace(/^[◆★]\s*/, '');
+    a.title = t;
+    a.dataset.target = card.id;
+    a.addEventListener('click', function () {
+      card.classList.remove('collapsed');
+      allFolded = false; foldBtn.textContent = '全部折叠';
+    });
+    toc.appendChild(a);
+  });
+  document.body.appendChild(toc);
+
+  var links = Array.prototype.slice.call(toc.querySelectorAll('a'));
+  function spy() {
+    var y = window.scrollY + 130, best = null;
+    cards.forEach(function (card, i) {
+      if (card.offsetTop <= y) best = card;
+    });
+    links.forEach(function (a) {
+      a.classList.toggle('on', !!best && a.dataset.target === best.id);
+    });
+  }
+
+  /* ---------- 6. 目录抽屉（任意宽度都能拉出来） ---------- */
+  var bd = document.createElement('div');
+  bd.className = 'qy-toc-bd';
+  document.body.appendChild(bd);
+
+  function closeToc() {
+    toc.classList.remove('open');
+    bd.classList.remove('on');
+    menuBtn.classList.remove('pri');
+    menuBtn.textContent = '目录';
+  }
+  menuBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (toc.classList.contains('open')) { closeToc(); return; }
+    toc.classList.add('open');
+    bd.classList.add('on');
+    menuBtn.classList.add('pri');
+    menuBtn.textContent = '收起目录';
+  });
+  bd.addEventListener('click', closeToc);
+  toc.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a');
+    if (a && window.innerWidth < 1440) setTimeout(closeToc, 120);
+  });
+
+  /* ---------- 7. 灯箱 ---------- */
+  var lb = document.createElement('div');
+  lb.className = 'qy-lb';
+  lb.innerHTML = '<img alt=""><div class="qy-lb-hint">点击任意处 / 按 Esc 关闭 · ' +
+    '图片为 1280px 宽真机截图</div>';
+  document.body.appendChild(lb);
+  var lbImg = lb.querySelector('img');
+
+  Array.prototype.forEach.call(document.querySelectorAll('.shot'), function (sh) {
+    var img = sh.querySelector('img');
+    if (!img) return;
+    sh.addEventListener('click', function () {
+      lbImg.src = img.src;
+      lb.classList.add('on');
+    });
+  });
+  lb.addEventListener('click', function () { lb.classList.remove('on'); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { lb.classList.remove('on'); closeToc(); }
+    if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+      e.preventDefault();
+      document.getElementById('qyQ').focus();
+    }
+  });
+
+  /* ---------- 8. 回到顶部 ---------- */
+  var tb = document.createElement('button');
+  tb.className = 'qy-top-btn';
+  tb.title = '回到顶部';
+  tb.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+  tb.addEventListener('click', function () {
+    window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' });
+  });
+  document.body.appendChild(tb);
+
+  /* ---------- 9. 进场动画 + 数字滚动 ---------- */
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.06 });
+  cards.forEach(function (c, i) {
+    if (reduced || i < 2) { c.classList.add('in'); return; }
+    c.classList.add('qy-rv');
+    io.observe(c);
+  });
+  /* 安全网：无论观察器有没有触发（整页截图 / 极端长页），3 秒后一律显示 */
+  setTimeout(function () { cards.forEach(function (c) { c.classList.add('in'); }); }, 2600);
+
+  var cio = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      var el = e.target, t = parseInt(el.dataset.count, 10) || 0, st = null;
+      cio.unobserve(el);
+      if (reduced) { el.textContent = t; return; }
+      function step(ts) {
+        if (!st) st = ts;
+        var p = Math.min(1, (ts - st) / 900);
+        el.textContent = Math.round(t * (1 - Math.pow(1 - p, 3)));
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }, { threshold: 0.5 });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-count]'), function (el) {
+    cio.observe(el);
+  });
+
+  /* ---------- 10. 滚动进度 + 回顶按钮 + 目录高亮 ---------- */
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      bar.style.width = (h > 0 ? Math.min(100, (window.scrollY / h) * 100) : 0) + '%';
+      tb.classList.toggle('on', window.scrollY > 520);
+      spy();
+      ticking = false;
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  /* ---------- 11. 搜索过滤 ---------- */
+  var q = document.getElementById('qyQ');
+  var none = document.createElement('div');
+  none.className = 'qy-none';
+  none.textContent = '没有匹配的章节 —— 换个词试试';
+  var wrapEl = document.querySelector('.wrap');
+  var ft = wrapEl.querySelector('footer');
+  if (ft) wrapEl.insertBefore(none, ft); else wrapEl.appendChild(none);
+
+  var t0 = null;
+  q.addEventListener('input', function () {
+    clearTimeout(t0);
+    t0 = setTimeout(function () {
+      var kw = q.value.trim().toLowerCase();
+      if (!kw) {
+        cards.forEach(function (c) { c.style.display = ''; });
+        none.classList.remove('on');
+        return;
+      }
+      var hit = 0;
+      cards.forEach(function (c) {
+        var ok = (c.dataset.qyText || '').indexOf(kw) >= 0 ||
+                 (c.dataset.qyTitle || '').toLowerCase().indexOf(kw) >= 0;
+        c.style.display = ok ? '' : 'none';
+        if (ok) { hit++; c.classList.remove('collapsed'); }
+      });
+      none.classList.toggle('on', hit === 0);
+    }, 110);
+  });
+})();
+</script>
+
+</body>
+</html>
