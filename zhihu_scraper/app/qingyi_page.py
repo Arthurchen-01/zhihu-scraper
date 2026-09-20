@@ -467,12 +467,15 @@ ol.mini .act{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:
       </div>
     </li>
     <li>
-      <div class="ttl">② 双击 <code>清一新教育一键修改.exe</code></div>
+      <div class="ttl">② 双击 <code>清一新教育一键修改.exe</code> —— 先体检，再问你一声</div>
       <div class="tiptext">
-        会弹出一个黑窗口，它自动完成：取云端凭证 → 领任务 →
-        逐篇把改好的稿子提交到你的知乎 → 跑完自动停。
-        <b>跑完之前别关那个窗口</b>；到每日上限会自己停下，剩下的第二天接着跑。
-        窗口里会一行行打印进度，不用按任何键。
+        弹出一个黑窗口，它先做<b>六道体检</b>：有没有任务 / 登录有效没 /
+        云端稿子备好没。<b>任何一道不过，它当场停下并告诉你差什么、该点哪里</b> ——
+        不闷头跑，也不会开着窗口空转（<b>这时不会动你的知乎</b>）。<br>
+        六道全绿之后，它把<b>「要改哪几篇、标题从什么改成什么」摆给你看</b>，
+        你<b>按一次回车它才开始动手</b>；按 q 就什么都不改、直接退出。<br>
+        跑的过程中一行行打印进度；到每日上限会自己停下（剩下的第二天接着跑），
+        跑完它会提示你「按回车关闭窗口」。
       </div>
       <div class="act" style="margin-top:8px">
         <button class="btn-primary" id="btnExe3" onclick="dlExe('btnExe3')">⬇️ 下载 Windows 一键程序</button>
