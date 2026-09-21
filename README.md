@@ -1,6 +1,7 @@
 # 🥋 Zhihu Scraper & Target Investigator Toolkit
 > **知乎全维信息爬虫、定向资产排查与高保真法务存证架构**  
 > 纯净抓取内核 · 交互式Web自服务看板 · 跨环境 AI Skill (Codex / Cursor / Antigravity)
+> **当前版本：v1.1.0（2026-09-20）** · 详见 [CHANGELOG](CHANGELOG.md) · 含「清一新教育文章修改工作台」UI v13.2
 
 ---
 
