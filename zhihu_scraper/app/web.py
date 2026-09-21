@@ -1126,7 +1126,8 @@ API_DOCS_HTML = """<!DOCTYPE html>
         }
         .nav-btn:hover { background: var(--cyan-hover); }
 
-    </style>
+        [v-cloak]{display:none !important}
+</style>
 </head>
 <body>
     <div class="container">
@@ -2113,7 +2114,11 @@ def index_ui():
     <script src="/static/vue.global.prod.js" onerror="this.onerror=null;this.src='https://cdnjs.cloudflare.com/ajax/libs/vue/3.3.4/vue.global.prod.js';"></script>
 </head>
 <body>
-    <div id="app">
+        <div id="bootFallback" style="display:none;position:fixed;inset:0;z-index:99999;background:#0f172a;color:#f8fafc;align-items:center;justify-content:center;flex-direction:column;gap:10px;font-family:system-ui,sans-serif;text-align:center;">
+        <div style="font-size:16px;font-weight:700;">系统界面脚本加载失败</div>
+        <div style="font-size:13px;opacity:.8;">核心脚本未能加载，界面无法启动。请检查网络后刷新页面重试。</div>
+    </div>
+<div id="app" v-cloak>
 
         <!-- Password Gate Modal -->
         <div v-if="!isAuthenticated" class="modal-backdrop">
@@ -2132,6 +2137,7 @@ def index_ui():
                 </div>
                 <div class="modal-title">Scraper 系统安全访问门禁</div>
                 <div class="modal-desc">请输入系统访问密码以解锁 Scraper 定向排查与批量存证系统</div>
+                <div style="margin:14px 0 4px;padding:12px 14px;background:var(--bg-soft,#f6f8fb);border:1px solid rgba(125,140,165,.28);border-radius:10px;text-align:left;font-size:12.5px;line-height:1.78;color:#4b5768;"><b style="color:#0b1220;">这个系统是干什么的？</b><br>给知乎创作者做<b>定向排查与批量存证</b>：贴入一条知乎链接（回答 / 文章 / 想法 / 专栏），系统定向检索该内容与评论区，逐条生成<b>网页原生截图 + 正文 Markdown + 评论 JSON</b>，一键打包为 <b>ZIP / EPUB / PDF</b> 证据包 —— 用于内容盘点、舆情留档与侵权取证。</div>
                 
                 <div style="margin-bottom: 16px;">
                     <input 
@@ -3030,8 +3036,14 @@ def index_ui():
     </div>
 
     <script>
+        let __bootTries = 0;
         function initApp() {
             if (typeof Vue === 'undefined') {
+                if (++__bootTries > 60) {
+                    var fb = document.getElementById('bootFallback');
+                    if (fb) fb.style.display = 'flex';
+                    return;
+                }
                 setTimeout(initApp, 100);
                 return;
             }
@@ -3109,9 +3121,9 @@ def index_ui():
                     const apiDocsTab = ref('rest');
                     const verifyingCookie = ref(false);
 
-                    const restCurlInspect = 'curl -X POST "https://zh.samuraiguan.cloud/api/inspect" \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer guanjun2026" \\\n  -d '{\n    "url": "https://www.zhihu.com/pin/2079702939531321857",\n    "max_items": 100,\n    "drill_column": false\n  }'';
-                    const restCurlBatch = 'curl -X POST "https://zh.samuraiguan.cloud/api/scrape/batch" \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer guanjun2026" \\\n  -d '{\n    "items": [\n      { "id": "2079668307335050654", "type": "article", "title": "文章标题" }\n    ],\n    "options": {\n      "export_formats": ["pdf", "epub", "zip"],\n      "save_markdown": true,\n      "save_comments": true\n    }\n  }'';
-                    const mcpClaudeConfig = '{\n  "mcpServers": {\n    "zhihu-scraper": {\n      "command": "python",\n      "args": ["-m", "zhihu_scraper.mcp_server"],\n      "env": {\n        "ZHIHU_API_BASE": "https://zh.samuraiguan.cloud",\n        "ZHIHU_API_KEY": "guanjun2026"\n      }\n    }\n  }\n}';
+                    const restCurlInspect = `curl -X POST "https://zh.samuraiguan.cloud/api/inspect" -H "Content-Type: application/json" -H "Authorization: Bearer guanjun2026" -d '{"url":"https://www.zhihu.com/pin/2079702939531321857","max_items":100,"drill_column":false}'`;
+                    const restCurlBatch = `curl -X POST "https://zh.samuraiguan.cloud/api/scrape/batch" -H "Content-Type: application/json" -H "Authorization: Bearer guanjun2026" -d '{"items":[{"id":"2079668307335050654","type":"article","title":"文章标题"}],"options":{"export_formats":["pdf","epub","zip"],"save_markdown":true,"save_comments":true}}'`;
+                    const mcpClaudeConfig = `{\n  "mcpServers": {\n    "zhihu-scraper": {\n      "command": "python",\n      "args": ["-m", "zhihu_scraper.mcp_server"],\n      "env": {\n        "ZHIHU_API_BASE": "https://zh.samuraiguan.cloud",\n        "ZHIHU_API_KEY": "guanjun2026"\n      }\n    }\n  }\n}`;
                     const mcpCursorConfig = mcpClaudeConfig;
 
                     const copyText = async (text) => {
@@ -3158,7 +3170,7 @@ def index_ui():
                             };
                             return;
                         }
-                        const m = cookie.value.match(/z_c0="?([^"; \r\n\t]+)"?/);
+                        const m = cookie.value.match(/z_c0="?([^"; \\r\\n\\t]+)"?/);
                         if (m) {
                             cookieStatus.value = {
                                 valid: true,
@@ -3634,6 +3646,8 @@ def index_ui():
                     };
                 }
             }).mount('#app');
+            var __a = document.getElementById('app');
+            if (__a) __a.removeAttribute('v-cloak');
         }
         initApp();
     </script>
