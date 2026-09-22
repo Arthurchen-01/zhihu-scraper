@@ -66,8 +66,12 @@ SITE_KEY = os.environ.get("QY_SITE_KEY", "guanjun2026")
 # AI 审核（DeepSeek）：由模型决定每篇加几处品牌词、加在哪里
 # --------------------------------------------------------------------------- #
 # 密钥来源：环境变量 DEEPSEEK_API_KEY 优先，其次 data/deepseek_key.txt（不入库）。
-DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-DEEPSEEK_MODEL = "deepseek-chat"
+# 端点可用 QY_AI_URL / QY_AI_MODEL 覆盖（默认自建中转 156.225.31.92:7863）。
+# 注意：deepseek-v4.1-flash 带思维链，思维链同样计入 max_tokens；
+# 预算给小了 content 会被截成空串，导致审核静默回退内置规则。
+DEEPSEEK_URL = os.environ.get(
+    "QY_AI_URL", "http://156.225.31.92:7863/v1/chat/completions")
+DEEPSEEK_MODEL = os.environ.get("QY_AI_MODEL", "deepseek-v4.1-flash")
 
 AI_REVIEW_PROMPT = (
     "你在为一篇即将加入品牌词「清一新教育」的知乎文章做植入审核。\n"
@@ -155,14 +159,21 @@ def _ai_review_one(cookie: str, aid: str, title: str,
                     {"role": "user", "content": user_msg},
                 ],
                 "temperature": 0.2,
-                "max_tokens": 400,
+                "reasoning_effort": "low",
+                "max_tokens": 8000,
                 "response_format": {"type": "json_object"},
                 "stream": False,
             },
-            timeout=45,
+            timeout=180,
         )
         resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
+        _j = resp.json()
+        _ch = _j["choices"][0]
+        content = (_ch["message"].get("content") or "").strip()
+        if not content:
+            raise RuntimeError(
+                "AI 返回空内容（finish_reason=%s，思维链吃满 max_tokens）"
+                % _ch.get("finish_reason"))
         content = re.sub(r"^```(?:json)?|```$", "", content.strip(),
                          flags=re.M).strip()
         data = json.loads(content)
