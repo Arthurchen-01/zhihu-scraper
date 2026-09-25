@@ -36,7 +36,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
-from ..client import ZhihuClient, safe_name
+from ..client import ZhihuClient, safe_name, strip_challenge_cookies
 from ..scrapers.author import AuthorScraper
 from ..scrapers.column import ColumnScraper
 from ..scrapers.article import ArticleScraper
@@ -86,6 +86,9 @@ async def auth_middleware(request: Request, call_next):
             "/api/qy/meta",
         ]
         or path.startswith("/static/")
+        or path.startswith("/api/qy/download/")
+        or path.startswith("/api/qy/client/")
+        or path.startswith("/api/qy/executor/")
     ):
         return await call_next(request)
 
@@ -94,6 +97,7 @@ async def auth_middleware(request: Request, call_next):
         request.cookies.get("site_auth_token")
         or request.headers.get("X-Auth-Token")
         or request.headers.get("X-API-Key")
+        or request.query_params.get("key")
     )
     auth_header = request.headers.get("Authorization", "").strip()
     if auth_header.startswith("Bearer "):
@@ -129,6 +133,10 @@ class InspectRequest(BaseModel):
     cookie: Optional[str] = ""
     max_items: Optional[int] = 0  # 0 or None means unlimited / all articles
     drill_column: Optional[bool] = False  # When True, directly inspects column articles instead of resolving to author
+    # 是否把「动态」（我点赞 / 赞同过的别人的内容）一并检索出来。
+    # 默认 True = 老行为不变；前端「排除我点赞/赞同的内容」开关会传 False，
+    # 直接从源头不拉动态，省一次请求、也少一大截返回体。
+    include_activities: Optional[bool] = True
 
 
 class BatchScrapeRequest(BaseModel):
@@ -220,7 +228,18 @@ def normalize_and_merge_cookie(user_cookie: str = "", default_cookie: Optional[s
     if "z_c0" not in merged and "z_c0" in def_dict:
         merged["z_c0"] = def_dict["z_c0"]
 
-    return "; ".join([f'{k}="{v}"' if k in ["z_c0", "d_c0"] else f"{k}={v}" for k, v in merged.items()])
+    joined = "; ".join([f'{k}="{v}"' if k in ["z_c0", "d_c0"] else f"{k}={v}" for k, v in merged.items()])
+
+    # 剥掉知乎的「自动化挑战」cookie（BEC / __zse_ck）。它们是导出浏览器那一刻的
+    # 指纹 + IP 绑定的一次性风控凭证，带到服务端请求上不但没用，还会把整条链路
+    # 毒死：即使 z_c0 完全有效，知乎也直接回 403 + `zh-zse-ck` 挑战页，页面表现
+    # 为「文章 0 / 问答 0 / 专栏 0」。browser.py 的
+    # _clear_managed_challenge_cookies() 早就清了这两个，这里给 requests 直连
+    # 这条路径补齐，两条取数通道口径一致。详见 client.strip_challenge_cookies。
+    #
+    # 注意：用户粘贴的 cookie 和服务器 config.json 的默认 cookie 都会走到这里，
+    # 两边都要过这一刀 —— 只要有一个带毒，合并结果就是毒药。
+    return strip_challenge_cookies(joined)
 
 
 class CookieVerifyRequest(BaseModel):
@@ -607,7 +626,8 @@ def inspect_target(req: InspectRequest):
                 include_answers=True,
                 include_pins=True,
                 include_columns=True,
-                include_activities=True,
+                include_activities=(True if req.include_activities is None
+                                    else bool(req.include_activities)),
                 max_per_category=limit
             )
             catalog["target_type"] = "author"
@@ -2543,6 +2563,9 @@ def index_ui():
                             <p style="font-size: 12.5px; color: var(--text-muted); margin: 0;">
                                 已勾选 <strong>{{ selectedCount }}</strong> 项，请选择需要生成的交付物格式：
                             </p>
+                            <p v-if="selectedLikedCount > 0" style="font-size: 12px; color: #f59e0b; margin: 6px 0 0 0;">
+                                ⚠️ 其中 {{ selectedLikedCount }} 项是你点赞 / 赞同过的别人的内容（不想要就取消，回到列表勾上「排除我点赞 / 赞同过的内容」）
+                            </p>
                         </div>
                     </div>
                     <button @click="showFormatModal = false" style="background: none; border: none; font-size: 20px; color: var(--text-subtle); cursor: pointer; padding: 0 4px;">✕</button>
@@ -2683,10 +2706,10 @@ def index_ui():
                     <div>
                         <label>检索深度 / 数量上限</label>
                         <select v-model="fetchLimit" style="width: 100%; height: 44px; border-radius: 10px; padding: 0 10px; font-size: 13px;">
-                            <option :value="0">🔥 全量无上限 (全部加载)</option>
-                            <option :value="300">⚡ 深度拉取 (前300篇)</option>
+                            <option :value="300">⚡ 深度拉取 (前300篇 · 推荐)</option>
                             <option :value="100">📋 标准拉取 (前100篇)</option>
                             <option :value="30">🚀 极速预览 (前30篇)</option>
+                            <option :value="0">🔥 全量无上限 (全部加载 · 大号慎用，易触知乎限流)</option>
                         </select>
                     </div>
                 </div>
@@ -2912,6 +2935,18 @@ def index_ui():
                         </div>
                     </div>
 
+                    <!-- 点赞内容排除开关（用户要的：可以不下载自己点赞/赞同的文章） -->
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--toolbar-divider);">
+                        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text-main); cursor: pointer;">
+                            <input type="checkbox" :checked="excludeLiked" @change="toggleExcludeLiked($event.target.checked)" style="width: 16px; height: 16px; accent-color: #f59e0b; cursor: pointer;">
+                            🚫 排除我点赞 / 赞同过的内容（只留我原创的）
+                        </label>
+                        <span style="font-size: 12px; color: var(--text-muted);">
+                            共 <strong style="color: #f59e0b;">{{ likedCount }}</strong> 项是动态里点赞/赞同的别人的内容；勾上后列表不显示、也不会被「全选」选中
+                        </span>
+                        <button @click="unselectLiked" class="btn btn-outline btn-sm">取消勾选点赞内容</button>
+                    </div>
+
                     <!-- Bulk Selection Actions -->
                     <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--toolbar-divider);">
                         <button @click="selectAllFiltered" class="btn btn-emerald btn-sm" style="font-weight: 600;">
@@ -2953,6 +2988,9 @@ def index_ui():
                                 <td>
                                     <span v-if="it.action_text" class="badge badge-act">
                                         {{ it.action_text }}
+                                    </span>
+                                    <span v-if="isLikedItem(it)" class="badge" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.35);">
+                                        我点赞/赞同的
                                     </span>
                                     <span :class="'badge badge-' + it.type">
                                         {{ it.type === 'article' ? '文章' : it.type === 'answer' ? '回答' : it.type === 'column' ? '专栏' : '想法' }}
@@ -3068,12 +3106,14 @@ def index_ui():
 
                     const targetUrl = ref('');
                     const cookie = ref(localStorage.getItem('zhihu_cookie') || '');
-                    const fetchLimit = ref(0);
+                    const fetchLimit = ref(300);
                     const filterStartDate = ref('');
                     const filterEndDate = ref('');
                     const searchKeyword = ref('');
                     const sortOrder = ref('desc');
                     const activeCategory = ref('all');
+                    // 是否排除「我点赞 / 赞同过的别人的内容」（动态）。记住用户选择。
+                    const excludeLiked = ref(localStorage.getItem('exclude_liked') === '1');
 
                     const options = ref({
                         save_markdown: true,
@@ -3360,6 +3400,14 @@ def index_ui():
                     const countActivities = computed(() => items.value.filter(i => i.is_activity).length);
                     const countActivityArticles = computed(() => items.value.filter(i => i.is_activity && i.type === 'article').length);
 
+                    // 「点赞 / 赞同过的别人的内容」判定：
+                    //   在动态里出现过（is_activity）且不是本人原创（is_own !== true）。
+                    // 注意：本人原创的文章如果自己赞同/转发过，会被后端标 is_activity=true
+                    // 但 is_own=true —— 那种不能被排除掉。
+                    const isLikedItem = (i) => !!(i && i.is_activity && i.is_own !== true);
+                    const likedCount = computed(() => items.value.filter(isLikedItem).length);
+                    const selectedLikedCount = computed(() => items.value.filter(i => i.selected && isLikedItem(i)).length);
+
                     const filteredItems = computed(() => {
                         let res = items.value.slice();
 
@@ -3376,6 +3424,11 @@ def index_ui():
                             res = res.filter(i => i.type === 'answer');
                         } else if (activeCategory.value === 'column') {
                             res = res.filter(i => i.type === 'column');
+                        }
+
+                        // 1.5 排除我点赞 / 赞同过的别人的内容
+                        if (excludeLiked.value) {
+                            res = res.filter(i => !isLikedItem(i));
                         }
 
                         // 2. Keyword Filter
@@ -3429,11 +3482,41 @@ def index_ui():
                     };
 
                     const selectAllGlobal = () => {
-                        items.value.forEach(i => i.selected = true);
+                        let skipped = 0;
+                        items.value.forEach(i => {
+                            if (excludeLiked.value && isLikedItem(i)) { skipped++; return; }
+                            i.selected = true;
+                        });
+                        if (skipped > 0) {
+                            alert('已跳过 ' + skipped + ' 项你点赞/赞同过的内容（当前开着「排除我点赞/赞同过的内容」开关）。');
+                        }
                     };
 
                     const unselectAll = () => {
                         items.value.forEach(i => i.selected = false);
+                    };
+
+                    // 一键把「我点赞/赞同过的别人的内容」从已勾选里摘掉
+                    const unselectLiked = () => {
+                        let n = 0;
+                        items.value.forEach(i => {
+                            if (isLikedItem(i) && i.selected) { i.selected = false; n++; }
+                        });
+                        alert(n > 0 ? ('已取消勾选 ' + n + ' 项你点赞/赞同过的内容。')
+                                    : '当前没有勾选任何点赞/赞同的内容。');
+                    };
+
+                    // 开关一动：立刻把已勾选的点赞内容摘掉，避免误下载
+                    const toggleExcludeLiked = (v) => {
+                        excludeLiked.value = !!v;
+                        try { localStorage.setItem('exclude_liked', excludeLiked.value ? '1' : '0'); } catch (e) {}
+                        if (excludeLiked.value) {
+                            let n = 0;
+                            items.value.forEach(i => {
+                                if (isLikedItem(i) && i.selected) { i.selected = false; n++; }
+                            });
+                            if (n > 0) alert('已自动取消勾选 ' + n + ' 项你点赞/赞同过的内容。');
+                        }
                     };
 
                     const selectTopN = (n) => {
@@ -3451,6 +3534,56 @@ def index_ui():
                         return t ? { 'X-Auth-Token': t } : {};
                     };
 
+                    // ===== 网关容错（2026-09-25 紧急修复）=====
+                    // 症状：服务重启/网关故障时后端返 HTML（Cloudflare 或 nginx 错误页），
+                    //       res.json() 抛 "Unexpected token '<', "<!DOCTYPE "..." 糊在用户脸上。
+                    // 对策：一律先读 text 再安全 JSON.parse；非 JSON 视为「服务重启中」，
+                    //       自动重试若干次，仍失败则给出人话提示。
+                    const sleepMs = (ms) => new Promise(r => setTimeout(r, ms));
+
+                    const postJSONWithRetry = async (url, payload, extraHeaders, opts) => {
+                        const o = opts || {};
+                        const maxTry = o.maxTry || 6;
+                        const gap = o.gap || 2500;
+                        let lastErr = null;
+                        for (let attempt = 1; attempt <= maxTry; attempt++) {
+                            let res = null;
+                            let raw = '';
+                            try {
+                                res = await fetch(url, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', ...(extraHeaders || {}) },
+                                    body: JSON.stringify(payload)
+                                });
+                            } catch (netErr) {
+                                const m = (netErr && netErr.message) ? netErr.message : 'fetch failed';
+                                lastErr = new Error('网络不通（' + m + '）');
+                                if (attempt < maxTry) { await sleepMs(gap); continue; }
+                                throw new Error('网络不通（' + m + '），已自动重试 ' + maxTry + ' 次仍未成功');
+                            }
+                            if (res.status === 401) { return null; }
+                            try { raw = await res.text(); } catch (_) { raw = ''; }
+                            let data = null;
+                            try { data = JSON.parse(raw); } catch (_) { data = null; }
+                            if (data === null) {
+                                lastErr = new Error('服务暂时不可用（HTTP ' + res.status + '）');
+                                if (attempt < maxTry) { await sleepMs(gap); continue; }
+                                throw new Error('服务暂时不可用（HTTP ' + res.status + '），已自动重试 '
+                                    + maxTry + ' 次仍未成功。服务可能正在重启，请等 30 秒后再点一次。');
+                            }
+                            if (!res.ok) {
+                                if (data && data.retryable && attempt < maxTry) { await sleepMs(gap); continue; }
+                                if (data && data.retryable) {
+                                    throw new Error((data.detail || '服务暂时不可用')
+                                        + '（已自动重试 ' + maxTry + ' 次仍未成功，请等 30 秒后再点一次）');
+                                }
+                                throw new Error(data.detail || data.message || ('请求失败 HTTP ' + res.status));
+                            }
+                            return data;
+                        }
+                        throw lastErr || new Error('请求失败');
+                    };
+
                     const inspect = async (urlToInspect, drillColumn = false) => {
                         const u = (urlToInspect || targetUrl.value).trim();
                         if (!u) {
@@ -3463,25 +3596,16 @@ def index_ui():
                         inspecting.value = true;
                         activeJob.value = null;
                         try {
-                            const res = await fetch('/api/inspect', {
-                                method: 'POST',
-                                headers: { 
-                                    'Content-Type': 'application/json',
-                                    ...getAuthHeader()
-                                },
-                                body: JSON.stringify({
-                                    url: u,
-                                    cookie: cookie.value,
-                                    max_items: fetchLimit.value,
-                                    drill_column: drillColumn
-                                })
-                            });
-                            if (res.status === 401) {
+                            const data = await postJSONWithRetry('/api/inspect', {
+                                url: u,
+                                cookie: cookie.value,
+                                max_items: fetchLimit.value,
+                                drill_column: drillColumn
+                            }, getAuthHeader());
+                            if (data === null) {
                                 isAuthenticated.value = false;
                                 return;
                             }
-                            const data = await res.json();
-                            if (!res.ok) throw new Error(data.detail || '解析失败');
                             
                             targetType.value = data.target_type || 'author';
                             resolvedFrom.value = data.resolved_from || null;
@@ -3495,6 +3619,10 @@ def index_ui():
                                 currentColumn.value = null;
                                 items.value = (data.items || []).map(i => ({ ...i, selected: true }));
                             }
+                            // 后端自检：主页声称有 N 条、接口却一条没给 —— 说明 cookie
+                            // 被知乎风控拦了。不弹这个，用户只会看到一片 0，无从判断。
+                            const _warns = (data && data.warnings) || [];
+                            if (_warns.length) { alert('\u26a0\ufe0f ' + _warns.join('\uff1b')); }
                         } catch (e) {
                             alert('检索出错: ' + e.message);
                         } finally {
@@ -3524,28 +3652,27 @@ def index_ui():
                         const chosen = items.value.filter(i => i.selected);
                         if (chosen.length === 0) return;
 
+                        // 兜底：万一还是混进了点赞内容，先问一句
+                        const likedN = chosen.filter(isLikedItem).length;
+                        if (likedN > 0 && !excludeLiked.value) {
+                            const okGo = confirm('选中的 ' + chosen.length + ' 项里有 ' + likedN
+                                + ' 项是你点赞/赞同过的别人的内容。仍然要一起下载吗？'
+                                + '（点「取消」回到列表，勾上「排除我点赞/赞同过的内容」再来）');
+                            if (!okGo) return;
+                        }
+
                         scraping.value = true;
                         activeJob.value = null;
                         try {
-                            const res = await fetch('/api/scrape/batch', {
-                                method: 'POST',
-                                headers: { 
-                                    'Content-Type': 'application/json',
-                                    ...getAuthHeader()
-                                },
-                                body: JSON.stringify({
-                                    cookie: cookie.value,
-                                    items: chosen,
-                                    options: options.value
-                                })
-                            });
-                            if (res.status === 401) {
+                            const data = await postJSONWithRetry('/api/scrape/batch', {
+                                cookie: cookie.value,
+                                items: chosen,
+                                options: options.value
+                            }, getAuthHeader());
+                            if (data === null) {
                                 isAuthenticated.value = false;
                                 return;
                             }
-                            const data = await res.json();
-                            if (!res.ok) throw new Error(data.detail || '启动抓取失败');
-                            
                             listenProgress(data.job_id);
                         } catch (e) {
                             alert('执行出错: ' + e.message);
@@ -3556,7 +3683,8 @@ def index_ui():
                     const listenProgress = (jobId) => {
                         const evtSource = new EventSource('/api/jobs/' + jobId + '/stream');
                         evtSource.onmessage = (event) => {
-                            const data = JSON.parse(event.data);
+                            let data = null;
+                            try { data = JSON.parse(event.data); } catch (_) { return; }
                             activeJob.value = data;
                             if (data.status === 'completed' || data.status === 'error') {
                                 evtSource.close();
@@ -3613,6 +3741,12 @@ def index_ui():
                         searchKeyword,
                         sortOrder,
                         activeCategory,
+                        excludeLiked,
+                        isLikedItem,
+                        likedCount,
+                        selectedLikedCount,
+                        toggleExcludeLiked,
+                        unselectLiked,
                         countArticles,
                         countPins,
                         countAnswers,
@@ -3660,7 +3794,7 @@ def main():
     """CLI launcher for local web server."""
     port = int(os.environ.get("PORT", 8775))
     print(f"🚀 知乎定向排查与存证 Web 交互系统已启动: http://127.0.0.1:{port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host=os.environ.get("QY_BIND", "0.0.0.0"), port=port)
 
 
 if __name__ == "__main__":

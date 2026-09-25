@@ -281,6 +281,7 @@ class QingyiTitleSigner:
             self._page_workers = 4
         self.last_diag: Dict[str, Any] = {}
         self._last_page_error: Optional[str] = None
+        self._count_errors: List[str] = []
         self._tl = threading.local()
 
     # ---------------- transport ---------------- #
@@ -482,6 +483,88 @@ class QingyiTitleSigner:
             s = tl.s = self._new_session()
         return s
 
+    # ---------------- 计数补全 ---------------- #
+    #
+    # 列表接口偶尔漏字段，此时必须去详情端点补。补的时候有两个坑，
+    # 旧实现全部踩中，而且都被 `except: pass` 吞成了「无声的 0」：
+    #
+    #   坑 1  文章 id 被喂给了 /api/v4/answers/{id}。
+    #         实测恒返回 404 ResourceNotFoundException。
+    #         文章详情的权威端点是 zhuanlan.zhihu.com/api/articles/{id}，
+    #         它与列表接口、与页面显示三方一致；
+    #         www.zhihu.com/api/v4/articles/{id} 恒返回 403，不可用。
+    #
+    #   坑 2  回答详情不带 ?include= 时 voteup_count / comment_count 都是 None。
+    #         旧实现只 include 了 voteup_count，评论数拿不回来。
+    #
+    # 另外：补查只在真的缺字段时才发请求；要补的条目多就并发（每线程独立
+    # Session，复用连接），避免「126 篇串行 × 超时」把接口拖死。
+    # 补不到就保持 None，由下面统一归一为 0，同时把原因写进 last_diag ——
+    # 让「0」是可解释的，而不是一个查不出原因的空白。
+    # ------------------------------------------------------------------ #
+
+    _DETAIL_URLS = {
+        "article": ("https://zhuanlan.zhihu.com/api/articles/{id}"
+                    "?include=voteup_count,comment_count"),
+        "answer": ("https://www.zhihu.com/api/v4/answers/{id}"
+                   "?include=voteup_count,comment_count"),
+        "pin": ("https://www.zhihu.com/api/v4/pins/{id}"
+                "?include=like_count,comment_count"),
+    }
+
+    def _detail_counts(self, kind: str, item_id: str) -> Dict[str, Any]:
+        """按内容类型取权威计数；失败留痕，不静默。"""
+        tmpl = self._DETAIL_URLS.get(kind)
+        if not tmpl:
+            return {}
+        try:
+            r = self._thread_session().get(tmpl.format(id=item_id), timeout=8)
+            if r.status_code == 200:
+                j = r.json()
+                if isinstance(j, dict):
+                    return j
+            self._count_errors.append(
+                "%s %s 详情 HTTP %d %s"
+                % (kind, item_id, r.status_code, (r.text or "")[:80]))
+        except Exception as exc:  # noqa: BLE001
+            self._count_errors.append(
+                "%s %s 详情 %s: %s" % (kind, item_id, type(exc).__name__, exc))
+        return {}
+
+    def _backfill_counts(self, rows: List[Dict[str, Any]],
+                         kind: str) -> None:
+        """就地补齐缺失的 voteup_count / comment_count。"""
+        need = [r for r in rows
+                if r.get("voteup_count") is None
+                or r.get("comment_count") is None]
+        self._count_errors = []
+        if not need:
+            return
+        workers = min(8, max(1, len(need)))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futs = {ex.submit(self._detail_counts, kind, r["id"]): r
+                    for r in need}
+            for fut in as_completed(futs):
+                row = futs[fut]
+                try:
+                    d = fut.result() or {}
+                except Exception:  # noqa: BLE001
+                    continue
+                if row.get("voteup_count") is None:
+                    row["voteup_count"] = d.get("voteup_count")
+                if row.get("comment_count") is None:
+                    row["comment_count"] = d.get("comment_count")
+        if self._count_errors:
+            self.last_diag["count_errors"] = self._count_errors[:10]
+            self.last_diag["count_failed"] = len(self._count_errors)
+
+    @staticmethod
+    def _normalise_counts(rows: List[Dict[str, Any]]) -> None:
+        """None -> 0。前端拿到的永远是整数，绝不会是 null。"""
+        for r in rows:
+            r["voteup_count"] = r.get("voteup_count") or 0
+            r["comment_count"] = r.get("comment_count") or 0
+
     def list_articles(self, cap: int = 0) -> List[Dict[str, Any]]:
         items = self._paginate(
             f"https://www.zhihu.com/api/v4/members/{self.url_token}/articles?include=data[*].comment_count,voteup_count",
@@ -491,14 +574,6 @@ class QingyiTitleSigner:
             if not a.get("id"):
                 continue
             title = a.get("title") or "(无标题)"
-            v_cnt = a.get("voteup_count")
-            if v_cnt is None:
-                try:
-                    _dr = self._thread_session().get(f"https://www.zhihu.com/api/v4/answers/{a['id']}?include=voteup_count", timeout=6)
-                    if _dr.status_code == 200:
-                        v_cnt = _dr.json().get("voteup_count", 0)
-                except Exception:
-                    pass
             out.append({
                 "id": str(a["id"]),
                 "type": "article",
@@ -507,11 +582,13 @@ class QingyiTitleSigner:
                 "has_brand": BRAND in title,
                 "created": a.get("created"),
                 "updated": a.get("updated"),
-                "voteup_count": v_cnt or 0,
+                "voteup_count": a.get("voteup_count"),
                 "comment_count": a.get("comment_count"),
                 "url": f"https://zhuanlan.zhihu.com/p/{a['id']}",
                 "excerpt": html_to_text(a.get("excerpt") or "")[:140],
             })
+        self._backfill_counts(out, "article")
+        self._normalise_counts(out)
         return out
 
     def list_answers(self, cap: int = 0) -> List[Dict[str, Any]]:
@@ -524,14 +601,6 @@ class QingyiTitleSigner:
                 continue
             q = a.get("question") or {}
             title = (q.get("title") if isinstance(q, dict) else "") or "(回答)"
-            v_cnt = a.get("voteup_count")
-            if v_cnt is None:
-                try:
-                    _dr = self._thread_session().get(f"https://www.zhihu.com/api/v4/answers/{a['id']}?include=voteup_count", timeout=6)
-                    if _dr.status_code == 200:
-                        v_cnt = _dr.json().get("voteup_count", 0)
-                except Exception:
-                    pass
             out.append({
                 "id": str(a["id"]),
                 "type": "answer",
@@ -540,12 +609,14 @@ class QingyiTitleSigner:
                 "has_brand": BRAND in title,
                 "created": a.get("created_time"),
                 "updated": a.get("updated_time"),
-                "voteup_count": v_cnt or 0,
+                "voteup_count": a.get("voteup_count"),
                 "comment_count": a.get("comment_count"),
                 "url": f"https://www.zhihu.com/answer/{a['id']}",
                 "excerpt": html_to_text(a.get("excerpt") or "")[:140],
                 "note": "回答标题由问题决定，不可单独修改",
             })
+        self._backfill_counts(out, "answer")
+        self._normalise_counts(out)
         return out
 
     def list_pins(self, cap: int = 0) -> List[Dict[str, Any]]:
@@ -580,6 +651,8 @@ class QingyiTitleSigner:
                 "excerpt": txt[:140],
                 "note": "想法无独立标题字段，正文内注入不在本次范围",
             })
+        self._backfill_counts(out, "pin")
+        self._normalise_counts(out)
         return out
 
     # ---------------- read / write ---------------- #
@@ -762,6 +835,8 @@ class QingyiTitleSigner:
             rec["message"] = "云端方案未要求改动"
             rec["duration"] = round(time.time() - t0, 2)
             return rec
+
+        force_replace = (new_body is not None and len(new_body) > 100)
 
         rec["backup"] = self.backup("article", aid, title_before, fp_before,
                                     body=body)

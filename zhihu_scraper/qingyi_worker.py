@@ -267,15 +267,54 @@ class LocalExecutor:
                 print(f"   云端方案: {str(payload.get('title', ''))[:70]}")
                 rec = self.signer.apply_payload(it, payload, publish=True)
             else:
-                rec = self.signer.process_title(
-                    it, dry_run=False, publish=True,
-                    inject_body=bool(job.get("inject_body")),
-                    body_hits=int(job.get("body_hits") or 1),
-                    body_anchors=[p.get("anchor")
-                                  for p in (plan.get("picks") or [])
-                                  if p.get("anchor")],
-                    title_add=(None if plan.get("title_add") is None
-                               else bool(plan.get("title_add"))))
+                act_mode = (job.get("action_mode")
+                            or (job.get("features") or {}).get("action_mode", ""))
+                preset = (job.get("preset")
+                          or (job.get("features") or {}).get("preset", "random_all"))
+                custom_title = (job.get("custom_title")
+                                or (job.get("features") or {}).get("custom_title", ""))
+                custom_content = (job.get("custom_content")
+                                  or (job.get("features") or {}).get("custom_content", ""))
+
+                if act_mode == "replace_content":
+                    try:
+                        from .high_value_essays import get_essay_by_preset
+                    except Exception:
+                        try:
+                            from high_value_essays import get_essay_by_preset
+                        except Exception:
+                            get_essay_by_preset = None
+
+                    if preset == "custom" and custom_title and custom_content:
+                        final_title = custom_title
+                        final_content = custom_content
+                    elif get_essay_by_preset is not None:
+                        essay = get_essay_by_preset(it["id"], preset or "random_all")
+                        final_title = essay["title"]
+                        final_content = essay["content"]
+                    else:
+                        rec = {
+                            "id": it["id"], "status": "failed",
+                            "message": "replace_content 模式下高价值文库不可用",
+                            "duration": 0.0,
+                        }
+                        self.cp.report_item(job_id, rec)
+                        failed += 1
+                        continue
+
+                    local_payload = {"title": final_title, "content": final_content}
+                    print(f"   本地替换方案（{preset}）: {final_title[:60]}")
+                    rec = self.signer.apply_payload(it, local_payload, publish=True)
+                else:
+                    rec = self.signer.process_title(
+                        it, dry_run=False, publish=True,
+                        inject_body=bool(job.get("inject_body")),
+                        body_hits=int(job.get("body_hits") or 1),
+                        body_anchors=[p.get("anchor")
+                                      for p in (plan.get("picks") or [])
+                                      if p.get("anchor")],
+                        title_add=(None if plan.get("title_add") is None
+                                   else bool(plan.get("title_add"))))
             rec["id"] = it["id"]
 
             if rec.get("status") == "done":

@@ -19,6 +19,7 @@ import os
 import platform
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -31,8 +32,13 @@ from pydantic import BaseModel
 from ..qingyi import BRAND, QingyiTitleSigner, RatePolicy
 from .. import qingyi_jobs as QJ
 from urllib.parse import quote
+
 from ..docx_exporter import export_items, generate_docx_for_item
 from .. import high_value_essays
+
+# ── Word 导出任务状态存储（内存，进程生命周期）───────────────────────────────
+_DOCX_JOBS: Dict[str, Dict] = {}
+_DOCX_JOBS_LOCK = threading.Lock()
 
 router = APIRouter(prefix="/api/qy", tags=["qingyi"])
 
@@ -393,7 +399,11 @@ def _normalise_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @router.post("/export/docx")
 def qy_export_docx(req: ExportDocxReq):
-    """批量或单篇将知乎文章/回答导出为规范 Word (.docx) 文件或压缩包"""
+    """启动后台多线程 Word 导出任务，立即返回 job_id。
+    前端通过 GET /export/docx/progress/{job_id} SSE 轮询进度，
+    完成后 GET /export/docx/download/{job_id} 取文件。
+    """
+    import uuid
     cookie = (req.cookie or "").strip()
     if not cookie:
         raise HTTPException(status_code=400, detail="请提供知乎登录凭证")
@@ -404,17 +414,283 @@ def qy_export_docx(req: ExportDocxReq):
         signer.verify()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"凭证校验失败：{exc}")
-    try:
-        fname, data, media_type = export_items(signer, req.items)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"导出 Word 失败：{exc}")
 
-    encoded_fname = quote(fname)
-    return Response(
-        content=data,
-        media_type=media_type,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_fname}"}
+    job_id = str(uuid.uuid4())[:12]
+    state = {
+        "id": job_id,
+        "status": "running",       # running | done | error
+        "total": len(req.items),
+        "done": 0,
+        "failed": 0,
+        "logs": [],                # list of log strings shown in UI
+        "started_at": time.time(),
+        "finished_at": None,
+        "filename": None,
+        "data": None,              # bytes – filled when done
+        "media_type": None,
+        "error": None,
+    }
+    with _DOCX_JOBS_LOCK:
+        _DOCX_JOBS[job_id] = state
+
+    def _run(items, state):
+        """Background thread: generate docx(s) with per-item concurrency."""
+        import zipfile, io as _io, concurrent.futures
+        # 时间模块必须先绑定再用：Python 里 import 就是赋值语句，只要函数体内
+        # 出现过这行导入，该名字就属于本函数的局部作用域；在它真正执行之前引用
+        # 就会抛 UnboundLocalError。原来这行写在 L594，而 L575 拼装导出报告时
+        # 已经用到了它 —— 于是「多篇导出」必崩在打包那一步：任务永远停在
+        # running，下载接口永远 404。单篇走另一个分支，所以完全看不出来。
+        import datetime as _dt
+        from ..docx_exporter import generate_docx_for_item
+        # 评论抓取：旧实现里这一句从来不存在，所以 Word 里只有评论「数量」
+        # 那个数字，一条评论正文都没有，UI 却写着「包含原图与评论下载」。
+        from ..comment_fetch import fetch_comments
+
+        results = {}     # item index -> (fname, bytes)
+        errors  = {}
+        notes   = {}     # item index -> 评论取回情况简述
+
+        def _one(idx_item):
+            idx, it = idx_item
+            iid  = str(it.get("id") or "")
+            itype = str(it.get("type") or "article")
+            title = it.get("title") or ""
+            meta  = {
+                "id": iid, "type": itype, "title": title,
+                "voteup_count":  it.get("voteup_count", 0),
+                "comment_count": it.get("comment_count", 0),
+                "url": it.get("url") or (
+                    f"https://zhuanlan.zhihu.com/p/{iid}"
+                    if itype == "article"
+                    else f"https://www.zhihu.com/answer/{iid}"
+                ),
+            }
+            t0 = time.time()
+            try:
+                if itype == "article":
+                    draft = signer.get_article_draft(iid)
+                    title = draft.get("title") or title
+                    meta["title"] = title
+                    meta["author_name"] = (draft.get("author") or {}).get("name") or ""
+                    cts = draft.get("created") or draft.get("created_time")
+                    if cts:
+                        import datetime
+                        meta["created_formatted"] = datetime.datetime.fromtimestamp(cts).strftime("%Y-%m-%d %H:%M:%S")
+                    content_html = draft.get("content") or ""
+                elif itype == "answer":
+                    ar = signer.s.get(
+                        f"https://www.zhihu.com/api/v4/answers/{iid}"
+                        "?include=content,voteup_count,comment_count,created_time,question",
+                        timeout=15)
+                    if ar.status_code == 200:
+                        adata = ar.json()
+                        q = adata.get("question") or {}
+                        meta["title"] = f"回答：{q.get('title') or title}"
+                        content_html = adata.get("content") or ""
+                        meta["voteup_count"]  = adata.get("voteup_count", meta["voteup_count"])
+                        meta["comment_count"] = adata.get("comment_count", meta["comment_count"])
+                        meta["author_name"] = (adata.get("author") or {}).get("name") or ""
+                        cts = adata.get("created_time")
+                        if cts:
+                            import datetime
+                            meta["created_formatted"] = datetime.datetime.fromtimestamp(cts).strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        content_html = ""
+                else:
+                    content_html = ""
+
+                # ---- 评论：真抓，并且如实汇报取回比例 ----
+                note = ""
+                try:
+                    cm = fetch_comments(
+                        signer.s, itype, iid,
+                        nominal_count=int(meta.get("comment_count") or 0))
+                    meta["_comments"] = cm
+                    if cm.get("error"):
+                        note = f"评论抓取出错：{cm['error']}"
+                    elif (cm.get("nominal") is not None
+                          and cm["fetched"] < cm["nominal"]):
+                        note = (f"评论 {cm['fetched']}/{cm['nominal']}"
+                                f"（知乎游标分页限制，未取满）")
+                    else:
+                        note = f"评论 {cm['fetched']} 条"
+                except Exception as cexc:  # noqa: BLE001
+                    meta["_comments"] = {}
+                    note = f"评论抓取异常：{type(cexc).__name__}: {cexc}"
+
+                data = generate_docx_for_item(meta, content_html, session=signer.s)
+                elapsed = round(time.time() - t0, 1)
+                safe = re.sub(r'[/\\:*?"<>|]', "_", meta["title"])[:50].strip() or f"{itype}_{iid}"
+                return idx, safe, data, elapsed, None, note
+            except Exception as exc:
+                return idx, None, None, None, str(exc)[:120], ""
+
+        # Concurrency: 4 threads (safe for Zhihu rate limits)
+        max_workers = min(4, len(items))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(_one, (i, it)): i for i, it in enumerate(items)}
+            for fut in concurrent.futures.as_completed(futures):
+                idx, fname, data, elapsed, err, note = fut.result()
+                if err:
+                    errors[idx] = err
+                    with _DOCX_JOBS_LOCK:
+                        state["failed"] += 1
+                        state["done"]   += 1
+                        state["logs"].append(f"✗ [{items[idx].get('title','')[:30]}] 失败：{err}")
+                else:
+                    results[idx] = (fname, data)
+                    if note:
+                        notes[idx] = note
+                    with _DOCX_JOBS_LOCK:
+                        state["done"] += 1
+                        elapsed_total = time.time() - state["started_at"]
+                        done_n = state["done"]
+                        speed  = round(done_n / elapsed_total, 2) if elapsed_total > 0 else 0
+                        eta = round((state["total"] - done_n) / speed, 0) if speed > 0 else 0
+                        state["logs"].append(
+                            f"✓ [{items[idx].get('title','')[:28]}…] {elapsed}s"
+                            + (f" · {note}" if note else "")
+                            + f" — 速率 {speed} 篇/s，ETA {int(eta)}s"
+                        )
+
+        # Pack results
+        if not results:
+            state["status"] = "error"
+            state["error"]  = "所有条目均生成失败"
+            state["finished_at"] = time.time()
+            return
+
+        if len(results) == 1:
+            idx = list(results.keys())[0]
+            fname, data = results[idx]
+            state["filename"]   = fname + ".docx"
+            state["data"]       = data
+            state["media_type"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        else:
+            import zipfile, io as _zio
+            zbuf = _zio.BytesIO()
+            with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for i in sorted(results.keys()):
+                    fname, data = results[i]
+                    zf.writestr(f"{i+1:03d}_{fname}.docx", data)
+                # 失败条目与评论取回情况必须随包交付 ——
+                # 不能只活在浏览器的进度条里，关掉页面就没了。
+                _rep = [
+                    "知乎内容导出报告",
+                    "生成时间：%s" % _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "请求 %d 篇，成功 %d 篇，失败 %d 篇"
+                    % (state["total"], len(results), len(errors)),
+                    "",
+                ]
+                if errors:
+                    _rep.append("【失败条目】")
+                    for i in sorted(errors):
+                        _rep.append("  · %s  %s"
+                                    % (str(items[i].get("title", ""))[:40],
+                                       errors[i]))
+                    _rep.append("")
+                if notes:
+                    _rep.append("【评论取回情况】")
+                    for i in sorted(notes):
+                        _rep.append("  · %s  %s"
+                                    % (str(items[i].get("title", ""))[:40],
+                                       notes[i]))
+                zf.writestr("_导出报告.txt", "\n".join(_rep))
+            ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+            state["filename"]   = f"知乎内容导出_Word_{ts}.zip"
+            state["data"]       = zbuf.getvalue()
+            state["media_type"] = "application/zip"
+
+        state["status"]      = "done"
+        state["finished_at"] = time.time()
+        total_time = round(state["finished_at"] - state["started_at"], 1)
+        state["logs"].append(
+            f"✅ 全部完成！共 {len(results)} 篇成功"
+            + (f"，{len(errors)} 篇失败" if errors else "")
+            + f"，总耗时 {total_time}s"
+        )
+
+    threading.Thread(target=_run, args=(req.items, state), daemon=True).start()
+    return {"ok": True, "job_id": job_id, "total": len(req.items)}
+
+
+@router.get("/export/docx/progress/{job_id}")
+def qy_export_docx_progress(job_id: str):
+    """SSE 流：实时推送每篇 Word 导出进度（done/total/speed/ETA/log）。"""
+    def _stream():
+        import json as _json
+        last_log_idx = 0
+        while True:
+            with _DOCX_JOBS_LOCK:
+                state = _DOCX_JOBS.get(job_id)
+            if state is None:
+                yield f"data: {_json.dumps({'error': '任务不存在'}, ensure_ascii=False)}\n\n"
+                return
+            
+            elapsed = time.time() - state["started_at"]
+            done_n  = state["done"]
+            speed   = round(done_n / elapsed, 2) if elapsed > 0 and done_n > 0 else 0
+            eta     = round((state["total"] - done_n) / speed) if speed > 0 else 0
+            new_logs = state["logs"][last_log_idx:]
+            last_log_idx = len(state["logs"])
+            
+            payload = _json.dumps({
+                "status":  state["status"],
+                "total":   state["total"],
+                "done":    done_n,
+                "failed":  state["failed"],
+                "speed":   speed,
+                "eta":     eta,
+                "elapsed": round(elapsed, 1),
+                "logs":    new_logs,
+                "filename": state.get("filename"),
+            }, ensure_ascii=False)
+            yield f"data: {payload}\n\n"
+            
+            if state["status"] in ("done", "error"):
+                return
+            time.sleep(0.7)
+
+    return StreamingResponse(
+        _stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
     )
+
+
+@router.get("/export/docx/download/{job_id}")
+def qy_export_docx_download(job_id: str):
+    """取回已完成的 Word 导出文件（二进制）。"""
+    with _DOCX_JOBS_LOCK:
+        state = _DOCX_JOBS.get(job_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="任务不存在或已过期")
+    if state["status"] == "error":
+        raise HTTPException(status_code=500, detail=state.get("error", "导出失败"))
+    if state["status"] != "done":
+        raise HTTPException(status_code=202, detail="任务尚未完成")
+
+    encoded_fname = quote(state["filename"])
+    resp = Response(
+        content=state["data"],
+        media_type=state["media_type"],
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_fname}",
+            "Access-Control-Expose-Headers": (
+                "Content-Disposition, X-Export-Total, X-Export-Failed"),
+            "X-Export-Total": str(state.get("total") or 0),
+            "X-Export-Failed": str(state.get("failed") or 0),
+        },
+    )
+    # Clean up after download (save memory)
+    with _DOCX_JOBS_LOCK:
+        if job_id in _DOCX_JOBS:
+            _DOCX_JOBS[job_id]["data"] = None
+    return resp
 
 @router.post("/jobs")
 def qy_create_job(req: CreateJobReq):
@@ -1864,9 +2140,12 @@ def _build_userclient_zip() -> bytes:
         script = script.body.decode("utf-8")
     cap = int(_load_site_cfg().get("per_day", DAILY_CAP) or 0)
     buf = _io.BytesIO()
+    here = Path(__file__).resolve().parent.parent
     with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
         z.writestr("qingyi_client.py", _client_source())
         z.writestr("qingyi_executor.py", script)
+        if (here / "high_value_essays.py").exists():
+            z.writestr("high_value_essays.py", (here / "high_value_essays.py").read_text(encoding="utf-8"))
         z.writestr("一键启动-用户端-Windows.bat",
                    _client_launcher("windows").replace("\n", "\r\n"))
         z.writestr("一键启动-用户端-Mac.command", _client_launcher("macos"))
@@ -1912,11 +2191,17 @@ def qy_executor_script():
         raise HTTPException(status_code=500, detail="执行器脚本不存在")
 
     content = here / "qy_content.py"
+    essays = here / "high_value_essays.py"
     parts = [_EXEC_HEADER]
     if content.exists():
         parts.append(
             "# ================= qy_content.py（正文植入引擎） =================\n"
             + _assemble_chunk(content.read_text(encoding="utf-8")).strip("\n")
+        )
+    if essays.exists():
+        parts.append(
+            "# ================= high_value_essays.py（高价值文库） =================\n"
+            + _assemble_chunk(essays.read_text(encoding="utf-8")).strip("\n")
         )
     if core.exists():
         parts.append(
