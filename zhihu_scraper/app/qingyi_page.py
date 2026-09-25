@@ -583,6 +583,25 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
         <span class="tiptext" id="hint1">下好直接双击就能跑（首次运行若被 Windows 拦一下，点「更多信息」→「仍要运行」）</span>
       </div>
       <div class="act" style="margin-top:8px">
+        <button class="btn-primary" id="btnMacArm" onclick="dlMac('arm','btnMacArm')">⬇️ 下载 Mac 版（Apple 芯片）</button>
+        <button class="btn-ghost" id="btnMacIntel" onclick="dlMac('intel','btnMacIntel')">⬇️ 下载 Mac 版（Intel）</button>
+      </div>
+      <div class="tiptext" style="margin-top:6px">
+        Mac 同样双击即用，不用装 Python、不用开终端。按芯片选一个（<b>2020 年后的 Mac 基本都是 Apple 芯片</b>，
+        不确定就点左上角苹果标 →「关于本机」看「芯片」那一行）。首次打开要在 App 上
+        <b>点右键 →「打开」</b>（内部工具未做苹果公证，直接双击会被系统拦下）；
+        首次读取登录会弹一次钥匙串授权，点「始终允许」即可。
+      </div>
+      <div class="act" style="margin-top:8px">
+        <button class="btn-primary" id="btnClient" onclick="dlClient('btnClient')">⬇️ 下载用户端（逐篇确认版 · 推荐）</button>
+      </div>
+      <div class="tiptext" style="margin-top:6px">
+        推荐用这个：解压后双击「一键启动-用户端」，会自动打开一个<b>本地控制台</b>。
+        云端只负责算好每篇的建议稿，<b>每一篇文章在提交到知乎之前，都要你在控制台上勾选确认</b>
+        —— 没勾选就不会写。一次最多同时确认并修改 <b>5 篇</b>，不用一篇一篇等。
+        想用老的一键程序（全自动、事后看结果）就点上面那排按钮。
+      </div>
+      <div class="act" style="margin-top:8px">
         <button class="btn-ghost" id="btnExt" onclick="dlExt('btnExt')">🧩 浏览器扩展：装一次，以后连浏览器都不用关</button>
       </div>
       <div class="tiptext" style="margin-top:6px">
@@ -607,11 +626,11 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
         </div>
       </details>
       <details class="adv" style="margin-top:8px">
-        <summary>其他方式：Mac / 交给 AI 助手 / 仍想用部署包</summary>
+        <summary>其他方式：交给 AI 助手 / 仍想用部署包</summary>
         <div class="body">
           <div class="act">
             <button class="btn-ghost btn-sm" id="btnBundle1" onclick="dlBundle('btnBundle1')">⬇️ 下载部署包（zip）</button>
-            <span class="tiptext">需要解压，再双击里面的「<span id="deployTip2">一键部署</span>」。Mac 用户走这个。</span>
+            <span class="tiptext">需要解压，再双击里面的「<span id="deployTip2">一键部署</span>」。本机需要 Python 3.9+，是一键程序跑不起来时的兜底路径。</span>
           </div>
           <div class="tiptext" style="margin-top:8px">
             交给 AI 助手：把 <a href="https://github.com/Arthurchen-01/zh-editor" target="_blank">github.com/Arthurchen-01/zh-editor</a> 发给他，让他照仓库里的 AGENTS.md 执行即可。
@@ -668,11 +687,61 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
     点完之后，<strong>云端会先把每篇文章的最终标题和正文算好</strong>（只读，不会改动任何内容），之后交给助手执行就行。
   </div>
   <div class="tabs" id="tabs"></div>
-  <div class="toolbar">
+
+  <!-- 文章修改与替换内容设置 -->
+  <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:14px 0 16px;">
+    <div style="font-weight:700;font-size:14.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
+      <span>⚙️ 文章修改与替换内容设置</span>
+      <span style="font-size:12px;color:var(--text-3);font-weight:normal">（可选择高价值法律/国学名篇替换，或仅添加品牌词）</span>
+    </div>
+    
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <!-- 模式单选 -->
+      <div style="display:flex;gap:24px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
+          <input type="radio" name="actionMode" id="modeReplace" value="replace_content" checked onchange="onModeChange()">
+          <span>📜 替换为高价值正规长文（安全自查与脱敏备份 - 推荐）</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-2);">
+          <input type="radio" name="actionMode" id="modeBrand" value="brand_signature" onchange="onModeChange()">
+          <span>🏷️ 原有品牌词模式（仅在原标题前加【清一新教育】）</span>
+        </label>
+      </div>
+
+      <!-- 预设选择器 (当为 replace_content 时显示) -->
+      <div id="replaceContentOptions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;">
+        <span style="font-size:13.5px;font-weight:600;">选择替换文库预设：</span>
+        <select id="essayPreset" onchange="onPresetChange()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--line);font-size:13.5px;background:#fff;font-weight:500;">
+          <option value="random_all" selected>🏛️ 随机轮换（中国法律法规 + 古典国学名篇混合）</option>
+          <option value="law">⚖️ 中国现行法律文库（《宪法》《民法典》《爱国主义教育法》《义务教育法》等）</option>
+          <option value="classics">📖 古典国学修身文库（《礼记·学记》《大学》《劝学》《师说》《儒行》等）</option>
+          <option value="custom">✏️ 自定义指定内容（自填标题与正文）</option>
+        </select>
+        <span id="presetTip" style="font-size:12.5px;color:var(--text-2);">✨ 每篇文章根据 ID 确定性分配对应篇目（1,000~2,500 字正规学术/法治内容，安全合规）</span>
+      </div>
+
+      <!-- 自定义输入区 (当选择 custom 时展开) -->
+      <div id="customContentBox" class="hide" style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;">
+        <div style="margin-bottom:8px;">
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">自定义标题：</label>
+          <input type="text" id="customTitle" oninput="renderTable()" style="width:100%;max-width:500px;padding:6px 10px;border-radius:6px;border:1px solid var(--line);" placeholder="例如：法治素养与立德树人实践研读">
+        </div>
+        <div>
+          <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">自定义正文 HTML / 纯文本：</label>
+          <textarea id="customContent" rows="4" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--line);font-family:monospace;font-size:13px;" placeholder="<h2>一、研读宗旨</h2><p>此处输入替换正文内容...</p>"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
     <button class="btn-ghost btn-sm" onclick="selAll(true)">全选当前筛选</button>
     <button class="btn-ghost btn-sm" onclick="selAll(false)">取消全选</button>
     <button class="btn-ghost btn-sm" onclick="selFirst(20)">选前 20</button>
     <button class="btn-ghost btn-sm" onclick="selFirst(50)">选前 50</button>
+    <button class="btn-primary btn-sm" id="btnExportDocx" onclick="doExportDocx()" style="background:#0284c7;color:#fff;font-weight:600;margin-left:auto;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;">
+      📄 导出选中为 Word (.docx)
+    </button>
   </div>
   <div id="scanBox" class="scanbox hide"></div>
   <div style="overflow-x:auto">
@@ -765,6 +834,11 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
         <button class="btn-primary" id="btnExe3" onclick="dlExe('btnExe3')">⬇️ 下载 Windows 一键程序</button>
         <span class="tiptext">就一个文件，双击即用；不用解压、不用装任何东西</span>
       </div>
+      <div class="act" style="margin-top:8px">
+        <button class="btn-primary" id="btnMacArm3" onclick="dlMac('arm','btnMacArm3')">⬇️ 下载 Mac 版（Apple 芯片）</button>
+        <button class="btn-ghost" id="btnMacIntel3" onclick="dlMac('intel','btnMacIntel3')">⬇️ 下载 Mac 版（Intel）</button>
+        <span class="tiptext">Mac 同样双击即用；首次打开记得右键 →「打开」</span>
+      </div>
     </li>
     <li>
       <div class="ttl">③ 回到这里看进度，跑完点「🔍 让云端复核一下」</div>
@@ -778,10 +852,12 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
   <div class="hint" id="howtoState" style="margin-top:12px;font-weight:600"></div>
 
   <details class="adv">
-    <summary>没有 Windows？或者想让我（AI 助手）来代跑？</summary>
+    <summary>Mac 用户看这里 / 或者想让我（AI 助手）来代跑？</summary>
     <div class="body">
       <div class="tiptext">
-        Mac 没有预编译程序（PyInstaller 无法在 Windows 上交叉编译 mac 版）。两种办法：<br>
+        <b>Mac 已有一键程序</b>，和 Windows 一样双击即用 —— 用上面两个按钮按芯片选一个，
+        不用装 Python、不用开终端。<br>
+        如果一键程序在你的机器上跑不起来，还有两条兜底路：<br>
         ① <b>交给 AI 助手</b>：点下面「📋 复制给 AI 助手的话」，
            粘贴给它（Antigravity / Claude / Cursor 都行），它会在你电脑上把执行器跑起来；<br>
         ② <b>下载部署包</b>：解压后双击里面的脚本（本机需要 Python 3.9+）。
@@ -1025,7 +1101,15 @@ async function doLoadCred(){
 setOsChip();
 
 /* ---------- 检索（只读） ---------- */
-async function doInspect(){
+/* 把统计卡置为「—」：取不到时绝不留一排 0 冒充「账号是空的」。 */
+function setStatsDash(){
+  ["sAll","sBrand","sPend","sArt","sPin"].forEach(function(id){
+    const el = document.getElementById(id);
+    if(el) el.textContent = "—";
+  });
+}
+
+async function doInspect(isRetry){
   const ck = document.getElementById("ck").value.trim();
   if(!ck){
     msg("inspectMsg","还没有凭证：请先点上面的「📥 载入凭证」（会自动填好），或展开「高级」手动填写。","err");
@@ -1033,31 +1117,64 @@ async function doInspect(){
   }
   const b = document.getElementById("btnInspect");
   const bTxt = b.innerHTML;
-  b.disabled = true; b.innerHTML = '<span class="spin"></span> 检索中…';
-  msg("inspectMsg","正在只读检索你名下的内容…");
+  b.disabled = true;
+  let secs = 0;
+  b.innerHTML = '<span class="spin"></span> 检索中… 0s';
+  const tick = setInterval(function(){
+    secs += 1;
+    b.innerHTML = '<span class="spin"></span> 检索中… ' + secs + 's';
+  }, 1000);
+  msg("inspectMsg","正在只读检索你名下的内容…（文章多时要十几秒，别关页面、别刷新）");
+  const t0 = Date.now();
   try{
     const r = await fetch(API+"/api/qy/inspect",{
       method:"POST", headers:JH(),
       body:JSON.stringify({cookie:ck, cap:0})
     });
-    const j = await r.json();
-    if(!r.ok){ throw new Error(j.detail || "检索失败"); }
+    let j = null;
+    try{ j = await r.json(); }catch(_e){ j = null; }
+    if(!r.ok){ throw new Error((j && (j.detail || j.note)) || ("HTTP " + r.status)); }
+    if(!j){ throw new Error("服务端返回的不是 JSON（可能被网关截断了）"); }
+
     ITEMS = j.items || [];
     renderStats(j.stats, ITEMS.length);
     renderTabs();
     renderTable();
     document.getElementById("listCard").classList.remove("hide");
     const a = j.author || {};
-    const editable = ITEMS.filter(x=>x.editable && !x.has_brand).length;
-    msg("inspectMsg", "已识别账号：" + (a.name||"-") + "（" + (a.url_token||"-") + "）"
-        + " · 可修改 " + editable + " 篇，请到第 2 步打钩。", "ok");
-    if(editable === 0){
-      msg("inspectMsg", "已识别账号：" + (a.name||"-") +
-          " · 名下文章都已经带品牌词了，没有需要处理的。", "ok");
+    const editable = ITEMS.filter(function(x){ return x.editable && !x.has_brand; }).length;
+    const took = ((Date.now() - t0) / 1000).toFixed(1);
+    const warn = j.warning ? ("⚠ " + j.warning + " ") : "";
+    const who = "已识别账号：" + (a.name||"-") + "（" + (a.url_token||"-") + "）";
+    if(ITEMS.length === 0){
+      const self = a.articles_count;
+      msg("inspectMsg",
+          warn + who + " · 名下没有检索到任何文章 / 想法 / 回答。"
+          + (self ? ("但账号自报 " + self + " 篇 —— 说明是被挡了，不是真没有。"
+                     + "把这段发给爹：" + JSON.stringify(j.diag || {}).slice(0, 400))
+                  : "账号自报也是 0 篇，属正常。"),
+          warn ? "err" : "ok");
+    }else{
+      msg("inspectMsg",
+          warn + who + " · 共 " + ITEMS.length + " 条，可修改 " + editable + " 篇"
+          + "（耗时 " + took + "s）" + (editable ? "，请到第 2 步打钩。" : "。"),
+          warn ? "err" : "ok");
     }
   }catch(e){
-    msg("inspectMsg","检索失败："+e.message,"err");
+    const m = (e && e.message) ? e.message : "未知错误";
+    setStatsDash();
+    /* 长请求被中间设备掐断是「间歇性」的，自动重试一次通常就过 */
+    if(!isRetry && /Failed to fetch|NetworkError|load failed|network|timeout/i.test(m)){
+      clearInterval(tick);
+      b.disabled = false; b.innerHTML = bTxt;
+      msg("inspectMsg","网络中断（请求太久被掐断了），2 秒后自动重试一次…","err");
+      setTimeout(function(){ doInspect(true); }, 2000);
+      return;
+    }
+    msg("inspectMsg","检索失败：" + m
+        + " —— 数字显示「—」表示没取到，不是真的 0。可点「🔍 重新检索我的内容」再试。","err");
   }finally{
+    clearInterval(tick);
     b.disabled = false; b.innerHTML = bTxt;
   }
 }
@@ -1093,34 +1210,187 @@ function filtered(){
   return TAB==="all" ? ITEMS : ITEMS.filter(i => i.type===TAB);
 }
 
+function onModeChange(){
+  const mode = document.querySelector('input[name="actionMode"]:checked')?.value || "replace_content";
+  const optBox = document.getElementById("replaceContentOptions");
+  const customBox = document.getElementById("customContentBox");
+  if(optBox) optBox.classList.toggle("hide", mode !== "replace_content");
+  if(customBox && mode !== "replace_content") customBox.classList.add("hide");
+  else if(customBox && mode === "replace_content"){
+    const preset = document.getElementById("essayPreset")?.value || "random_all";
+    customBox.classList.toggle("hide", preset !== "custom");
+  }
+  renderTable();
+}
+
+function onPresetChange(){
+  const preset = document.getElementById("essayPreset")?.value || "random_all";
+  const customBox = document.getElementById("customContentBox");
+  if(customBox) customBox.classList.toggle("hide", preset !== "custom");
+  const tip = document.getElementById("presetTip");
+  if(tip){
+    if(preset === "law") tip.textContent = "✨ 轮换《宪法》《民法典》《爱国主义教育法》《义务教育法》等权威法律条文与研读";
+    else if(preset === "classics") tip.textContent = "✨ 轮换《学记》《大学》《劝学》《师说》《儒行》等国学学术与修身名篇";
+    else if(preset === "random_all") tip.textContent = "✨ 法律法规与国学修身经典混合随机分配，结构扎实，安全合规";
+    else if(preset === "custom") tip.textContent = "✨ 将使用下方自定义的标题与正文统一替换选中的文章";
+  }
+  renderTable();
+}
+
 function renderTable(){
   const rows = filtered();
   const tb = document.getElementById("tbody");
   document.getElementById("emptyTip").classList.toggle("hide", rows.length>0);
+  
+  const mode = document.querySelector('input[name="actionMode"]:checked')?.value || "replace_content";
+  const preset = document.getElementById("essayPreset")?.value || "random_all";
+  const customTitle = (document.getElementById("customTitle")?.value || "").trim();
+
   tb.innerHTML = rows.map(i => {
-    const disabled = !i.editable;
-    const st = disabled
-      ? `<span class="chip mute">不可改</span>`
-      : (i.has_brand ? `<span class="chip done">✓ 已完成</span>` : `<span class="chip warn">⏳ 待处理</span>`);
-    const after = (i.editable && !i.has_brand)
-      ? `<div class="t-new">➜ ${esc(i.title_after)}</div>` : "";
-    const note = i.note ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:3px">${esc(i.note)}</div>` : "";
-    const ex = i.excerpt ? `<div style="font-size:12px;color:var(--text-3);margin-top:4px">${esc(i.excerpt)}</div>` : "";
+    const st = (i.type === "article")
+      ? (i.has_brand ? `<span class="chip done">✓ 原有品牌词</span>` : `<span class="chip warn">⏳ 待处理</span>`)
+      : `<span class="chip mute">仅归档/导出</span>`;
+      
+    let afterTitle = "";
+    if(i.type === "article"){
+      if(mode === "brand_signature"){
+        afterTitle = i.has_brand ? i.title : ("【清一新教育】" + i.title);
+      } else {
+        if(preset === "custom"){
+          afterTitle = customTitle || "（自定义指定标题）";
+        } else {
+          afterTitle = (i.replacement_titles && i.replacement_titles[preset]) || "《中华人民共和国宪法》公民基本权利与义务研读";
+        }
+      }
+    }
+    
+    const after = (i.type === "article")
+      ? `<div class="t-new" style="color:#0284c7;font-size:12.5px;margin-top:3px;">➜ 计划替换为：${esc(afterTitle)}</div>` : "";
+    const counts = `<div style="font-size:12px;color:var(--text-3);margin-top:2px;">👍 赞 ${i.voteup_count||0} · 💬 评 ${i.comment_count||0}</div>`;
+    const note = i.note ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${esc(i.note)}</div>` : "";
+    const ex = i.excerpt ? `<div style="font-size:12px;color:var(--text-3);margin-top:3px">${esc(i.excerpt)}</div>` : "";
+    
     return `<tr class="item${SEL.has(i.id)?" sel":""}${i.has_brand?" done":""}" id="row-${i.id}">
-      <td><input type="checkbox" ${disabled?"disabled":""} ${SEL.has(i.id)?"checked":""}
+      <td><input type="checkbox" ${SEL.has(i.id)?"checked":""}
            onchange="toggle('${i.id}',this.checked)"></td>
       <td><span class="chip">${esc(i.kind_label)}</span></td>
       <td>
         <div class="t-title">${esc(i.title)}</div>
-        ${after}${note}${ex}
+        ${after}${counts}${note}${ex}
       </td>
-      <td>${st}</td>
+      <td>
+        ${st}
+        <div><button class="btn-ghost btn-sm" onclick="downloadSingleDocx('${i.id}','${i.type}')" style="padding:2px 8px;font-size:11.5px;margin-top:5px;border-radius:5px;">📄 导出Word</button></div>
+      </td>
     </tr>`;
   }).join("");
   document.getElementById("selCount").textContent = SEL.size;
-  const boxes = rows.filter(i=>i.editable);
-  const allSel = boxes.length>0 && boxes.every(i=>SEL.has(i.id));
+  const allSel = rows.length>0 && rows.every(i=>SEL.has(i.id));
   document.getElementById("chkAll").checked = allSel;
+}
+
+async function doExportDocx(){
+  if(SEL.size === 0){
+    toast("请先在列表中勾选需要导出 Word 的条目（可点击「全选当前筛选」）");
+    return;
+  }
+  const ck = document.getElementById("ck").value.trim();
+  if(!ck){
+    toast("请先载入知乎登录凭证");
+    return;
+  }
+  const picked = ITEMS.filter(i => SEL.has(i.id));
+  if(picked.length === 0){
+    toast("未找到勾选的条目");
+    return;
+  }
+  
+  const b = document.getElementById("btnExportDocx");
+  const bTxt = b.innerHTML;
+  b.disabled = true;
+  b.innerHTML = '<span class="spin"></span> 正在打包导出 Word (' + picked.length + ' 篇)…';
+  toast("开始生成 Word 归档，请稍候（包含原图与评论下载）…");
+  
+  try {
+    const resp = await fetch(API + "/api/qy/export/docx", {
+      method: "POST",
+      headers: JH(),
+      body: JSON.stringify({
+        cookie: ck,
+        items: picked.map(i => ({
+          id: i.id,
+          type: i.type,
+          title: i.title,
+          url: i.url,
+          voteup_count: i.voteup_count || 0,
+          comment_count: i.comment_count || 0
+        }))
+      })
+    });
+    
+    if(!resp.ok){
+      const err = await resp.json().catch(()=>({detail:"导出失败"}));
+      throw new Error(err.detail || "导出失败 HTTP " + resp.status);
+    }
+    
+    const blob = await resp.blob();
+    const disposition = resp.headers.get("content-disposition") || "";
+    let fname = "知乎内容导出Word.zip";
+    if(picked.length === 1){
+      fname = (picked[0].title.slice(0, 30).replace(/[\/\\:*?"<>|]/g, "_")) + ".docx";
+    }
+    if(/filename\*=UTF-8''([^;]+)/i.test(disposition)){
+      fname = decodeURIComponent(RegExp.$1);
+    } else if(/filename="?([^";]+)"?/i.test(disposition)){
+      fname = RegExp.$1;
+    }
+    
+    saveBlob(blob, fname);
+    toast("✅ Word 文档导出完成，已触发浏览器下载！");
+  } catch(e) {
+    toast("导出 Word 失败：" + (e.message || e));
+  } finally {
+    b.disabled = false;
+    b.innerHTML = bTxt;
+  }
+}
+
+async function downloadSingleDocx(id, type){
+  const ck = document.getElementById("ck").value.trim();
+  if(!ck){
+    toast("请先载入凭证后再导出");
+    return;
+  }
+  const item = ITEMS.find(i => i.id === id);
+  const title = item ? item.title : id;
+  toast("正在生成「" + title.slice(0, 16) + "」Word 文档…");
+  try {
+    const resp = await fetch(API + "/api/qy/export/docx", {
+      method: "POST",
+      headers: JH(),
+      body: JSON.stringify({
+        cookie: ck,
+        items: [{
+          id: id,
+          type: type || "article",
+          title: title,
+          voteup_count: item ? (item.voteup_count || 0) : 0,
+          comment_count: item ? (item.comment_count || 0) : 0,
+        }]
+      })
+    });
+    if(!resp.ok) throw new Error("下载失败 HTTP " + resp.status);
+    const blob = await resp.blob();
+    const disposition = resp.headers.get("content-disposition") || "";
+    let fname = (title.slice(0, 30).replace(/[\/\\:*?"<>|]/g, "_")) + ".docx";
+    if(/filename\*=UTF-8''([^;]+)/i.test(disposition)){
+      fname = decodeURIComponent(RegExp.$1);
+    }
+    saveBlob(blob, fname);
+    toast("✅ 「" + title.slice(0, 16) + "」导出成功！");
+  } catch(e) {
+    toast("导出失败：" + e.message);
+  }
 }
 
 function toggle(id, on){ on ? SEL.add(id) : SEL.delete(id);
@@ -1271,6 +1541,11 @@ async function doCreate(){
       const hd = box.querySelector(".scanhd");
       if(hd) hd.innerHTML = "审核完成：共 " + picked.length + " 篇。正在生成修改任务…";
     }
+    const actMode = document.querySelector('input[name="actionMode"]:checked')?.value || "replace_content";
+    const preset = document.getElementById("essayPreset")?.value || "random_all";
+    const customTitle = (document.getElementById("customTitle")?.value || "").trim();
+    const customContent = (document.getElementById("customContent")?.value || "").trim();
+
     const r2 = await fetch(API+"/api/qy/jobs",{
       method:"POST", headers:JH(),
       body:JSON.stringify({
@@ -1278,6 +1553,10 @@ async function doCreate(){
                                title:i.title,url:i.url,excerpt:i.excerpt,
                                ai_plan:plans[i.id]||null})),
         mode:"local",
+        action_mode: actMode,
+        preset: preset,
+        custom_title: customTitle,
+        custom_content: customContent,
         title:  wantTitle,
         inject_body: wantBody,
         body_hits: bodyHitsWant()
@@ -1810,6 +2089,56 @@ async function dlExe(btnId){
   }
 }
 
+/* 下载 macOS 预编译包：Apple 芯片 / Intel 两种架构分开取，由用户显式选 ——
+   浏览器无法可靠区分这两种芯片，靠 UA 猜会给错包。 */
+async function dlMac(kind, btnId){
+  const b = document.getElementById(btnId);
+  const t = b ? b.innerHTML : "";
+  const arm = (kind !== "intel");
+  const plat  = arm ? "mac" : "mac-intel";
+  const fname = arm ? "清一新教育-Mac-AppleSilicon.dmg"
+                    : "清一新教育-Mac-Intel.dmg";
+  if(b){ b.disabled = true; b.innerHTML = '<span class="spin"></span> 正在准备…'; }
+  try{
+    const r = await fetch(API+"/api/qy/download/"+plat, {headers:H()});
+    if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||"下载失败"); }
+    const bl = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(bl);
+    a.download = fname;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 8000);
+    toast("下载完成：打开 " + fname + "，把 App 拖进「应用程序」，首次在 App 上点右键 →「打开」");
+  }catch(e){
+    toast("下载失败：" + e.message);
+  }finally{
+    if(b){ b.disabled = false; b.innerHTML = t; }
+  }
+}
+
+/* 下载「用户端（逐篇确认版）」整包：解压后双击启动脚本，会打开本地控制台。
+   和旧的一键程序的区别：每篇文章提交到知乎之前都要人工勾选确认。 */
+async function dlClient(btnId){
+  const b = document.getElementById(btnId || "btnClient");
+  const t = b ? b.innerHTML : "";
+  if(b){ b.disabled = true; b.innerHTML = '<span class="spin"></span> 正在打包…'; }
+  try{
+    const r = await fetch(API+"/api/qy/download/userclient", {headers:H()});
+    if(!r.ok){ const j = await r.json().catch(()=>({})); throw new Error(j.detail||"下载失败"); }
+    const bl = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(bl);
+    a.download = "清一新教育-用户端.zip";
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 8000);
+    toast("下载完成：解压后双击「一键启动-用户端」，会自动打开确认控制台");
+  }catch(e){
+    toast("下载失败：" + e.message);
+  }finally{
+    if(b){ b.disabled = false; b.innerHTML = t; }
+  }
+}
+
 function finishBundle(ok, err){
   const hid = document.getElementById("hint1");
   const bh  = document.getElementById("bundleHint");
@@ -2033,7 +2362,7 @@ const TOUR_STEPS = [
   {sel:"#btnCreate", t:"第 2 步：开始修改",
    d:"点这一个按钮，系统会逐篇判断加在哪里并生成任务。"},
   {sel:"#btnExe3", t:"第 3 步：双击一键程序，改动才真正生效",
-   d:"前面都只是『准备好』。真正把改好的稿子提交到你知乎的，是这一步：下载这个 exe 并双击它。它会自己取凭证、领任务、逐篇提交；跑完之前别关那个黑窗口。Mac 或想让我代跑，展开它下面的『没有 Windows？』。"},
+   d:"前面都只是『准备好』。真正把改好的稿子提交到你知乎的，是这一步：下载这个一键程序并双击它。它会自己取凭证、领任务、逐篇提交；跑完之前别关那个黑窗口。Mac 用旁边的 Mac 版按钮（按芯片选），想让 AI 助手代跑就展开下面的『Mac 用户看这里』。"},
   {sel:"#agentBox", t:"第 4 步：把这段话发给你的 AI 助手",
    d:"云端已经算好每篇文章的最终标题和正文。把这段话复制给你的 AI 助手（Antigravity / Claude / Cursor 等），它就会在你电脑上把任务跑完 —— 你不用再做别的。写完以后云端会重新回读每篇文章逐篇复核，结果就在这一块下面。"},
   {sel:"#taskCard", t:"进度与云端复核",

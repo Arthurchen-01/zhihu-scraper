@@ -30,6 +30,9 @@ from pydantic import BaseModel
 
 from ..qingyi import BRAND, QingyiTitleSigner, RatePolicy
 from .. import qingyi_jobs as QJ
+from urllib.parse import quote
+from ..docx_exporter import export_items, generate_docx_for_item
+from .. import high_value_essays
 
 router = APIRouter(prefix="/api/qy", tags=["qingyi"])
 
@@ -222,10 +225,19 @@ class CreateJobReq(BaseModel):
     items: List[Dict[str, Any]]
     policy: Optional[Dict[str, Any]] = None
     mode: str = "local"
+    action_mode: str = "replace_content"  # "replace_content" (法律/国学经典替换) 或 "brand_signature" (品牌词)
+    preset: str = "random_all"            # "random_all", "law", "classics", "custom"
+    custom_title: str = ""
+    custom_content: str = ""
     # 每篇固定 2 处：标题 1 处 + 正文 1 处
     title: bool = True
     inject_body: bool = True
     body_hits: int = 1
+
+
+class ExportDocxReq(BaseModel):
+    cookie: str
+    items: List[Dict[str, Any]] = []
 
 
 class ScanScenesReq(BaseModel):
@@ -294,8 +306,11 @@ def qy_inspect(req: InspectReq):
         raise HTTPException(status_code=400, detail=f"凭证校验失败：{exc}")
 
     articles = signer.list_articles(cap=req.cap)
+    art_diag = dict(getattr(signer, "last_diag", {}) or {})
     pins = signer.list_pins(cap=req.cap) if req.include_pins else []
+    pin_diag = dict(getattr(signer, "last_diag", {}) or {}) if req.include_pins else {}
     answers = signer.list_answers(cap=req.cap) if req.include_answers else []
+    ans_diag = dict(getattr(signer, "last_diag", {}) or {}) if req.include_answers else {}
 
     def _stat(rows: List[Dict[str, Any]]) -> Dict[str, int]:
         branded = sum(1 for r in rows if r.get("has_brand"))
@@ -304,6 +319,9 @@ def qy_inspect(req: InspectReq):
 
     items: List[Dict[str, Any]] = []
     for r in articles + pins + answers:
+        r_rand = high_value_essays.get_essay_by_preset(r["id"], "random_all")["title"]
+        r_law = high_value_essays.get_essay_by_preset(r["id"], "law")["title"]
+        r_cla = high_value_essays.get_essay_by_preset(r["id"], "classics")["title"]
         items.append({
             "id": r["id"],
             "type": r["type"],
@@ -311,16 +329,34 @@ def qy_inspect(req: InspectReq):
             "title": r["title"],
             "title_after": r["title"] if r.get("has_brand")
                            else f"{TITLE_PREFIX}{r['title']}",
+            "replacement_titles": {
+                "random_all": r_rand,
+                "law": r_law,
+                "classics": r_cla,
+            },
             "has_brand": r.get("has_brand", False),
             "url": r.get("url", ""),
             "created": r.get("created"),
             "updated": r.get("updated"),
-            "voteup_count": r.get("voteup_count"),
-            "comment_count": r.get("comment_count"),
+            "voteup_count": r.get("voteup_count") or 0,
+            "comment_count": r.get("comment_count") or 0,
             "excerpt": r.get("excerpt", ""),
             "editable": r["type"] == "article",
             "note": r.get("note", ""),
         })
+
+    # 交叉校验：账号自报的篇数 vs 实际枚举到的。对不上就是「被挡了」而不是「真没有」，
+    # 必须说清楚 —— 否则用户只看到一排 0，分不清是空账号还是请求失败。
+    warn: List[str] = []
+    _self_art = me.get("articles_count")
+    if isinstance(_self_art, int) and _self_art > 0 and not articles:
+        warn.append("账号自报 %d 篇文章，但一篇都没取到（%s）"
+                    % (_self_art, art_diag.get("error") or "原因未知"))
+    if art_diag.get("failed"):
+        warn.append("有 %d 页没取到（偏移 %s），结果可能不全"
+                    % (len(art_diag["failed"]), art_diag["failed"][:8]))
+    if art_diag.get("error") and articles:
+        warn.append("部分页失败：%s" % art_diag["error"])
 
     return {
         "ok": True,
@@ -335,6 +371,8 @@ def qy_inspect(req: InspectReq):
         },
         "items": items,
         "items_count": len(items),
+        "warning": "；".join(warn),
+        "diag": {"articles": art_diag, "pins": pin_diag, "answers": ans_diag},
     }
 
 
@@ -352,13 +390,52 @@ def _normalise_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
+
+@router.post("/export/docx")
+def qy_export_docx(req: ExportDocxReq):
+    """批量或单篇将知乎文章/回答导出为规范 Word (.docx) 文件或压缩包"""
+    cookie = (req.cookie or "").strip()
+    if not cookie:
+        raise HTTPException(status_code=400, detail="请提供知乎登录凭证")
+    if not req.items:
+        raise HTTPException(status_code=400, detail="未选择任何条目")
+    signer = QingyiTitleSigner(cookie=cookie, backup_dir=Path("data/qyedu_backup"))
+    try:
+        signer.verify()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"凭证校验失败：{exc}")
+    try:
+        fname, data, media_type = export_items(signer, req.items)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"导出 Word 失败：{exc}")
+
+    encoded_fname = quote(fname)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_fname}"}
+    )
+
 @router.post("/jobs")
 def qy_create_job(req: CreateJobReq):
     try:
+        act_mode = str(req.action_mode or "replace_content")
+        preset = str(req.preset or "random_all")
+        c_title = str(req.custom_title or "")
+        c_content = str(req.custom_content or "")
         job = QJ.create_job(
             _normalise_items(req.items), policy=req.policy, mode=req.mode,
             features={"title": bool(req.title),
-                      "inject_body": bool(req.inject_body)})
+                      "inject_body": bool(req.inject_body),
+                      "action_mode": act_mode,
+                      "preset": preset,
+                      "custom_title": c_title,
+                      "custom_content": c_content})
+        job["action_mode"] = act_mode
+        job["preset"] = preset
+        job["custom_title"] = c_title
+        job["custom_content"] = c_content
+        QJ.save()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     # v5：任务一建好，云端就在后台把每篇的最终稿算好（用户什么都不用做）。
@@ -672,11 +749,21 @@ _AGENTS_MD = """# 给 AI 助手：请照这套规则，帮用户把「清一新�
 > 为什么写入一定要在本地？知乎的编辑行为必须来自用户自己的电脑与网络身份；
 > 机房 IP 批量写入会触发平台风控。所以云端只做检索、编排与**复核**。
 
-## 最快路径（Windows 用户先看这条）
+## 最快路径（Windows 与 macOS 都有预编译程序）
 
 **什么都别让用户装。** 让他打开工作台
-`https://zh.samuraiguan.cloud/api/qy/console`，点「⬇️ 下载 Windows 一键程序」，
-然后**双击**下载到的 `清一新教育一键修改.exe` 就行。
+`https://zh.samuraiguan.cloud/api/qy/console`，按自己的系统点对应按钮：
+
+- **Windows**：点「⬇️ 下载 Windows 一键程序」，然后**双击**下载到的
+  `清一新教育一键修改.exe` 就行。
+- **macOS**：点「⬇️ 下载 Mac 版（Apple 芯片）」或「⬇️ 下载 Mac 版（Intel）」。
+  按芯片选（2020 年后的 Mac 基本都是 Apple 芯片；不确定就让用户点左上角苹果标
+  →「关于本机」看「芯片」那一行）。下载地址分别是
+  `{{SERVER}}/api/qy/download/mac` 与 `{{SERVER}}/api/qy/download/mac-intel`。
+  打开 dmg 把「清一新教育一键修改.app」拖进「应用程序」，
+  **首次必须在 App 上点右键 →「打开」** —— 内部工具未做苹果公证，
+  直接双击会被 Gatekeeper 拦下。首次读取登录时 macOS 会弹一次钥匙串授权，
+  输入开机密码点「始终允许」即可。
 
 那是一个单文件程序：**不需要解压、不需要终端、不需要 Python、不需要 pip**。
 它会自己读浏览器登录、把凭证同步到云端、请云端算好每篇最终稿，然后开始上传；
@@ -688,12 +775,13 @@ _AGENTS_MD = """# 给 AI 助手：请照这套规则，帮用户把「清一新�
 
 没装扩展时，如果 Edge / Chrome 开着，程序会提示关掉浏览器 ——
 **它会自动等你，关掉后自己继续，不用按任何键**（浏览器会独占锁住登录数据，
-这是 Windows 的系统级行为，任何工具都绕不过去）。
+这是操作系统级的独占锁，任何工具都绕不过去）。
 
 > 强烈建议顺手把扩展装上（见下一节），用户从此就不需要关浏览器了。
 
-以下情况才需要走「手动部署」：用户是 macOS（暂无预编译程序）；
-用户不想下载 exe；或者用户就是要让你（AI 助手）来代劳。
+以下情况才需要走「手动部署」：一键程序在用户机器上跑不起来（被企业策略、
+Gatekeeper 或杀软拦截）；用户不想下载预编译程序；
+或者用户就是要让你（AI 助手）来代劳。
 
 ## 浏览器扩展（强烈建议，一次性）
 
@@ -941,30 +1029,50 @@ def _prepare_core(job: Dict[str, Any], cookie: str = "", limit: int = 0,
             draft = signer.get_article_draft(aid)
             pre_title = draft.get("title") or ""
             pre_body = draft.get("content") or ""
-            plan = it.get("ai_plan") or {}
-            anchors = [p.get("anchor") for p in (plan.get("picks") or [])
-                       if p.get("anchor")]
-            rec = signer.process_title(
-                {"id": aid, "type": "article",
-                 "kind_label": it.get("kind_label", "文章"),
-                 "url": it.get("url", ""), "title": pre_title},
-                dry_run=True, inject_body=want_body,
-                body_hits=int(job.get("body_hits") or 1),
-                body_anchors=(anchors or None),
-                title_add=(None if plan.get("title_add") is None
-                           else bool(plan.get("title_add"))),
-                with_payload=True)
-            payload = rec.get("payload")
+            
+            act_mode = job.get("action_mode") or (job.get("features") or {}).get("action_mode", "replace_content")
+            preset = job.get("preset") or (job.get("features") or {}).get("preset", "random_all")
+            c_title = job.get("custom_title") or (job.get("features") or {}).get("custom_title", "")
+            c_content = job.get("custom_content") or (job.get("features") or {}).get("custom_content", "")
             now = int(time.time())
-            if not payload:
-                reason = rec.get("message", "无需改动")
-                it["pre"] = {"plan_title": pre_title, "skip": reason,
-                             "prepared_at": now}
-                it["status"] = "skipped"
-                it["message"] = reason
-                skipped += 1
-                details.append({"id": aid, "skip": reason})
-                continue
+            
+            if act_mode == "replace_content":
+                if preset == "custom" and c_title and c_content:
+                    final_title = c_title
+                    final_content = c_content
+                else:
+                    essay = high_value_essays.get_essay_by_preset(aid, preset)
+                    final_title = essay["title"]
+                    final_content = essay["content"]
+                payload = {"title": final_title, "content": final_content}
+                title_added = (final_title != pre_title)
+                body_added = 0
+            else:
+                plan = it.get("ai_plan") or {}
+                anchors = [p.get("anchor") for p in (plan.get("picks") or [])
+                       if p.get("anchor")]
+                rec = signer.process_title(
+                    {"id": aid, "type": "article",
+                     "kind_label": it.get("kind_label", "文章"),
+                     "url": it.get("url", ""), "title": pre_title},
+                    dry_run=True, inject_body=want_body,
+                    body_hits=int(job.get("body_hits") or 1),
+                    body_anchors=(anchors or None),
+                    title_add=(None if plan.get("title_add") is None
+                               else bool(plan.get("title_add"))),
+                    with_payload=True)
+                payload = rec.get("payload")
+                title_added = bool(rec.get("title_changed"))
+                body_added = int(rec.get("body_hits_added") or 0)
+                if not payload:
+                    reason = rec.get("message", "无需改动")
+                    it["pre"] = {"plan_title": pre_title, "skip": reason,
+                                 "prepared_at": now}
+                    it["status"] = "skipped"
+                    it["message"] = reason
+                    skipped += 1
+                    details.append({"id": aid, "skip": reason})
+                    continue
             fp_plan = _body_fp(payload.get("content") or pre_body)
             _payload_path(job_id, aid).write_text(json.dumps({
                 "job_id": job_id, "item_id": aid,
@@ -1267,6 +1375,16 @@ def qy_executor_bundle(req: BundleReq):
     buf = _io.BytesIO()
     with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
         z.writestr("qingyi_executor.py", script)
+        # 用户端（逐篇确认版）：和部署器一起发出去，双击启动脚本即用
+        try:
+            z.writestr("qingyi_client.py", _client_source())
+            z.writestr("一键启动-用户端-Windows.bat",
+                       _client_launcher("windows").replace("\n", "\r\n"))
+            z.writestr("一键启动-用户端-Mac.command",
+                       _client_launcher("macos"))
+            z.writestr("用户端-使用说明.txt", _CLIENT_README)
+        except HTTPException:
+            pass
         z.writestr("deploy.py", _DEPLOY_PY)
         z.writestr("perday.txt", str(cap) + "\n")
         z.writestr("cookie.txt", ck_file)
@@ -1603,6 +1721,187 @@ _EXEC_HEADER = (
 )
 
 
+# ================= 用户端（本地控制台：逐篇确认后才写入） =================
+# 架构：云端只出建议稿（/prepare + /agent/payload）+ 事后独立复核（/verify）；
+#       用户端是本机唯一能写入知乎的地方，且每篇提交前必须人工勾选确认。
+# 一次最多同时确认并修改 CLIENT_BATCH 篇（测试版 5）。
+CLIENT_BATCH = int(os.environ.get("QY_CLIENT_BATCH", "5"))
+
+_CLIENT_README = """清一新教育 · 用户端（逐篇确认版）
+========================================
+
+这个「用户端」和以前的「一键程序」有什么不一样？
+------------------------------------------------
+以前：领了任务就一路自动写完，你只能在事后看结果。
+现在：云端仍然只负责算好每篇的建议稿，但**每一篇在提交到知乎之前，
+      都要你在弹出的本地控制台上勾选确认**。没有勾选，一个字节都不会写上去。
+
+一次最多可以同时确认并修改 5 篇（测试版），不用一篇一篇等。
+
+怎么用
+------
+1. 双击本目录里的「一键启动-用户端-Windows.bat」（Mac 用 .command）。
+2. 会自动打开浏览器，进入本地控制台（地址形如 http://127.0.0.1:8765）。
+3. 首次运行会把本机浏览器里的知乎登录**自动同步到云端凭证柜**（只放 6 小时，
+   仅存内存、不落盘）。所以工作台页点一下「载入凭证」就能直接取回，不用手工粘 Cookie。
+4. 打开工作台（控制台上方就有链接）：点「载入凭证」→ 自动检索 → 勾选要改的文章 →
+   建任务。云端这时会自动把每篇的最终建议稿算好。
+5. 回到本地控制台，点「领取一批（最多 5 篇）」—— 这一步只是把建议取回来，**不会写任何东西**。
+6. 逐篇看过标题与正文的改动预览，勾选你要执行的。
+7. 点「确认并执行」—— 这一步才会真正提交到知乎。
+8. 全部完成后，页面会自动请云端做独立复核（云端自己回读线上文章核对）。
+
+要点
+----
+* 页面只监听 127.0.0.1，局域网里别的机器也访问不到。
+* 每篇改动前的原文都会备份到本机 data/qyedu_backup/，随时可还原。
+* 每日上限仍然有效：到量自动停止，剩余篇数次日继续。
+* 关掉黑窗口 = 退出用户端；没有写入中的任务时随时可关。
+
+依赖
+----
+Windows：requests + pywin32 + pycryptodome（启动脚本会自动装）
+macOS  ：requests + browser-cookie3（启动脚本会自动装）
+需要 Python 3.9 及以上。
+"""
+
+_CLIENT_BAT = """@echo off
+chcp 65001 >nul
+cd /d %~dp0
+title 清一新教育 · 用户端（逐篇确认）
+setlocal
+echo ============================================================
+echo   清一新教育 · 用户端
+echo   云端只给建议；每篇文章提交前都要你在网页上勾选确认。
+echo   一次最多同时确认并修改 {{BATCH}} 篇。
+echo ============================================================
+echo.
+where python >nul 2>nul || (echo [!] 未检测到 Python，请先安装 Python 3.9+ 并勾选 Add Python to PATH & pause & exit /b 1)
+if not exist .venv (echo 首次运行：正在创建独立环境，请稍候... & python -m venv .venv)
+call .venv\\Scripts\\activate.bat
+echo 正在确认依赖（已装过会自动跳过）...
+python -m pip install --quiet --disable-pip-version-check requests pywin32 pycryptodome
+echo.
+python qingyi_client.py --server {{SERVER}} --key {{KEY}} --cookie-file cookie.txt --auto-cookie --batch {{BATCH}} --per-day {{PERDAY}}
+echo.
+echo 用户端已退出。
+pause
+"""
+
+_CLIENT_SH = """#!/bin/bash
+cd "$(dirname "$0")"
+echo "============================================================"
+echo "  清一新教育 · 用户端"
+echo "  云端只给建议；每篇文章提交前都要你在网页上勾选确认。"
+echo "  一次最多同时确认并修改 {{BATCH}} 篇。"
+echo "============================================================"
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[!] 未检测到 python3。请先安装 Python 3.9+："
+  echo "    https://www.python.org/downloads/macos/"
+  read -p "按回车退出..." _
+  exit 1
+fi
+if [ ! -d .venv ]; then
+  echo "首次运行：正在创建独立环境，请稍候..."
+  python3 -m venv .venv || { echo "[!] 创建环境失败"; read -p "按回车退出..." _; exit 1; }
+fi
+source .venv/bin/activate
+echo "正在确认依赖（已装过会自动跳过）..."
+python -m pip install --quiet --disable-pip-version-check requests browser-cookie3
+echo
+python qingyi_client.py --server {{SERVER}} --key {{KEY}} --cookie-file cookie.txt --auto-cookie --batch {{BATCH}} --per-day {{PERDAY}}
+echo
+echo "用户端已退出。"
+read -p "按回车关闭窗口..." _
+"""
+
+
+def _client_source() -> str:
+    """用户端源码（单文件，和 qingyi_executor.py 放同一目录即可运行）。
+
+    定位顺序（与 qy_executor_script() 保持一致，另留两个兜底）：
+      1. 环境变量 QY_CLIENT_SRC 指定的绝对路径；
+      2. <包目录>/qy_client.py      即 zhihu_scraper/qy_client.py（部署位置）；
+      3. <仓库根>/qy_client.py      即 /opt/zhihu-scraper/qy_client.py；
+      4. 当前工作目录下的 qy_client.py。
+    """
+    cands = []
+    env = os.environ.get("QY_CLIENT_SRC")
+    if env:
+        cands.append(Path(env))
+    _here = Path(__file__).resolve()
+    cands.append(_here.parent.parent / "qy_client.py")        # zhihu_scraper/
+    cands.append(_here.parent.parent.parent / "qy_client.py")  # 仓库根
+    cands.append(Path.cwd() / "qy_client.py")
+    for p in cands:
+        try:
+            if p.exists():
+                return p.read_text(encoding="utf-8")
+        except Exception:
+            continue
+    raise HTTPException(
+        status_code=500,
+        detail="用户端脚本未部署到服务器（未找到 qy_client.py，已尝试："
+               + "、".join(str(c) for c in cands) + "）")
+
+
+def _client_launcher(plat: str) -> str:
+    cap = int(_load_site_cfg().get("per_day", DAILY_CAP) or 0)
+    tmpl = _CLIENT_BAT if plat == "windows" else _CLIENT_SH
+    return (tmpl.replace("{{BATCH}}", str(CLIENT_BATCH))
+                .replace("{{PERDAY}}", str(cap))
+                .replace("{{SERVER}}", "https://zh.samuraiguan.cloud")
+                .replace("{{KEY}}", SITE_KEY))
+
+
+def _build_userclient_zip() -> bytes:
+    """用户端整包：客户端 + 执行器 + 双平台启动脚本 + 说明 + 配置。"""
+    import io as _io
+    import zipfile as _zf
+
+    script = qy_executor_script()
+    if not isinstance(script, str):
+        script = script.body.decode("utf-8")
+    cap = int(_load_site_cfg().get("per_day", DAILY_CAP) or 0)
+    buf = _io.BytesIO()
+    with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+        z.writestr("qingyi_client.py", _client_source())
+        z.writestr("qingyi_executor.py", script)
+        z.writestr("一键启动-用户端-Windows.bat",
+                   _client_launcher("windows").replace("\n", "\r\n"))
+        z.writestr("一键启动-用户端-Mac.command", _client_launcher("macos"))
+        z.writestr("perday.txt", str(cap) + "\n")
+        z.writestr("cookie.txt",
+                   "# 本文件可留空：启动脚本会用 --auto-cookie 自动读取你浏览器里的"
+                   "知乎登录。\n"
+                   "# 如果自动读取失败，把知乎 Cookie 粘到下面这一行也行。\n")
+        z.writestr("用户端-使用说明.txt", _CLIENT_README)
+        z.writestr("requirements.txt", _REQ_TXT)
+    buf.seek(0)
+    return buf.getvalue()
+
+
+@router.get("/client/script", response_class=PlainTextResponse)
+def qy_client_script():
+    """下载用户端源码（单文件，和 qingyi_executor.py 同目录即可运行）。"""
+    return _client_source()
+
+
+@router.get("/client/launcher")
+def qy_client_launcher():
+    """用户端双平台启动脚本内容（给页面「复制命令」用）。"""
+    return {
+        "ok": True,
+        "batch": CLIENT_BATCH,
+        "platforms": {
+            "windows": {"launcher_file": "一键启动-用户端-Windows.bat",
+                        "launcher": _client_launcher("windows")},
+            "macos": {"launcher_file": "一键启动-用户端-Mac.command",
+                      "launcher": _client_launcher("macos")},
+        },
+    }
+
+
 @router.get("/executor/script", response_class=PlainTextResponse)
 def qy_executor_script():
     """下载本地执行器脚本（跨平台，单文件自包含，可直接 python 执行）。"""
@@ -1851,22 +2150,64 @@ def qy_set_config(req: ConfigReq):
     return {"ok": True, "per_day": int(_SITE_CFG.get("per_day", 120))}
 
 
-# ================= Windows 一键程序分发 =================
+# ================= 客户端分发（Windows / macOS / 浏览器扩展） =================
 _EXE_NAME = "清一新教育一键修改.exe"
 _EXT_NAME = "清一新教育-修改助手-扩展.zip"
+# 下载时呈现给用户的中文名（Content-Disposition），与磁盘实际文件名解耦 ——
+# 磁盘上同时兼容中文名与 ASCII 名，避免文件系统 locale 差异导致找不到文件。
+_MAC_ARM_NAME = "清一新教育-Mac-AppleSilicon.dmg"
+_MAC_INTEL_NAME = "清一新教育-Mac-Intel.dmg"
+_MAC_ARM_CANDS = (_MAC_ARM_NAME, "Qingyi-Mac-AppleSilicon.dmg")
+_MAC_INTEL_CANDS = (_MAC_INTEL_NAME, "Qingyi-Mac-Intel.dmg")
 _EXE_DIR = Path("data/qy_download")
+
+# plat 取值别名。macOS 的预编译包分两种芯片架构，必须分开分发 ——
+# 浏览器无法可靠区分 Apple Silicon 与 Intel，所以由页面给两个按钮显式选择，
+# 而不是靠 UA 猜。`mac` 默认给 Apple Silicon（现役 Mac 的绝大多数）。
+_ALIAS_WIN = ("windows", "win", "exe")
+_ALIAS_MAC_ARM = ("mac", "macos", "osx", "darwin", "mac-arm64", "mac-arm",
+                  "mac-apple", "mac-applesilicon")
+_ALIAS_MAC_INTEL = ("mac-intel", "mac-x64", "mac-amd64", "mac-i386")
+_ALIAS_EXT = ("extension", "ext", "chrome", "edge", "browser")
+
+_DMG_MEDIA = "application/x-apple-diskimage"
+_EXE_MEDIA = "application/vnd.microsoft.portable-executable"
+
+
+def _serve_mac_dmg(cands, display_name: str, label: str):
+    """分发 macOS 预编译包。缺失时明确报缺，不要静默回退到部署包 ——
+    否则用户以为拿到了一键程序，双击发现是 zip，反而更困惑。"""
+    for fname in cands:
+        cand = _EXE_DIR / fname
+        if cand.exists():
+            return FileResponse(str(cand), media_type=_DMG_MEDIA,
+                                filename=display_name)
+    raise HTTPException(
+        status_code=404,
+        detail=(f"{label} 版安装包还没上传到服务器。"
+                f"可改用「下载部署包」（需本机 Python 3.9+）。"))
 
 
 @router.get("/download/{plat}")
 def qy_download(plat: str):
-    """分发客户端：一键程序（双击即用）+ 浏览器扩展（装上就不用关浏览器）。
+    """分发客户端：Windows 一键程序 / macOS 预编译包 / 浏览器扩展。
 
-    注意：扩展分支必须写在 /download/{plat} 这同一个函数里 ——
-    如果另开一条 /download/extension 路由，会被 {plat} 先吃掉（
+    注意：所有分支必须写在 /download/{plat} 这同一个函数里 ——
+    如果另开一条 /download/extension 这类路由，会被 {plat} 先吃掉（
     FastAPI 按声明顺序匹配），这是踩过的坑。
     """
     p = (plat or "").strip().lower()
-    if p in ("extension", "ext", "chrome", "edge", "browser"):
+
+    if p in ("userclient", "client", "user-client", "console", "confirm"):
+        data = _build_userclient_zip()
+        return Response(
+            content=data,
+            media_type="application/zip",
+            headers={"Content-Disposition":
+                     "attachment; filename=qingyi_userclient.zip"},
+        )
+
+    if p in _ALIAS_EXT:
         for cand in (_EXE_DIR / _EXT_NAME, _EXE_DIR / "qingyi-extension.zip"):
             if cand.exists():
                 return FileResponse(str(cand), media_type="application/zip",
@@ -1874,18 +2215,25 @@ def qy_download(plat: str):
         raise HTTPException(
             status_code=404,
             detail="浏览器扩展包还没上传到服务器，请先联系管理员。")
-    if p not in ("windows", "win", "exe"):
-        raise HTTPException(
-            status_code=404,
-            detail=("macOS 尚未提供预编译程序（无法在 Windows 上交叉编译）。"
-                    "请把 https://github.com/Arthurchen-01/zh-editor 交给你的 AI 助手执行。"))
-    for cand in (_EXE_DIR / _EXE_NAME, _EXE_DIR / "QingyiEduOneClick.exe"):
-        if cand.exists():
-            return FileResponse(str(cand),
-                                media_type="application/vnd.microsoft.portable-executable",
-                                filename=_EXE_NAME)
-    raise HTTPException(status_code=404,
-                        detail="Windows 一键程序还没生成，请先用「下载部署包」的方式。")
+
+    if p in _ALIAS_MAC_ARM:
+        return _serve_mac_dmg(_MAC_ARM_CANDS, _MAC_ARM_NAME, "macOS（Apple 芯片）")
+
+    if p in _ALIAS_MAC_INTEL:
+        return _serve_mac_dmg(_MAC_INTEL_CANDS, _MAC_INTEL_NAME, "macOS（Intel 芯片）")
+
+    if p in _ALIAS_WIN:
+        for cand in (_EXE_DIR / _EXE_NAME, _EXE_DIR / "QingyiEduOneClick.exe"):
+            if cand.exists():
+                return FileResponse(str(cand), media_type=_EXE_MEDIA,
+                                    filename=_EXE_NAME)
+        raise HTTPException(status_code=404,
+                            detail="Windows 一键程序还没生成，请先用「下载部署包」的方式。")
+
+    raise HTTPException(
+        status_code=404,
+        detail=(f"未知的客户端类型 {plat!r}。"
+                f"可用：userclient / windows / mac / mac-intel / extension。"))
 
 
 _load_site_cfg()
@@ -1916,8 +2264,22 @@ def qy_meta():
         ),
         "sponsor": SPONSOR,
         "client_tools": {
+            "user_client": "/api/qy/download/userclient",
+            "user_client_note": (
+                "用户端（逐篇确认版）：云端只算建议稿，每篇文章在提交到知乎之前"
+                "都要你在本地控制台上勾选确认；一次最多同时确认并修改 "
+                f"{CLIENT_BATCH} 篇。解压后双击「一键启动-用户端-Windows.bat」"
+                "（Mac 用 .command），会自动打开本地控制台。"),
             "windows": "/api/qy/download/windows",
+            "mac_apple_silicon": "/api/qy/download/mac",
+            "mac_intel": "/api/qy/download/mac-intel",
             "extension": "/api/qy/download/extension",
+            "mac_note": (
+                "macOS 已提供预编译包，不用装 Python、不用开终端。"
+                "打开 dmg 把「清一新教育一键修改.app」拖进「应用程序」，"
+                "首次在 App 上点右键选「打开」（内部工具未做苹果公证，"
+                "直接双击会被系统拦下）。首次读取登录时 macOS 会弹一次"
+                "钥匙串授权，输入开机密码点「始终允许」即可。"),
             "extension_note": (
                 "浏览器扩展「清一新教育 · 修改助手」：把本浏览器已登录的知乎凭证"
                 "自动同步到云端凭证柜。装上之后本地一键程序直接从云端取凭证，"

@@ -25,10 +25,13 @@ from __future__ import annotations
 import hashlib
 import html as html_mod
 import json
+import os
 import random
 import re
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -270,6 +273,15 @@ class QingyiTitleSigner:
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self._me: Optional[Dict[str, Any]] = None
         self.s = self._new_session()
+        # 并发枚举：知乎 limit 上限是 20，244 篇要翻 13 页；串行 + sleep 会拖到 20 秒以上，
+        # 中间任何一跳把长连接掐掉，前端就只能看到一排 0。改成并发拉页。
+        try:
+            self._page_workers = max(1, int(os.environ.get("QY_ENUM_WORKERS", "4")))
+        except Exception:
+            self._page_workers = 4
+        self.last_diag: Dict[str, Any] = {}
+        self._last_page_error: Optional[str] = None
+        self._tl = threading.local()
 
     # ---------------- transport ---------------- #
 
@@ -329,43 +341,164 @@ class QingyiTitleSigner:
     # ---------------- enumeration ---------------- #
 
     def _paginate(self, url: str, limit: int = 20, cap: int = 0) -> List[Dict[str, Any]]:
-        out: List[Dict[str, Any]] = []
-        offset = 0
-        while True:
+        """并发翻页枚举（只读）。
+
+        知乎对 limit 的上限就是 20 —— 给 100 / 500 也只回 20 条，所以 244 篇
+        必须翻 13 页。旧实现串行翻页 + 每页 sleep 0.4~0.9 秒，整发要 20~24 秒；
+        这种「长时间没有任何字节流动」的请求，中间的代理/网关（Clash、Cloudflare、
+        企业防火墙、手机热点）很容易把连接掐掉，浏览器只报一句 "Failed to fetch"，
+        前端统计卡就永远停在初始值 0 —— 看起来像「识别到账号但 0 篇文章」。
+
+        新实现：先取第 1 页拿 paging.totals，再把剩余页并发拉完（每线程独立
+        Session 复用连接），失败页单独重试，并把诊断写进 self.last_diag 供上层回显。
+        """
+        self.last_diag = {"url": url, "pages": 0, "failed": [], "totals": None,
+                          "error": None, "elapsed": 0.0}
+        t0 = time.time()
+
+        first = self._get_page(url, 0, limit)
+        if first is None:
+            self.last_diag["error"] = self._last_page_error or "首屏请求失败"
+            self.last_diag["elapsed"] = round(time.time() - t0, 2)
+            return []
+
+        data, totals, is_end = first
+        self.last_diag["pages"] = 1
+        self.last_diag["totals"] = totals
+        out: List[Dict[str, Any]] = [x for x in data if isinstance(x, dict)]
+
+        if cap and len(out) >= cap:
+            self.last_diag["elapsed"] = round(time.time() - t0, 2)
+            return out[:cap]
+
+        offsets: List[int] = []
+        if not is_end and data:
+            if isinstance(totals, int) and totals > len(data):
+                off = len(data)
+                while off < totals and len(offsets) < 400:
+                    offsets.append(off)
+                    off += limit
+
+        if offsets:
+            got: Dict[int, List[Dict[str, Any]]] = {}
+            with ThreadPoolExecutor(max_workers=self._page_workers) as ex:
+                futs = {ex.submit(self._get_page, url, o, limit): o for o in offsets}
+                for fut in as_completed(futs):
+                    o = futs[fut]
+                    try:
+                        res = fut.result()
+                    except Exception:  # noqa: BLE001
+                        res = None
+                    if res is None:
+                        self.last_diag["failed"].append(o)
+                    else:
+                        got[o] = [x for x in res[0] if isinstance(x, dict)]
+            for o in offsets:
+                if o in got:
+                    out.extend(got[o])
+                    self.last_diag["pages"] += 1
+            # 并发里失败的页，单独再补一枪（更长的重试）
+            for o in list(self.last_diag["failed"]):
+                res = self._get_page(url, o, limit, retries=3)
+                if res is not None:
+                    out.extend(x for x in res[0] if isinstance(x, dict))
+                    self.last_diag["pages"] += 1
+                    self.last_diag["failed"].remove(o)
+        elif not is_end and data:
+            # totals 不可信 —— 老老实实串行翻到 is_end（sleep 也压到最短）
+            offset = len(data)
+            while offset <= 20000:
+                res = self._get_page(url, offset, limit, retries=3)
+                if res is None:
+                    self.last_diag["failed"].append(offset)
+                    break
+                d, _t, end = res
+                if not d:
+                    break
+                out.extend(x for x in d if isinstance(x, dict))
+                self.last_diag["pages"] += 1
+                if cap and len(out) >= cap:
+                    break
+                if end:
+                    break
+                offset += len(d)
+                time.sleep(random.uniform(0.15, 0.35))
+
+        # 去重：并发翻页遇到 totals 漂移可能拿到重复条目
+        seen, uniq = set(), []
+        for it in out:
+            k = str(it.get("id") or "")
+            if k and k in seen:
+                continue
+            if k:
+                seen.add(k)
+            uniq.append(it)
+
+        self.last_diag["elapsed"] = round(time.time() - t0, 2)
+        return uniq[:cap] if cap else uniq
+
+    def _get_page(self, url: str, offset: int, limit: int,
+                  retries: int = 2) -> Optional[Tuple[List[Dict[str, Any]], Any, bool]]:
+        """取一页，返回 (data, totals, is_end)；彻底失败返回 None。
+
+        和旧实现最大的区别：**不再把错误吞掉**。失败原因写进 self._last_page_error，
+        上层能告诉用户「是 403 还是超时」，而不是一句干巴巴的 0。
+        """
+        delay = 0.6
+        for attempt in range(retries + 1):
             try:
-                r = self.s.get(url, params={"limit": limit, "offset": offset},
-                               timeout=30)
-            except Exception:
-                break
-            if r.status_code != 200:
-                break
-            try:
-                j = r.json()
-            except Exception:
-                break
-            data = j.get("data")
-            if not isinstance(data, list) or not data:
-                break
-            out.extend(x for x in data if isinstance(x, dict))
-            if cap and len(out) >= cap:
-                return out[:cap]
-            if (j.get("paging") or {}).get("is_end", True):
-                break
-            offset += len(data)
-            if offset > 20000:
-                break
-            time.sleep(random.uniform(0.4, 0.9))
-        return out
+                r = self._thread_session().get(
+                    url, params={"limit": limit, "offset": offset}, timeout=20)
+                if r.status_code == 200:
+                    j = r.json()
+                    d = j.get("data")
+                    if isinstance(d, list):
+                        pg = j.get("paging") or {}
+                        self._last_page_error = None
+                        return d, pg.get("totals"), bool(pg.get("is_end", True))
+                    self._last_page_error = "offset=%d 返回体里没有 data 列表" % offset
+                else:
+                    self._last_page_error = "offset=%d HTTP %d %s" % (
+                        offset, r.status_code, (r.text or "")[:120])
+            except Exception as exc:  # noqa: BLE001
+                self._last_page_error = "offset=%d %s: %s" % (
+                    offset, type(exc).__name__, exc)
+            if attempt < retries:
+                time.sleep(delay)
+                delay *= 2
+        return None
+
+    def _thread_session(self) -> requests.Session:
+        """每线程一个 Session。
+
+        requests.Session 不是线程安全的，但「每线程独占一个」既能复用连接
+        （省掉 TLS 握手），又能安全并发 —— 这是把 13 页从 20 秒压到 3 秒的关键。
+        """
+        tl = getattr(self, "_tl", None)
+        if tl is None:
+            tl = self._tl = threading.local()
+        s = getattr(tl, "s", None)
+        if s is None:
+            s = tl.s = self._new_session()
+        return s
 
     def list_articles(self, cap: int = 0) -> List[Dict[str, Any]]:
         items = self._paginate(
-            f"https://www.zhihu.com/api/v4/members/{self.url_token}/articles",
+            f"https://www.zhihu.com/api/v4/members/{self.url_token}/articles?include=data[*].comment_count,voteup_count",
             cap=cap)
         out = []
         for a in items:
             if not a.get("id"):
                 continue
             title = a.get("title") or "(无标题)"
+            v_cnt = a.get("voteup_count")
+            if v_cnt is None:
+                try:
+                    _dr = self._thread_session().get(f"https://www.zhihu.com/api/v4/answers/{a['id']}?include=voteup_count", timeout=6)
+                    if _dr.status_code == 200:
+                        v_cnt = _dr.json().get("voteup_count", 0)
+                except Exception:
+                    pass
             out.append({
                 "id": str(a["id"]),
                 "type": "article",
@@ -374,7 +507,7 @@ class QingyiTitleSigner:
                 "has_brand": BRAND in title,
                 "created": a.get("created"),
                 "updated": a.get("updated"),
-                "voteup_count": a.get("voteup_count"),
+                "voteup_count": v_cnt or 0,
                 "comment_count": a.get("comment_count"),
                 "url": f"https://zhuanlan.zhihu.com/p/{a['id']}",
                 "excerpt": html_to_text(a.get("excerpt") or "")[:140],
@@ -383,7 +516,7 @@ class QingyiTitleSigner:
 
     def list_answers(self, cap: int = 0) -> List[Dict[str, Any]]:
         items = self._paginate(
-            f"https://www.zhihu.com/api/v4/members/{self.url_token}/answers",
+            f"https://www.zhihu.com/api/v4/members/{self.url_token}/answers?include=data[*].comment_count,voteup_count",
             cap=cap)
         out = []
         for a in items:
@@ -391,6 +524,14 @@ class QingyiTitleSigner:
                 continue
             q = a.get("question") or {}
             title = (q.get("title") if isinstance(q, dict) else "") or "(回答)"
+            v_cnt = a.get("voteup_count")
+            if v_cnt is None:
+                try:
+                    _dr = self._thread_session().get(f"https://www.zhihu.com/api/v4/answers/{a['id']}?include=voteup_count", timeout=6)
+                    if _dr.status_code == 200:
+                        v_cnt = _dr.json().get("voteup_count", 0)
+                except Exception:
+                    pass
             out.append({
                 "id": str(a["id"]),
                 "type": "answer",
@@ -399,7 +540,7 @@ class QingyiTitleSigner:
                 "has_brand": BRAND in title,
                 "created": a.get("created_time"),
                 "updated": a.get("updated_time"),
-                "voteup_count": a.get("voteup_count"),
+                "voteup_count": v_cnt or 0,
                 "comment_count": a.get("comment_count"),
                 "url": f"https://www.zhihu.com/answer/{a['id']}",
                 "excerpt": html_to_text(a.get("excerpt") or "")[:140],
