@@ -283,7 +283,7 @@ def extract_local_zhihu_cookie() -> dict:
         return {
             "ok": False,
             "reason": "non_windows",
-            "message": "当前处于云端服务器环境，受浏览器安全沙箱限制无法跨网络读取您个人电脑。请使用【方式二：1秒控制台口诀】或【方式三：弹出网页登录】！",
+            "message": "当前处于云端服务器环境，受浏览器安全沙箱限制无法跨网络读取您个人电脑。请使用【方式二：从 DevTools 复制 z_c0】或【方式三：弹出网页登录】！",
         }
 
     try:
@@ -295,7 +295,7 @@ def extract_local_zhihu_cookie() -> dict:
         return {
             "ok": False,
             "reason": "missing_deps",
-            "message": "本地环境缺少解密组件，请直接使用【方式二：1秒控制台口诀】。",
+            "message": "本地环境缺少解密组件，请直接使用【方式二：从 DevTools 复制 z_c0】。",
         }
 
     home = Path.home()
@@ -385,20 +385,20 @@ def extract_local_zhihu_cookie() -> dict:
         return {
             "ok": False,
             "reason": "locked",
-            "message": f"已检测到电脑中的 {'/'.join(found_browsers)}，但浏览器当前正在运行并锁定了数据文件。请关闭浏览器窗口后再点一次；或者直接使用下方的【方式二：1秒控制台口诀】！",
+            "message": f"已检测到电脑中的 {'/'.join(found_browsers)}，但浏览器当前正在运行并锁定了数据文件。请关闭浏览器窗口后再点一次；或者直接使用下方的【方式二：从 DevTools 复制 z_c0】！",
         }
 
     if found_browsers:
         return {
             "ok": False,
             "reason": "not_logged_in",
-            "message": f"已扫描电脑中的 {'/'.join(found_browsers)}，但未发现知乎登录凭证。请确保浏览器已登录知乎，或使用下方的【方式二：1秒控制台口诀】！",
+            "message": f"已扫描电脑中的 {'/'.join(found_browsers)}，但未发现知乎登录凭证。请确保浏览器已登录知乎，或使用下方的【方式二：从 DevTools 复制 z_c0】！",
         }
 
     return {
         "ok": False,
         "reason": "not_found",
-        "message": "未在电脑默认路径找到 Edge 或 Chrome。建议直接使用【方式二：1秒控制台口诀】。",
+        "message": "未在电脑默认路径找到 Edge 或 Chrome。建议直接使用【方式二：从 DevTools 复制 z_c0】。",
     }
 
 
@@ -619,6 +619,22 @@ def inspect_target(req: InspectRequest):
 
     if target_token:
         author_scraper = AuthorScraper(client)
+
+        # ★ 凭证活性探针：先用合并后的 cookie 打一次 /api/v4/me。
+        #   这是「检索全是 0」最快的确诊手段 —— 未登录 / 凭证过期 / 缺 z_c0 时，
+        #   后面所有列表接口都会返回空，用户只会看到一排 0 而无从判断。
+        cred = {"ok": False, "name": "", "status": None, "reason": ""}
+        try:
+            me = client.get_json("https://www.zhihu.com/api/v4/me?include=name,url_token")
+            cred["status"] = getattr(client, "last_status", None)
+            if isinstance(me, dict) and me.get("name"):
+                cred = {"ok": True, "name": me.get("name"),
+                        "status": cred["status"], "reason": ""}
+            else:
+                cred["reason"] = "接口没返回登录身份（未登录 / 凭证已过期）"
+        except Exception as e:
+            cred["reason"] = str(e)[:160]
+
         try:
             catalog = author_scraper.catalog_all_assets(
                 target_token,
@@ -631,8 +647,26 @@ def inspect_target(req: InspectRequest):
                 max_per_category=limit
             )
             catalog["target_type"] = "author"
+            catalog["credential"] = cred
             if resolved_from:
                 catalog["resolved_from"] = resolved_from
+
+            # ★ 凭证自检：把「为什么是 0」直接写进 warnings ——
+            #   前端会弹窗 + 常驻横幅展示，不让用户对着 0 猜。
+            warns = catalog.setdefault("warnings", [])
+            if not re.search(r"(?:^|;\s*)z_c0\s*=", cookie or ""):
+                warns.insert(0,
+                    "当前凭证里没有 z_c0 登录态（只有设备 cookie）。"
+                    "浏览器控制台的 document.cookie 读不到 z_c0（它是 HttpOnly），"
+                    "所以这样检索会大面积缺失甚至全是 0 —— "
+                    "请用浏览器扩展读取，或 DevTools → Application → Cookies 复制完整 cookie 再试")
+            if not cred["ok"]:
+                warns.insert(0,
+                    "登录凭证没通过知乎校验（%s）—— 下面的数字很可能是残缺的、甚至全是 0。"
+                    "请点「🔑 点我一键获取知乎凭证」按方式二重新取一次真正的 z_c0。"
+                    % (cred["reason"] or "未登录"))
+            if not warns:
+                catalog.pop("warnings", None)
             return catalog
         except Exception as e:
             logger.error("Error cataloging author for token %s: %s", target_token, e)
@@ -2232,27 +2266,31 @@ def index_ui():
                         </div>
                     </div>
 
-                    <!-- Method 2: 1-Second Console Trick -->
+                    <!-- Method 2: DevTools 里的 z_c0（唯一可靠的手动路线） -->
                     <div class="cred-card" style="border-color: rgba(16, 185, 129, 0.35);">
                         <div class="cred-card-header">
-                            <span class="cred-card-tag">兜底手段 · 需要按 F12</span>
-                            <h4 class="cred-card-title">💡 方式二：控制台取一次凭证（技术兜底）</h4>
+                            <span class="cred-card-tag">手动兜底 · 需要按 F12</span>
+                            <h4 class="cred-card-title">💡 方式二：从浏览器 DevTools 复制 z_c0</h4>
                         </div>
-                        <p class="cred-card-desc">上面两条都不行时再用这个。它需要按 F12 打开控制台，照着下面 3 步做：</p>
-                        <div style="background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px; margin: 8px 0; font-size: 12px; line-height: 1.8;">
-                            <div>1️⃣ 确保打开知乎网页并已登录：<a href="https://www.zhihu.com" target="_blank" style="color: var(--cyan); text-decoration: underline; font-weight: 600;">🔗 点击打开知乎 (在新标签页)</a></div>
-                            <div>2️⃣ 在知乎网页按键盘最顶部的 <strong>F12</strong> 键，点击弹出来的顶部 <strong>Console (控制台)</strong></div>
-                            <div>3️⃣ 点击下方复制口诀，粘贴到控制台按回车：</div>
-                            <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px;">
-                                <code style="background: var(--bg-base); border: 1px solid var(--card-border); padding: 5px 12px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #38bdf8;">copy(document.cookie)</code>
-                                <button @click="copySnippet" class="btn btn-secondary" style="padding: 6px 14px; font-size: 12px;">
-                                    {{ snippetCopied ? '✅ 已复制口诀！' : '📋 点击一键复制口诀' }}
-                                </button>
-                            </div>
+                        <p class="cred-card-desc" style="color: #f59e0b; font-weight: 600;">
+                            ⚠️ 别再用 <code>copy(document.cookie)</code> 了 —— z_c0 是 HttpOnly 的，控制台读不到它，
+                            所以那样拿到的永远是「设备 cookie」，检索必然大面积缺失甚至全是 0。
+                            用下面任意一条路线，都能拿到真正的 z_c0。
+                        </p>
+                        <div style="background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 14px; margin: 8px 0; font-size: 12px; line-height: 1.9;">
+                            <div><strong style="color: #38bdf8;">路线 A（推荐 · 只拿 z_c0 的值）</strong></div>
+                            <div>1️⃣ 用本机浏览器打开并登录知乎：<a href="https://www.zhihu.com" target="_blank" style="color: var(--cyan); text-decoration: underline; font-weight: 600;">🔗 点击打开知乎 (在新标签页)</a></div>
+                            <div>2️⃣ 按 <strong>F12</strong> → 点顶部 <strong>Application（应用）</strong> → 左侧 <strong>Storage → Cookies → https://www.zhihu.com</strong></div>
+                            <div>3️⃣ 在列表里找到名字叫 <strong>z_c0</strong> 的那一行 → <strong>双击 Value 列</strong> → Ctrl+A 全选 → Ctrl+C 复制</div>
+                            <div>4️⃣ 回到本页，直接粘进上面的凭证框（会自动封装成标准凭证）</div>
+                            <div style="margin-top: 10px;"><strong style="color: #38bdf8;">路线 B（一次拿整条 Cookie）</strong></div>
+                            <div>1️⃣ F12 → 切到 <strong>Network（网络）</strong> → 刷新一下知乎页面</div>
+                            <div>2️⃣ 点列表里任意一条 zhihu.com 的请求 → 右侧 <strong>Headers → Request Headers</strong></div>
+                            <div>3️⃣ 找到 <strong>Cookie:</strong> 那一行 → 右键 <strong>Copy value</strong> → 回本页粘贴（整行都行，系统会自动提取）</div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap;">
                             <button @click="pasteFromClipboard" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-color: #10b981; padding: 8px 16px; font-size: 13px;">
-                                📋 我已在知乎回车，点此一键自动粘贴并填入
+                                📋 我已复制好，点此从剪贴板粘贴并填入
                             </button>
                             <span style="font-size: 11px; color: var(--text-muted);">（点击将直接从剪贴板读取并自动提取有效凭证）</span>
                         </div>
@@ -2269,7 +2307,7 @@ def index_ui():
                             <button @click="openZhihuPopup" class="btn btn-outline" style="padding: 8px 16px; font-size: 13px;">
                                 🌐 弹出知乎官方登录窗口
                             </button>
-                            <span style="font-size: 11px; color: var(--text-muted);">登录完成后，再按方式二复制一次即可（仍需 F12）</span>
+                            <span style="font-size: 11px; color: var(--text-muted);">登录完成后，再按方式二从 DevTools 复制 z_c0（仍需 F12）</span>
                         </div>
                     </div>
 
@@ -2291,7 +2329,7 @@ def index_ui():
 
             <!-- ============ 清一新教育 · 文章修改工作台（入口标识） ============ -->
             <a href="/api/qy/console" class="qy-entry"
-               title="清一新教育文章修改工作台 —— 给文章标题与内容添加【清一新教育】标识">
+               title="清一新教育文章修改工作台 —— 整篇替换正文（默认），或只给标题/正文加【清一新教育】品牌词">
                 <div class="qy-entry-icon">🏷️</div>
                 <div>
                     <div class="qy-entry-title">
@@ -2299,8 +2337,9 @@ def index_ui():
                         <span class="qy-entry-tag">标题 + 内容</span>
                     </div>
                     <div class="qy-entry-desc">
-                        给文章<strong>标题</strong>和<strong>内容</strong>添加 <code>【清一新教育】</code> 标识
-                        · 每篇固定 <strong>2 处</strong> · 只做句末括注不改写原文 · 可一键还原
+                        两种模式：<strong>整篇替换正文</strong>（默认，换成合规长文），或
+                        <strong>只加品牌词</strong>（标题前置 <code>【清一新教育】</code> + 正文句末括注）
+                        · 改动前原文自动备份 · 可一键还原
                     </div>
                 </div>
                 <div class="qy-entry-go">点击进入 →</div>
@@ -2326,7 +2365,7 @@ def index_ui():
                         <button
                             class="btn btn-outline btn-sm"
                             style="display: flex; align-items: center; gap: 6px; border-color: rgba(14, 165, 233, 0.45); color: #0ea5e9; font-weight: 600;"
-                            title="批量给文章标题与内容加上【清一新教育】标识（每篇固定 2 处）"
+                            title="进入文章修改工作台（整篇替换正文 / 只加品牌词，改动前自动备份）"
                         >
                             <span>🏷️ 文章修改工作台</span>
                         </button>
@@ -2341,8 +2380,7 @@ def index_ui():
                     </button>
                     <button 
                         @click="toggleTheme" 
-                        class="theme-switch-btn" 
-                        class="theme-switch-btn" 
+                        class="theme-switch-btn"
                         :title="'切换到' + (theme === 'dark' ? '白天风格' : '暗黑风格')"
                     >
                         <span>{{ theme === 'dark' ? '☀️ 白天风格' : '🌙 暗黑风格' }}</span>
@@ -2644,7 +2682,7 @@ def index_ui():
                     </div>
                     <div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                            <label style="margin-bottom: 0;">知乎登录凭证 (选填 · 避免知乎限流)</label>
+                            <label style="margin-bottom: 0;">知乎登录凭证 (需含 z_c0 · 缺了会导致检索全为 0)</label>
                             <button 
                                 type="button" 
                                 @click="openCredentialModal" 
@@ -2778,6 +2816,19 @@ def index_ui():
                 <button @click="returnToAuthor" class="btn btn-outline btn-sm">
                     ⬅️ 返回创作者全量列表
                 </button>
+            </div>
+
+            <!-- ★ 凭证诊断横幅：出现 0 条 / 缺页时，把真因直接写在脸上 -->
+            <div v-if="credWarn.length" class="card" style="padding: 14px 20px; border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.08); margin-bottom: 16px;">
+                <div style="font-size: 13px; font-weight: 700; color: #f59e0b; margin-bottom: 6px;">
+                    ⚠️ 检索结果可能不完整（{{ credWarn.length }} 条诊断）
+                </div>
+                <ul style="margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.9; color: var(--text-main);">
+                    <li v-for="(w, i) in credWarn" :key="i">{{ w }}</li>
+                </ul>
+                <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                    按上面的提示把凭证补好，再重新点一次「🔍 检索目标已有资产与动态」即可。
+                </div>
             </div>
 
             <!-- Author Profile Banner -->
@@ -3156,6 +3207,10 @@ def index_ui():
                     const detectSuccess = ref(false);
                     const snippetCopied = ref(false);
                     const cookieStatus = ref(null);
+                    // ★ 凭证诊断：检索时后端回传 warnings / credential ——
+                    //   直接钉在页面上，别让用户对着一排 0 猜原因。
+                    const credWarn = ref([]);
+                    const credName = ref('');
                     const showCookie = ref(false);
                     const showApiDocsModal = ref(false);
                     const apiDocsTab = ref('rest');
@@ -3217,14 +3272,23 @@ def index_ui():
                                 message: `成功识别知乎凭证 (z_c0: ${m[1].substring(0, 10)}...)`
                             };
                         } else if (cookie.value.includes('d_c0=') || cookie.value.includes('_zap=')) {
+                            // ★ 只有设备 cookie、没有 z_c0 —— 「检索全是 0」的头号成因。
+                            //   z_c0 是 HttpOnly，document.cookie 根本读不到它；缺了它，
+                            //   服务端只能拿云端默认凭证去请求，而那份一过期就 403 → 全 0。
+                            //   这里必须报 warn（原来的「✅ 已保障抓取」是骗人的），
+                            //   否则用户看到一片 0 却以为是系统坏了。
                             cookieStatus.value = {
-                                valid: true,
-                                message: '已读取基础设备凭证 (已自动融合云端长效通道保障抓取)'
+                                valid: false,
+                                message: '缺少 z_c0 登录凭证！只有设备 cookie 时检索会大面积缺失甚至全是 0。'
+                                       + '控制台的 document.cookie 读不到 z_c0（HttpOnly），'
+                                       + '请点右上角「🔑」按方式二从 DevTools 复制真正的 z_c0'
                             };
                         } else {
+                            // 既不是 z_c0、也不是设备 cookie —— 不敢说「已就绪」。
                             cookieStatus.value = {
-                                valid: true,
-                                message: '凭证已填入 (已与云端长效通道双通道融合)'
+                                valid: false,
+                                message: '这段凭证里没认出 z_c0。如果检索结果是 0，请点右上角「🔑」'
+                                       + '按方式二从 DevTools 重新复制一次 z_c0。'
                             };
                         }
                     };
@@ -3620,9 +3684,12 @@ def index_ui():
                                 items.value = (data.items || []).map(i => ({ ...i, selected: true }));
                             }
                             // 后端自检：主页声称有 N 条、接口却一条没给 —— 说明 cookie
-                            // 被知乎风控拦了。不弹这个，用户只会看到一片 0，无从判断。
+                            // 被知乎风控拦了、或者压根没登录。既弹窗、又钉在页面上，
+                            // 否则用户只会看到一片 0，无从判断。
                             const _warns = (data && data.warnings) || [];
-                            if (_warns.length) { alert('\u26a0\ufe0f ' + _warns.join('\uff1b')); }
+                            credWarn.value = _warns;
+                            credName.value = (data && data.credential && data.credential.name) || '';
+                            if (_warns.length) { alert('⚠️ ' + _warns.join('；')); }
                         } catch (e) {
                             alert('检索出错: ' + e.message);
                         } finally {
@@ -3765,6 +3832,8 @@ def index_ui():
                         items,
                         activeJob,
                         resolvedFrom,
+                        credWarn,
+                        credName,
                         selectedCount,
                         isAllFilteredSelected,
                         toggleSelectAllFiltered,
@@ -3794,7 +3863,17 @@ def main():
     """CLI launcher for local web server."""
     port = int(os.environ.get("PORT", 8775))
     print(f"🚀 知乎定向排查与存证 Web 交互系统已启动: http://127.0.0.1:{port}")
-    uvicorn.run(app, host=os.environ.get("QY_BIND", "0.0.0.0"), port=port)
+    # SSH/浏览器里的 SSE 长连接（/api/qy/jobs/{id}/stream、/export/docx/progress）默认不自己结束。
+    # systemd 发 SIGTERM 后旧进程拖着不放，到 TimeoutStopSec 就被 SIGKILL；
+    # 重建期间 127.0.0.1:8775 无人监听 → nginx connect() failed (111) → Cloudflare 502。
+    # 这里显式给一个短于 systemd 宽限期的收尾时间，让旧进程主动收摊。
+    uvicorn.run(
+        app,
+        host=os.environ.get("QY_BIND", "0.0.0.0"),
+        port=port,
+        timeout_graceful_shutdown=int(
+            os.environ.get("QY_GRACEFUL_TIMEOUT", "15")),
+    )
 
 
 if __name__ == "__main__":

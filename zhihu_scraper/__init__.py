@@ -2,7 +2,7 @@
 Modular, robust, and extensible scraper for articles, columns, answers, pins, comments, and visual screenshots.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __all__ = [
     "ZhihuClient",
     "AuthorScraper",

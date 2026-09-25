@@ -324,10 +324,17 @@ def qy_inspect(req: InspectReq):
                 "pending": len(rows) - branded}
 
     items: List[Dict[str, Any]] = []
+    essay_by_key = getattr(high_value_essays, "ESSAY_BY_KEY", {})
     for r in articles + pins + answers:
-        r_rand = high_value_essays.get_essay_by_preset(r["id"], "random_all")["title"]
-        r_law = high_value_essays.get_essay_by_preset(r["id"], "law")["title"]
-        r_cla = high_value_essays.get_essay_by_preset(r["id"], "classics")["title"]
+        rep_titles = {
+            "random_all": high_value_essays.get_essay_by_preset(r["id"], "random_all")["title"],
+            "law": high_value_essays.get_essay_by_preset(r["id"], "law")["title"],
+            "classics": high_value_essays.get_essay_by_preset(r["id"], "classics")["title"],
+            "sishu": high_value_essays.get_essay_by_preset(r["id"], "sishu")["title"],
+            "wujing": high_value_essays.get_essay_by_preset(r["id"], "wujing")["title"],
+        }
+        for _ek, _ev in essay_by_key.items():
+            rep_titles[_ek] = _ev["title"]
         items.append({
             "id": r["id"],
             "type": r["type"],
@@ -335,11 +342,7 @@ def qy_inspect(req: InspectReq):
             "title": r["title"],
             "title_after": r["title"] if r.get("has_brand")
                            else f"{TITLE_PREFIX}{r['title']}",
-            "replacement_titles": {
-                "random_all": r_rand,
-                "law": r_law,
-                "classics": r_cla,
-            },
+            "replacement_titles": rep_titles,
             "has_brand": r.get("has_brand", False),
             "url": r.get("url", ""),
             "created": r.get("created"),
@@ -835,12 +838,14 @@ def qy_cred_latest(request: Request, key: str = ""):
 _DEPLOY_PY = """#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 '''
-清一新教育 · 一键部署器
-自动：识别设备 → 装依赖 → 读取本机浏览器知乎登录 → 生成 cookie.txt →
-      上传凭证柜（网页点「载入凭证」即可用）→ 启动执行器。
-全程不需要粘贴，不需要 F12。
+清一新教育 · 一键部署器（支持手动输入 Cookie / 四书五经 / 法律条文 / 自定义修改）
+顺序：
+  1) 优先读取同目录 cookie.txt（无需关浏览器）
+  2) 若 cookie.txt 为空，尝试云端凭证柜或单次自动读取浏览器
+  3) 若浏览器被占用（如 Edge 正在运行），支持直接在终端手动粘贴 Cookie，或启动本地可视化工作台手动填入
 '''
 
+import os
 import platform
 import subprocess
 import sys
@@ -849,7 +854,6 @@ from pathlib import Path
 SERVER = "https://zh.samuraiguan.cloud"
 SITE_KEY = "guanjun2026"
 HERE = Path(__file__).resolve().parent
-MAX_TRY = 5
 
 
 def pip(pkg):
@@ -870,6 +874,23 @@ def per_day():
     return 120
 
 
+def clean_cookie(raw: str) -> str:
+    s = (raw or "").strip()
+    if s.lower().startswith("cookie:"):
+        s = s.split(":", 1)[1].strip()
+    for line in s.splitlines():
+        line = line.strip()
+        if line.startswith("#") or not line:
+            continue
+        if line.lower().startswith("cookie:"):
+            line = line.split(":", 1)[1].strip()
+        if "z_c0=" in line:
+            return line
+    if s and not s.startswith("#") and "=" not in s and len(s) >= 20:
+        return f"z_c0={s}"
+    return s if "z_c0=" in s else ""
+
+
 def existing_cookie():
     '''目录里已有的 cookie.txt —— 只有真的含 z_c0 才算可用。'''
     f = HERE / "cookie.txt"
@@ -879,34 +900,43 @@ def existing_cookie():
         raw = f.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return ""
-    for line in raw.splitlines():
-        line = line.strip()
-        if line.startswith("#"):
-            continue
-        if "z_c0=" in line:
-            return line
+    return clean_cookie(raw)
+
+
+def cloud_cookie():
+    try:
+        import json as _j
+        import urllib.request as _u
+        req = _u.Request(SERVER + "/api/qy/credential-latest",
+                         headers={"X-API-Key": SITE_KEY})
+        res = _j.loads(_u.urlopen(req, timeout=10).read().decode("utf-8"))
+        if res.get("ok") and "z_c0=" in (res.get("cookie") or ""):
+            return res["cookie"].strip()
+    except Exception:
+        pass
     return ""
 
 
 def main():
+    if platform.system() == "Windows":
+        try:
+            os.system("title 清一新教育 · 一键部署与自定义修改工作台")
+        except Exception:
+            pass
     os_name = platform.system()
     v = sys.version_info
-    print("=" * 62)
-    print("  清一新教育 · 一键部署器")
-    print("=" * 62)
+    print("=" * 66)
+    print("  清一新教育 · 一键部署与内容修改工具 (v2.0)")
+    print("  支持：手动输入 Cookie / 四书五经(《大学》等) / 法律条文 / 自定义内容")
+    print("=" * 66)
     print(f"[1/4] 设备识别: {os_name} · Python {v.major}.{v.minor}.{v.micro}")
     if v < (3, 9):
-        print("[!] 需要 Python 3.9 及以上。请到 python.org 安装，")
-        print("    Windows 安装时务必勾选 Add Python to PATH。")
-        try:
-            input("按回车退出...")
-        except EOFError:
-            pass
+        print("[!] 需要 Python 3.9 及以上。请到 python.org 安装。")
         return 1
 
     win = os_name == "Windows"
     cap = per_day()
-    print("[2/4] 安装依赖（已装过会自动跳过）...  每日上限："
+    print("[2/4] 确认依赖（已装过会自动跳过）...  每日上限："
           + ("不限" if cap == 0 else f"{cap} 篇/天"))
     pip("requests")
     if win:
@@ -915,46 +945,50 @@ def main():
     else:
         pip("browser-cookie3")
 
-    print("[3/4] 自动读取本机知乎登录（无需粘贴，无需 F12）...")
-    ck = ""
-    for attempt in range(1, MAX_TRY + 1):
+    print("[3/4] 获取知乎登录凭证（优先读取 cookie.txt / 支持手动粘贴）...")
+    ck = existing_cookie()
+    if ck:
+        print("    [OK] 已从本目录 cookie.txt 读取知乎 Cookie（无需关闭浏览器）")
+
+    if not ck:
         try:
             sys.path.insert(0, str(HERE))
             from qingyi_executor import auto_detect_cookie
             ck, src = auto_detect_cookie()
-            print(f"    [OK] 已读取（来源: {src}）")
-            break
+            print(f"    [OK] 已自动读取浏览器登录（来源: {src}）")
         except Exception as exc:
-            ck = ""
-            print(f"    [!] 第 {attempt}/{MAX_TRY} 次读取失败：{exc}")
-            if attempt >= MAX_TRY:
-                break
-            print("")
-            print("    最常见的解决办法：")
-            print("      1) 把 Edge / Chrome 的所有窗口全部关掉（不是最小化）")
-            print("      2) 确认浏览器里已经登录 zhihu.com")
-            print("      3) 关好之后，回到本窗口按回车重试")
-            try:
-                ans = input("    >>> 按回车重试（输入 q 退出）: ").strip().lower()
-            except EOFError:
-                break
-            if ans == "q":
-                break
+            print(f"    [i] 浏览器自动读取跳过（{exc}）")
 
     if not ck:
-        ck = existing_cookie()
+        ck = cloud_cookie()
         if ck:
-            print("    [i] 自动读取没成功，改用本目录里已有的 cookie.txt。")
+            print("    [OK] 已从云端凭证柜载入知乎 Cookie")
 
     if not ck:
         print("")
-        print("[!] 没能拿到知乎登录凭证，无法继续。")
-        print("    最省事的办法：把浏览器所有窗口关掉，再双击一次「一键部署」。")
-        print("    如仍失败，可把浏览器里的知乎 Cookie 粘贴到 cookie.txt 后重试。")
+        print("    ========================================================")
+        print("    [手动输入 Cookie] 无需关闭 Edge/Chrome 浏览器！")
+        print("    你可以：")
+        print("      方式 A：直接在此处粘贴知乎 Cookie（含 z_c0=...）后按回车")
+        print("      方式 B：直接按回车打开【本地可视化网页工作台】，在网页里手动粘贴")
+        print("              并自由选择《大学》等四书五经、法律条文或自定义修改内容")
+        print("    ========================================================")
         try:
-            input("按回车退出...")
+            pasted = input("    >>> 请粘贴知乎 Cookie（或直接按回车打开可视化工作台）: ").strip()
         except EOFError:
-            pass
+            pasted = ""
+        ck = clean_cookie(pasted)
+        if not ck and (HERE / "qingyi_client.py").exists():
+            print("    [→] 正在启动本地可视化工作台 (http://127.0.0.1:8765) ...")
+            return subprocess.call([
+                sys.executable, str(HERE / "qingyi_client.py"),
+                "--server", SERVER, "--key", SITE_KEY,
+                "--cookie-file", "cookie.txt",
+                "--batch", "10", "--per-day", str(cap)
+            ])
+
+    if not ck:
+        print("[!] 未提供有效知乎 Cookie（需包含 z_c0=...）。可将其写入 cookie.txt 后重试。")
         return 1
 
     (HERE / "cookie.txt").write_text(ck + "\\n", encoding="utf-8")
@@ -968,9 +1002,26 @@ def main():
             headers={"Content-Type": "application/json",
                      "X-API-Key": SITE_KEY})
         _u.urlopen(req, timeout=20)
-        print("    [OK] 凭证已暂存：回到网页点「📥 载入凭证」即可开始。")
+        print("    [OK] 凭证已保存至 cookie.txt 并同步到云端凭证柜。")
     except Exception as exc:
-        print(f"    [i] 凭证柜暂存失败（不影响本机运行）：{exc}")
+        print(f"    [i] 凭证柜暂存跳过（不影响本机运行）：{exc}")
+
+    if (HERE / "qingyi_client.py").exists():
+        print("")
+        print("    请选择运行模式：")
+        print("      [1] 打开本地可视化修改工作台（推荐：可选《大学》/四书五经/法律条文/自定义正文，支持改文章与回答）")
+        print("      [2] 启动云端任务自动执行器（自动认领云端已创建的任务）")
+        try:
+            mode_ans = input("    >>> 请输入 1 或 2（默认 1）: ").strip()
+        except EOFError:
+            mode_ans = "2"
+        if mode_ans in ("", "1"):
+            return subprocess.call([
+                sys.executable, str(HERE / "qingyi_client.py"),
+                "--server", SERVER, "--key", SITE_KEY,
+                "--cookie-file", "cookie.txt",
+                "--batch", "10", "--per-day", str(cap)
+            ])
 
     try:
         import json as _j2
@@ -1128,8 +1179,8 @@ browser-cookie3; sys_platform == "darwin"
 _DEPLOY_BAT = (
     "@echo off\r\n"
     "chcp 65001 >nul\r\n"
-    "title \u6e05\u4e00\u65b0\u6559\u80b2 \u00b7 \u4e00\u952e\u90e8\u7f72\r\n"
-    "cd /d %~dp0\r\n"
+    "title Qingyi Edu Deploy\r\n"
+    "cd /d \"%~dp0\"\r\n"
     "set PY=python\r\n"
     "%PY% --version >nul 2>nul\r\n"
     "if errorlevel 1 set PY=py\r\n"
@@ -1322,7 +1373,8 @@ def _prepare_core(job: Dict[str, Any], cookie: str = "", limit: int = 0,
                     final_content = essay["content"]
                 payload = {"title": final_title, "content": final_content}
                 title_added = (final_title != pre_title)
-                body_added = 0
+                body_added = 1 if (final_content != pre_body) else 0
+                rec = {"title_changed": title_added, "body_hits_added": body_added}
             else:
                 plan = it.get("ai_plan") or {}
                 anchors = [p.get("anchor") for p in (plan.get("picks") or [])
@@ -1361,6 +1413,8 @@ def _prepare_core(job: Dict[str, Any], cookie: str = "", limit: int = 0,
                 "expected_body_sha256": fp_plan,
                 "title_added": bool(rec.get("title_changed")),
                 "body_added": int(rec.get("body_hits_added") or 0),
+                "action_mode": act_mode,
+                "preset": preset,
                 "prepared_at": now,
             }, ensure_ascii=False), encoding="utf-8")
             it["pre"] = {
@@ -1404,6 +1458,7 @@ def _judge(snap: Dict[str, Any], live_title: str, live_body: str):
     fp_plan = _body_fp(plan_body)
     fp_live = _body_fp(live_body)
     plan_injected = (fp_plan != fp_pre)
+    is_brand_plan = (snap.get("action_mode") == "brand_signature") or (BRAND in (plan_body or "") and plan_title.startswith(_BRAND_TITLE))
 
     reasons: List[str] = []
 
@@ -1429,24 +1484,34 @@ def _judge(snap: Dict[str, Any], live_title: str, live_body: str):
     level = ""
     body_ok = True
     if plan_injected:
-        # 先看「到底有没有植入」，再说「改动有没有越界」：
-        # 这样最常见的失败（只改标题、忘了正文）能给出直指的提示。
-        token = (_BRAND_BODY_FULL if _BRAND_BODY_FULL in live_body else
-                 (_BRAND_BODY_HALF if _BRAND_BODY_HALF in live_body else ""))
-        if not token:
-            body_ok = False
-            reasons.append("正文未按云端方案植入品牌词（线上找不到品牌括注）")
-        elif delta != 1:
-            body_ok = False
-            reasons.append(f"正文品牌词增减异常（原文 {hits_pre} 处 → "
-                           f"线上 {hits_live} 处，应恰好 +1）")
-        if body_ok and fp_live == fp_plan:
-            level = "matches_plan"
-        elif body_ok and _body_fp(_qyc.strip_scenes(live_body)) == fp_pre:
-            level = "only_parenthetical"
-        elif body_ok:
-            body_ok = False
-            reasons.append("正文改动超出云端方案（原文被改写，无法还原）")
+        if not is_brand_plan:
+            # 替换正文模式（四书五经 / 法律条文 / 自定义内容）：直接核对正文指纹是否与方案一致
+            if fp_live == fp_plan:
+                level = "matches_plan"
+                body_ok = True
+            elif fp_live == fp_pre:
+                body_ok = False
+                reasons.append("正文未按方案替换（线上仍是原正文）")
+            else:
+                body_ok = False
+                reasons.append("正文与替换方案不一致")
+        else:
+            token = (_BRAND_BODY_FULL if _BRAND_BODY_FULL in live_body else
+                     (_BRAND_BODY_HALF if _BRAND_BODY_HALF in live_body else ""))
+            if not token:
+                body_ok = False
+                reasons.append("正文未按云端方案植入品牌词（线上找不到品牌括注）")
+            elif delta != 1:
+                body_ok = False
+                reasons.append(f"正文品牌词增减异常（原文 {hits_pre} 处 → "
+                               f"线上 {hits_live} 处，应恰好 +1）")
+            if body_ok and fp_live == fp_plan:
+                level = "matches_plan"
+            elif body_ok and _body_fp(_qyc.strip_scenes(live_body)) == fp_pre:
+                level = "only_parenthetical"
+            elif body_ok:
+                body_ok = False
+                reasons.append("正文改动超出云端方案（原文被改写，无法还原）")
     else:
         if fp_live == fp_pre:
             level = "untouched"
@@ -1649,8 +1714,11 @@ def qy_executor_bundle(req: BundleReq):
     if cap < 0:
         cap = 0
     buf = _io.BytesIO()
+    here = Path(__file__).resolve().parent.parent
     with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
         z.writestr("qingyi_executor.py", script)
+        if (here / "high_value_essays.py").exists():
+            z.writestr("high_value_essays.py", (here / "high_value_essays.py").read_text(encoding="utf-8"))
         # 用户端（逐篇确认版）：和部署器一起发出去，双击启动脚本即用
         try:
             z.writestr("qingyi_client.py", _client_source())
@@ -2043,24 +2111,30 @@ macOS  ：requests + browser-cookie3（启动脚本会自动装）
 
 _CLIENT_BAT = """@echo off
 chcp 65001 >nul
-cd /d %~dp0
-title 清一新教育 · 用户端（逐篇确认）
+cd /d "%~dp0"
 setlocal
-echo ============================================================
-echo   清一新教育 · 用户端
-echo   云端只给建议；每篇文章提交前都要你在网页上勾选确认。
-echo   一次最多同时确认并修改 {{BATCH}} 篇。
-echo ============================================================
-echo.
-where python >nul 2>nul || (echo [!] 未检测到 Python，请先安装 Python 3.9+ 并勾选 Add Python to PATH & pause & exit /b 1)
-if not exist .venv (echo 首次运行：正在创建独立环境，请稍候... & python -m venv .venv)
-call .venv\\Scripts\\activate.bat
-echo 正在确认依赖（已装过会自动跳过）...
+set PYTHONIOENCODING=utf-8
+set PYTHONUTF8=1
+
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [!] Python 3.9+ not found. Please install Python 3.9+ and check Add Python to PATH.
+    pause
+    exit /b 1
+)
+
+if not exist ".venv\\Scripts\\python.exe" (
+    python -c "print('首次运行：正在创建独立运行环境 (.venv)，请稍候...')"
+    python -m venv .venv
+)
+
+call ".venv\\Scripts\\activate.bat"
+python -c "import os; os.system('title 清一新教育 · 用户端与自定义修改工作台'); print('='*62); print('  清一新教育 · 用户端与本地自定义内容修改工作台'); print('  支持：手动输入 Cookie / 四书五经(《大学》等) / 法律条文 / 自定义正文'); print('  每篇文章或回答提交前均可在网页上预览、编辑、勾选确认。'); print('='*62); print('正在确认依赖（已安装会自动跳过）...')"
 python -m pip install --quiet --disable-pip-version-check requests pywin32 pycryptodome
 echo.
 python qingyi_client.py --server {{SERVER}} --key {{KEY}} --cookie-file cookie.txt --auto-cookie --batch {{BATCH}} --per-day {{PERDAY}}
 echo.
-echo 用户端已退出。
+python -c "print('用户端已退出。')"
 pause
 """
 

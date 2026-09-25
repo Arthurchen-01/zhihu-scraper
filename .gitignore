@@ -49,3 +49,8 @@ data/qy_pre/
 data/qy_pre.json
 data/qy_download/
 data/qy_site_cfg.json
+
+# 发布/热修时的临时备份（勿入库）
+*.bak-*
+_bak_*/
+backup_before_*/

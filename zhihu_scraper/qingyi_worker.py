@@ -420,28 +420,31 @@ class LocalExecutor:
 # --------------------------------------------------------------------------- #
 
 def _read_cookie(args: argparse.Namespace) -> str:
-    """读取凭证。读不到就返回空串（交给上层做自动读取兜底），不抛异常。
+    """读取凭证。读不到就返回空串（交给上层做自动读取或手动输入兜底），不抛异常。"""
+    def _clean(raw: str) -> str:
+        s = (raw or "").strip()
+        if s.lower().startswith("cookie:"):
+            s = s.split(":", 1)[1].strip()
+        for line in s.splitlines():
+            line = line.strip()
+            if line.startswith("#") or not line:
+                continue
+            if line.lower().startswith("cookie:"):
+                line = line.split(":", 1)[1].strip()
+            if "z_c0=" in line:
+                return line
+        if s and not s.startswith("#") and "=" not in s and len(s) >= 20:
+            return f"z_c0={s}"
+        return s if "z_c0=" in s else ""
 
-    两个历史坑：
-      1. 部署包里的 cookie.txt 在没有凭证时只有注释行。旧实现把注释文本
-         当成凭证返回，执行器于是拿着注释去请求知乎。
-      2. 旧实现在这里 raise SystemExit，会把 --auto-cookie 的兜底路径
-         整个挡住 —— 自动读取根本没机会执行。
-    """
     if args.cookie:
-        return args.cookie.strip()
+        return _clean(args.cookie)
     if args.cookie_file:
         p = Path(args.cookie_file)
         if not p.exists():
             return ""
         raw = p.read_text(encoding="utf-8", errors="replace")
-        for line in raw.splitlines():
-            line = line.strip()
-            if line.startswith("#"):
-                continue
-            if "z_c0=" in line:
-                return line
-        return ""
+        return _clean(raw)
     return ""
 
 
@@ -610,32 +613,48 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     cookie = _read_cookie(args)
     if getattr(args, "auto_cookie", False) and not cookie:
-        print("凭证文件里没有可用登录态，改为自动读取本机浏览器登录…")
-        for _attempt in range(1, 6):
+        print("凭证文件里没有可用登录态，尝试自动读取本机浏览器登录…")
+        try:
+            cookie, src = auto_detect_cookie()
+            print(f"[OK] 已自动读取本机知乎登录（来源：{src}）。")
+        except Exception as exc:
+            cookie = ""
+            print(f"[i] 自动读取未成功（{exc}）")
             try:
-                cookie, src = auto_detect_cookie()
-                print(f"[OK] 已自动读取本机知乎登录（来源：{src}），无需粘贴。")
-                break
-            except Exception as exc:
-                cookie = ""
-                print(f"[!] 第 {_attempt}/5 次自动读取失败：{exc}")
-                if _attempt >= 5:
-                    break
-                print("    请把 Edge / Chrome 的所有窗口全部关掉（不是最小化），"
-                      "再按回车重试。")
+                _cp_tmp = ControlPlane(args.server, api_key)
+                _cr = _cp_tmp.s.get(f"{args.server.rstrip('/')}/api/qy/credential-latest", timeout=10)
+                if _cr.status_code == 200:
+                    _cj = _cr.json()
+                    if _cj.get("ok") and "z_c0=" in (_cj.get("cookie") or ""):
+                        cookie = _cj["cookie"].strip()
+                        print("[OK] 已从云端凭证柜自动获取知乎登录凭证。")
+            except Exception:
+                pass
+            if not cookie:
+                print("\n[手动输入 Cookie] 无需关闭浏览器，你也可以直接在此粘贴知乎 Cookie（包含 z_c0=...）：")
                 try:
-                    _ans = input("    >>> 按回车重试（输入 q 退出）: ").strip().lower()
+                    _pasted = input("    >>> 请粘贴知乎 Cookie（或按回车跳过）: ").strip()
                 except EOFError:
-                    break
-                if _ans == "q":
-                    break
+                    _pasted = ""
+                if _pasted:
+                    if _pasted.lower().startswith("cookie:"):
+                        _pasted = _pasted.split(":", 1)[1].strip()
+                    if "=" not in _pasted and len(_pasted) >= 20:
+                        _pasted = f"z_c0={_pasted}"
+                    if "z_c0=" in _pasted:
+                        cookie = _pasted
+                        if args.cookie_file:
+                            try:
+                                Path(args.cookie_file).write_text(cookie + "\n", encoding="utf-8")
+                                print(f"[OK] 已将手动输入的 Cookie 保存至 {args.cookie_file}")
+                            except Exception:
+                                pass
     if not cookie:
         raise SystemExit(
             "没有拿到知乎登录凭证，无法继续。\n"
-            "  · 最省事的办法：双击「一键部署-Windows.bat」"
-            "（Mac 用「一键部署-Mac.command」），它会自动读取浏览器里的登录并重试。\n"
-            "  · 若提示浏览器锁定：把浏览器所有窗口全部关掉后再试一次。\n"
-            "  · 也可以手动把知乎 Cookie 粘贴到 cookie.txt 里。")
+            "  · 方式 1：直接把知乎 Cookie（含 z_c0=...）粘贴到同目录的 cookie.txt 文件里；\n"
+            "  · 方式 2：运行 qingyi_client.py 打开本地网页控制台（http://127.0.0.1:8765）在网页上手动粘贴；\n"
+            "  · 方式 3：关闭浏览器所有窗口后重试自动读取。")
 
     pol = RatePolicy()
     if args.gap_min is not None:

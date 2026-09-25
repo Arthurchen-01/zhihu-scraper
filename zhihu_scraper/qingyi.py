@@ -666,6 +666,29 @@ class QingyiTitleSigner:
             raise RuntimeError(f"读取草稿失败 HTTP {r.status_code}")
         return r.json()
 
+    def get_answer(self, aid: str) -> Dict[str, Any]:
+        r = self.s.get(
+            f"https://www.zhihu.com/api/v4/answers/{aid}?include=content,editable_content,question",
+            headers={"Referer": f"https://www.zhihu.com/answer/{aid}"},
+            timeout=30)
+        if r.status_code != 200:
+            raise RuntimeError(f"读取回答失败 HTTP {r.status_code}")
+        return r.json()
+
+    def patch_answer(self, aid: str, content: str) -> Tuple[bool, str]:
+        try:
+            r = self.s.put(
+                f"https://www.zhihu.com/api/v4/answers/{aid}",
+                json={"content": content, "reshipment_settings": "allowed"},
+                headers={"Origin": "https://www.zhihu.com",
+                         "Referer": f"https://www.zhihu.com/answer/{aid}"},
+                timeout=40)
+            if r.status_code == 200:
+                return True, "回答修改成功"
+            return False, f"HTTP {r.status_code} {r.text[:140]}"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"异常 {exc}"
+
     def backup(self, kind: str, item_id: str, title: str, body_hash: str,
                body: Optional[str] = None) -> str:
         """落盘完整原文，确保「可随时完整还原」不是一句空话。

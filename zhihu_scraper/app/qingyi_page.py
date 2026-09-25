@@ -5,7 +5,7 @@
          （可选加速：装浏览器扩展，之后连「关浏览器」都不需要）
   第 2 步  打钩挑文章 → 点一个大按钮
   第 3 步  把改动推到你的知乎（双击一键程序）→ 进度实时回传
-  第 4 步  逐篇对照 + 正文零改动证据
+  第 4 步  执行进度与云端复核 → 逐篇对照（品牌词模式另附正文指纹比对）
 
 v5 相对 v4 的改动：
   * 所有请求统一带上站点密钥 → 直接打开/收藏本页也能用（不再 401 天书）
@@ -540,32 +540,33 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
   🤝 <b>清一新教育-冠军一班-谢迪安友情资助</b>
   <span class="tip">｜本工具免费提供，用于让有价值的教学内容更容易被检索到</span><br>
   📞 支持本计划 / 企业 AI 供应对接：<b>谢迪安 / 陈冠宇</b>
-  · 微信号：<span class="ph">{微信号·待补}</span>
-  <span class="tip">（署名与联系方式仅显示在本页面，<b>不写入任何文章正文</b>）</span>
+  <!-- 待补：微信号。填好后删掉本注释，改成 · 微信号：<span class="ph">你的号码</span> -->
+  <span class="tip">（本页署名与联系方式仅供联系使用，<b>不会写入任何文章正文</b>）</span>
 </div>
 
 <header class="top">
   <h1>清一新教育文章修改工作台</h1>
-  <span class="badge">标题 1 处 + 正文 1~5 处（可选）</span>
+  <span class="badge">默认：替换正文 / 可选：只加品牌词</span>
 </header>
 <div class="sub">
   云端负责检索与进度，真正的写入在你自己电脑上完成（走你本人的网络身份）。
   <a href="/" style="color:var(--brand-2)">← 返回存证系统</a>
-  · <a onclick="startTour(true)" style="color:var(--brand-2);cursor:pointer">❓ 新手引导</a>
-  · <a onclick="showHelp()" style="color:var(--brand-2);cursor:pointer">❔ 常见问题</a>
+  · <a href="javascript:void(0)" role="button" tabindex="0" onclick="startTour(true)" style="color:var(--brand-2);cursor:pointer">❓ 新手引导</a>
+  · <a href="javascript:void(0)" role="button" tabindex="0" onclick="showHelp()" style="color:var(--brand-2);cursor:pointer">❔ 常见问题</a>
 </div>
 
 <details class="adv" style="margin-bottom:16px">
   <summary>本工具会改动什么？（点开看完整声明）</summary>
   <div class="body">
-    每篇文章改两件事：<br>
-    ① <strong>标题</strong>最前面加入品牌词 <code>【清一新教育】</code> 共 1 处（固定）；<br>
-    ② <strong>正文</strong>中以署名式括注 <code>（清一新教育）</code> 加入品牌词 ——
-    <strong>加几处由你在「高级」里自选</strong>（1~5 处，默认 1 处），
-    也可以交给 AI 逐篇推荐加在哪。<br>
-    正文植入<strong>只做句末括注，不删除、不改写、不替换任何原有文字</strong>，
-    并可一键还原为原文；每篇原文均在本机留有备份。
-    <strong>除此之外没有任何修改。</strong>
+    第 2 步的「文章修改与替换内容设置」里有两种模式，<strong>默认是第 ① 种</strong>：<br>
+    <strong>① 替换正文模式（默认）</strong> —— 把选中的文章<strong>标题与正文整篇替换</strong>为
+    一篇 1,000~2,500 字的正规长文（中国法律法规条文 / 国学名篇，按文章 ID 确定性分配；
+    可在设置里切换文库，或改成自填标题与正文）。<strong>原有正文会被整篇替换掉，不是加字。</strong><br>
+    <strong>② 品牌词模式</strong> —— <strong>标题</strong>最前面加入 <code>【清一新教育】</code> 1 处（固定）；
+    <strong>正文</strong>只在句末做署名式括注 <code>（清一新教育）</code>（1~5 处自选，默认 1 处）。
+    此模式<strong>不删除、不改写、不替换任何原有文字</strong>。<br>
+    <strong>两种模式在改动前都会把你电脑上的原文备份下来，可一键还原。</strong>
+    除此之外不会改动专栏归属、话题、评论设置、图片与发布状态。
   </div>
 </details>
 
@@ -650,20 +651,19 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
 
   <div id="inspectMsg" class="hint" style="margin-top:10px"></div>
 
-  <details class="adv">
-    <summary>高级：手动填写凭证 / 重新检索</summary>
+  <details class="adv" open>
+    <summary>🔑 手动填写知乎登录凭证 (Cookie) / 上传云端 / 重新检索（无需关闭浏览器）</summary>
     <div class="body">
-      <label class="f" for="ck">知乎登录凭证（含 <code>z_c0=</code>；手动粘贴或自动载入都行）</label>
-      <textarea id="ck" placeholder="可以是：①点上面「📥 载入凭证」自动填好；②自己从浏览器复制后粘进来"></textarea>
+      <label class="f" for="ck">知乎登录凭证（含 <code>z_c0=</code>；可直接手动粘贴，无需关闭 Edge/Chrome 浏览器）</label>
+      <textarea id="ck" placeholder="在此处直接粘贴知乎 Cookie（包含 z_c0=...），或点上方「📥 载入凭证」自动填入"></textarea>
 
       <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-        <button class="btn-primary" id="btnUploadCred" onclick="doUploadCred()">☁️ 上传这份凭证到云端</button>
+        <button class="btn-primary" id="btnUploadCred" onclick="doUploadCred()">☁️ 保存并上传凭证到云端</button>
         <button class="btn-ghost btn-sm" id="btnPasteCred" onclick="doPasteCred()">📋 从剪贴板粘贴</button>
-        <button class="btn-ghost btn-sm" id="btnInspect" onclick="doInspect()">🔍 重新检索我的内容</button>
+        <button class="btn-primary btn-sm" id="btnInspect" onclick="doInspect()" style="background:#0284c7;">🔍 立即检索我的知乎内容</button>
       </div>
       <div class="hint" id="uploadState" style="margin-top:8px">
-        把凭证放进上面的框 → 点「☁️ 上传到云端」。上传之后，双击一键程序就不用再关浏览器了。
-        <br>（上传的是知乎发给你这台电脑的登录凭据，云端只保留 6 小时、到点自动丢弃。）
+        把凭证粘贴进上面的框 → 点「☁️ 保存并上传凭证到云端」或「🔍 立即检索我的知乎内容」。上传之后，本地客户端与一键部署包可直接拉取使用，无需关闭浏览器。
       </div>
       <div class="hint" style="margin-top:4px">检索是只读的，不会写入任何内容。</div>
     </div>
@@ -680,11 +680,10 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
 
 <!-- ============ 第 2 步 ============ -->
 <div class="card hide" id="listCard">
-  <h2><span class="step">2</span> 打钩挑文章</h2>
+  <h2><span class="step">2</span> 选择修改内容方案（四书五经 / 法律条文 / 自定义）并打钩挑文章</h2>
   <div class="hint">
-    给想加【清一新教育】的文章<strong>打钩</strong>（点标题左边的方框），
-    然后点最下面那个大按钮。不勾选什么都不会发生。<br>
-    点完之后，<strong>云端会先把每篇文章的最终标题和正文算好</strong>（只读，不会改动任何内容），之后交给助手执行就行。
+    可选择<strong>《大学》《中庸》《论语》《孟子》等四书五经</strong>、<strong>《宪法》《民法典》等国家现行法律条文</strong>，或<strong>直接自定义填写标题与正文</strong>。<br>
+    点完之后，<strong>云端会先把每篇文章的最终标题和正文算好</strong>（只读，不会改动任何内容），之后可在本地用户端预览确认并提交。
   </div>
   <div class="tabs" id="tabs"></div>
 
@@ -692,7 +691,7 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
   <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:14px 0 16px;">
     <div style="font-weight:700;font-size:14.5px;margin-bottom:10px;display:flex;align-items:center;gap:8px;">
       <span>⚙️ 文章修改与替换内容设置</span>
-      <span style="font-size:12px;color:var(--text-3);font-weight:normal">（可选择高价值法律/国学名篇替换，或仅添加品牌词）</span>
+      <span style="font-size:12px;color:var(--text-3);font-weight:normal">（支持四书五经、法律条文、自定义标题与正文，或品牌词模式）</span>
     </div>
     
     <div style="display:flex;flex-direction:column;gap:12px;">
@@ -700,35 +699,65 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
       <div style="display:flex;gap:24px;flex-wrap:wrap;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;">
           <input type="radio" name="actionMode" id="modeReplace" value="replace_content" checked onchange="onModeChange()">
-          <span>📜 替换为高价值正规长文（安全自查与脱敏备份 - 推荐）</span>
+          <span>📜 替换正文模式（四书五经 / 法律条文 / 自定义内容 · 默认）</span>
         </label>
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-2);">
           <input type="radio" name="actionMode" id="modeBrand" value="brand_signature" onchange="onModeChange()">
-          <span>🏷️ 原有品牌词模式（仅在原标题前加【清一新教育】）</span>
+          <span>🏷️ 品牌词模式（标题前置【清一新教育】+ 正文句末括注）</span>
         </label>
       </div>
 
       <!-- 预设选择器 (当为 replace_content 时显示) -->
       <div id="replaceContentOptions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 14px;">
         <span style="font-size:13.5px;font-weight:600;">选择替换文库预设：</span>
-        <select id="essayPreset" onchange="onPresetChange()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--line);font-size:13.5px;background:#fff;font-weight:500;">
-          <option value="random_all" selected>🏛️ 随机轮换（中国法律法规 + 古典国学名篇混合）</option>
-          <option value="law">⚖️ 中国现行法律文库（《宪法》《民法典》《爱国主义教育法》《义务教育法》等）</option>
-          <option value="classics">📖 古典国学修身文库（《礼记·学记》《大学》《劝学》《师说》《儒行》等）</option>
-          <option value="custom">✏️ 自定义指定内容（自填标题与正文）</option>
+        <select id="essayPreset" onchange="onPresetChange()" style="padding:6px 12px;border-radius:6px;border:1px solid var(--line);font-size:13.5px;background:#fff;font-weight:500;max-width:100%;">
+          <optgroup label="🏛️ 分类自动轮换方案">
+            <option value="classics" selected>📚 四书五经与国学经典全库轮换（《大学》《中庸》《论语》《孟子》《诗经》等 12 篇）</option>
+            <option value="sishu">📖 四书经典专项轮换（《大学》《中庸》《论语》《孟子》）</option>
+            <option value="wujing">📜 五经与国学名篇轮换（《诗经》《尚书》《礼记》《周易》《春秋左传》等）</option>
+            <option value="law">⚖️ 中国现行法律条文轮换（《宪法》《民法典》《爱国主义教育法》《义务教育法》等 8 部）</option>
+            <option value="random_all">🏛️ 法律法规 + 四书五经混合轮换（全库 20 篇）</option>
+          </optgroup>
+          <optgroup label="📚 指定单篇 · 四书五经与国学经典">
+            <option value="daxue">📘 《礼记·大学》—— 明明德、亲民、止于至善与八条目研读</option>
+            <option value="zhongyong">📘 《礼记·中庸》—— 诚者天之道、博学审问慎思明辨笃行研读</option>
+            <option value="lunyu">📘 《论语》—— 为学修身与君子人格经典章句导读</option>
+            <option value="mengzi">📘 《孟子》—— 仁义礼智四端与浩然之气经典选读</option>
+            <option value="shijing">📗 《诗经》—— 风雅颂经典名篇与温柔敦厚诗教传统研读</option>
+            <option value="shangshu">📗 《尚书》—— 敬德保民、惟精惟一与洪范九畴政道文献研读</option>
+            <option value="xueji">📗 《礼记·学记》—— 教学相长、豫时孙摩与中国古代教育哲学考论</option>
+            <option value="ruxing">📗 《礼记·儒行》—— 儒者风骨、自立自强与刚毅特立人格精神考述</option>
+            <option value="zhouyi">📗 《周易》—— 自强不息、厚德载物与君子修省之道研读</option>
+            <option value="chunqiu">📗 《春秋左传》—— 立德立功立言三不朽与居安思危历史镜鉴</option>
+            <option value="quanxue">📙 《荀子·劝学》—— 积善成德、锲而不舍与终身治学方法论</option>
+            <option value="shishuo">📙 韩愈《师说》—— 传道受业解惑与尊师重道治学传统探微</option>
+          </optgroup>
+          <optgroup label="⚖️ 指定单部 · 国家现行法律条文">
+            <option value="law_xianfa">⚖️ 《中华人民共和国宪法》公民基本权利与义务条文研读</option>
+            <option value="law_minfa">⚖️ 《中华人民共和国民法典》民事权利能力与诚实信用原则条文导读</option>
+            <option value="law_aiguo">⚖️ 《中华人民共和国爱国主义教育法》核心条文与文化传承规范研读</option>
+            <option value="law_jiaoyu">⚖️ 《中华人民共和国义务教育法》与素质教育法定职责条文释义</option>
+            <option value="law_weichengnian">⚖️ 《中华人民共和国未成年人保护法》六大保护体系条文研读</option>
+            <option value="law_kexue">⚖️ 《中华人民共和国科学技术进步法》基础研究与青年科技人才培养条文导读</option>
+            <option value="law_zhuzuoquan">⚖️ 《中华人民共和国著作权法》作品权利保护与合理使用制度条文研读</option>
+            <option value="law_jiatingjiaoyu">⚖️ 《中华人民共和国家庭教育促进法》立德树人与家庭责任条文导读</option>
+          </optgroup>
+          <optgroup label="✍️ 自定义修改内容">
+            <option value="custom">✏️ 直接填写自定义标题与正文内容</option>
+          </optgroup>
         </select>
-        <span id="presetTip" style="font-size:12.5px;color:var(--text-2);">✨ 每篇文章根据 ID 确定性分配对应篇目（1,000~2,500 字正规学术/法治内容，安全合规）</span>
+        <span id="presetTip" style="font-size:12.5px;color:var(--text-2);">✨ 支持直接指定《大学》等四书五经、国家现行法律条文或自定义文本（安全合规）</span>
       </div>
 
       <!-- 自定义输入区 (当选择 custom 时展开) -->
       <div id="customContentBox" class="hide" style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;">
         <div style="margin-bottom:8px;">
           <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">自定义标题：</label>
-          <input type="text" id="customTitle" oninput="renderTable()" style="width:100%;max-width:500px;padding:6px 10px;border-radius:6px;border:1px solid var(--line);" placeholder="例如：法治素养与立德树人实践研读">
+          <input type="text" id="customTitle" oninput="renderTable()" style="width:100%;max-width:500px;padding:6px 10px;border-radius:6px;border:1px solid var(--line);" placeholder="例如：《礼记·大学》三纲领八条目研读 / 自定义标题">
         </div>
         <div>
           <label style="display:block;font-size:13px;font-weight:600;margin-bottom:4px;">自定义正文 HTML / 纯文本：</label>
-          <textarea id="customContent" rows="4" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--line);font-family:monospace;font-size:13px;" placeholder="<h2>一、研读宗旨</h2><p>此处输入替换正文内容...</p>"></textarea>
+          <textarea id="customContent" rows="5" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--line);font-family:monospace;font-size:13px;" placeholder="<h2>一、经典原文</h2><p>大学之道，在明明德，在亲民，在止于至善...</p>"></textarea>
         </div>
       </div>
     </div>
@@ -766,7 +795,11 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
   <details class="adv">
     <summary>高级：修改内容设置 / 先预览正文植入位置</summary>
     <div class="body">
-      <div class="feat">
+      <div class="tiptext" style="margin-bottom:6px">
+        以下 4 项<strong>只在「品牌词模式」下起作用</strong>；当前若是「替换正文模式」，
+        它们不参与运算 —— 正文替换成什么由上面的文库预设决定。
+      </div>
+      <div class="feat" id="featBrandBox" style="opacity:.55">
         <strong style="font-size:13.5px">修改内容</strong>
         <label class="fopt">
           <input type="checkbox" id="fTitle" checked onchange="renderTable()">
@@ -802,7 +835,6 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
   </details>
 </div>
 
-<!-- ============ 第 3 步 ============ -->
 <!-- ============ 第 3 步：怎么做（常驻显示，不随任务隐藏） ============ -->
 <div class="card" id="howtoCard">
   <h2><span class="step">3</span> 把改动推到你的知乎 —— 你要做的就这三下</h2>
@@ -814,7 +846,7 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
 
   <ol class="mini">
     <li>
-      <div class="ttl">① 回到上面第 2 步，勾好文章 → 点「创建修改任务」</div>
+      <div class="ttl">① 回到上面第 2 步，勾好文章 → 点「✅ 开始修改这些文章」</div>
       <div class="tiptext">
         这一步只是让云端把每篇的最终稿算好并缓存起来，<b>还没有动你的知乎</b>。
       </div>
@@ -941,7 +973,8 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
 
   <div class="toolbar" style="margin-top:14px">
     <button class="btn-ok btn-sm" onclick="showOverview()">查看修改概览</button>
-    <a id="repLink" href="#" target="_blank" style="text-decoration:none">
+    <a id="repLink" href="#" target="_blank" style="text-decoration:none;opacity:.5" title="创建任务后可用"
+       onclick="if(this.getAttribute('href')==='#')return false;">
       <button class="btn-ghost btn-sm">下载修改对照报告</button>
     </a>
     <button class="btn-ghost btn-sm" onclick="resetJob()">重置失败项</button>
@@ -969,18 +1002,19 @@ details > *:not(summary){animation:qyUnfold .32s var(--ease)}
   </details>
 </div>
 
-<!-- ============ 第 4 步 ============ -->
+<!-- ============ 结果：修改概览（不占步骤号，第 4 步是执行进度卡） ============ -->
 <div class="card hide" id="ovCard">
-  <h2><span class="step">5</span> 修改概览</h2>
+  <h2><span class="chip">结果</span> 修改概览</h2>
   <div class="hint">
-    逐篇展示"改了什么"。每篇都给出<strong>标题改动对照</strong>与<strong>正文片段</strong>，
-    并附上正文指纹比对结果。
+    逐篇展示「改了什么」。每篇都给出<strong>标题改动对照</strong>与<strong>正文片段</strong>；
+    品牌词模式下另附<strong>正文指纹比对</strong>，用来证明原有文字一字未动。
   </div>
   <div class="zero">
-    <strong>除以下修改外，没有任何其他修改。</strong>
-    每篇改动恰好 2 处：<strong>标题</strong>前置品牌词 1 处、
-    <strong>正文</strong>署名式括注 1 处。正文只做句末括注，未删除、未改写、
-    未替换任何原有文字；专栏归属、话题、评论设置、图片与发布状态均未改动。
+    <strong>除以下改动外，没有任何其他修改。</strong>
+    品牌词模式下每篇恰好 2 处（<strong>标题</strong>前置品牌词 1 处、
+    <strong>正文</strong>句末括注 1 处），不删除、不改写、不替换任何原有文字；
+    替换正文模式下，被整篇替换掉的正文会逐篇列在下方对照里。
+    专栏归属、话题、评论设置、图片与发布状态均未改动。
     每篇原文均在本机留有备份，可一键还原。
   </div>
   <div id="ovBody" style="margin-top:16px"></div>
@@ -1220,19 +1254,29 @@ function onModeChange(){
     const preset = document.getElementById("essayPreset")?.value || "random_all";
     customBox.classList.toggle("hide", preset !== "custom");
   }
+  /*「修改内容」那 4 项只有品牌词模式会读；替换模式下压暗，避免用户以为勾了就生效。*/
+  const fb = document.getElementById("featBrandBox");
+  if(fb) fb.style.opacity = (mode === "brand_signature") ? "" : "0.55";
   renderTable();
 }
 
 function onPresetChange(){
-  const preset = document.getElementById("essayPreset")?.value || "random_all";
+  const sel = document.getElementById("essayPreset");
+  const preset = sel?.value || "classics";
   const customBox = document.getElementById("customContentBox");
   if(customBox) customBox.classList.toggle("hide", preset !== "custom");
   const tip = document.getElementById("presetTip");
   if(tip){
-    if(preset === "law") tip.textContent = "✨ 轮换《宪法》《民法典》《爱国主义教育法》《义务教育法》等权威法律条文与研读";
-    else if(preset === "classics") tip.textContent = "✨ 轮换《学记》《大学》《劝学》《师说》《儒行》等国学学术与修身名篇";
-    else if(preset === "random_all") tip.textContent = "✨ 法律法规与国学修身经典混合随机分配，结构扎实，安全合规";
+    if(preset === "law") tip.textContent = "✨ 轮换《宪法》《民法典》《爱国主义教育法》《义务教育法》等 8 部国家现行法律条文";
+    else if(preset === "classics") tip.textContent = "✨ 轮换《大学》《中庸》《论语》《孟子》《诗经》《尚书》《礼记》等 12 篇四书五经与国学经典";
+    else if(preset === "sishu") tip.textContent = "✨ 轮换四书经典：《礼记·大学》《礼记·中庸》《论语》《孟子》";
+    else if(preset === "wujing") tip.textContent = "✨ 轮换五经与名篇：《诗经》《尚书》《礼记》《周易》《春秋左传》《劝学》《师说》";
+    else if(preset === "random_all") tip.textContent = "✨ 法律法规与四书五经国学经典全库 20 篇混合分配，结构严谨，安全合规";
     else if(preset === "custom") tip.textContent = "✨ 将使用下方自定义的标题与正文统一替换选中的文章";
+    else {
+      const optTxt = sel?.options?.[sel.selectedIndex]?.text || preset;
+      tip.textContent = "✨ 已指定单篇经典/法条：" + optTxt;
+    }
   }
   renderTable();
 }
@@ -1289,66 +1333,128 @@ function renderTable(){
   document.getElementById("chkAll").checked = allSel;
 }
 
+/* ─── Word 导出：SSE 进度条版 ───────────────────────────────────────────── */
+let _docxJobId = null;
+
+function _docxProgressHtml(){
+  return `<div id="docxProgressBox" style="
+    background:#0f172a;color:#e2e8f0;border-radius:12px;padding:16px 18px;
+    margin:12px 0;font-family:monospace;font-size:13px;line-height:1.6;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <span id="docxSpinnerIcon" style="font-size:18px;">⏳</span>
+      <b id="docxStatusTxt">初始化中…</b>
+      <span id="docxSpeedTxt" style="color:#94a3b8;margin-left:auto;font-size:12px;"></span>
+    </div>
+    <div style="background:#1e293b;border-radius:8px;overflow:hidden;height:10px;margin-bottom:10px;">
+      <div id="docxPbar" style="height:100%;width:0%;background:linear-gradient(90deg,#0ea5e9,#6366f1);
+           border-radius:8px;transition:width .4s ease;"></div>
+    </div>
+    <div id="docxLog" style="max-height:160px;overflow-y:auto;font-size:12px;color:#64748b;"></div>
+  </div>`;
+}
+
 async function doExportDocx(){
   if(SEL.size === 0){
-    toast("请先在列表中勾选需要导出 Word 的条目（可点击「全选当前筛选」）");
+    toast("请先在列表中勾选需要导出 Word 的条目");
     return;
   }
   const ck = document.getElementById("ck").value.trim();
-  if(!ck){
-    toast("请先载入知乎登录凭证");
-    return;
-  }
+  if(!ck){ toast("请先载入知乎登录凭证"); return; }
   const picked = ITEMS.filter(i => SEL.has(i.id));
-  if(picked.length === 0){
-    toast("未找到勾选的条目");
-    return;
-  }
-  
+  if(picked.length === 0){ toast("未找到勾选的条目"); return; }
+
   const b = document.getElementById("btnExportDocx");
   const bTxt = b.innerHTML;
   b.disabled = true;
-  b.innerHTML = '<span class="spin"></span> 正在打包导出 Word (' + picked.length + ' 篇)…';
-  toast("开始生成 Word 归档，请稍候（包含原图与评论下载）…");
-  
+  b.innerHTML = '⏳ 生成中…';
+
+  // 插入进度框到 listCard 顶部
+  const listCard = document.getElementById("listCard");
+  const oldBox = document.getElementById("docxProgressBox");
+  if(oldBox) oldBox.remove();
+  listCard.insertAdjacentHTML("afterbegin", _docxProgressHtml());
+  document.getElementById("docxProgressBox").scrollIntoView({behavior:"smooth",block:"nearest"});
+
   try {
-    const resp = await fetch(API + "/api/qy/export/docx", {
+    // 1. Start async job
+    const startResp = await fetch(API + "/api/qy/export/docx", {
       method: "POST",
       headers: JH(),
       body: JSON.stringify({
         cookie: ck,
         items: picked.map(i => ({
-          id: i.id,
-          type: i.type,
-          title: i.title,
-          url: i.url,
-          voteup_count: i.voteup_count || 0,
-          comment_count: i.comment_count || 0
+          id: i.id, type: i.type, title: i.title, url: i.url || "",
+          voteup_count: i.voteup_count || 0, comment_count: i.comment_count || 0
         }))
       })
     });
-    
-    if(!resp.ok){
-      const err = await resp.json().catch(()=>({detail:"导出失败"}));
-      throw new Error(err.detail || "导出失败 HTTP " + resp.status);
+    const startData = await startResp.json();
+    if(!startResp.ok) throw new Error(startData.detail || "启动失败");
+    _docxJobId = startData.job_id;
+    const total = startData.total || picked.length;
+
+    // 2. SSE progress
+    await new Promise((resolve, reject) => {
+      const es = new EventSource(API + "/api/qy/export/docx/progress/" + _docxJobId);
+      es.onmessage = function(e){
+        try {
+          const d = JSON.parse(e.data);
+          const pct = total > 0 ? Math.round(d.done / total * 100) : 0;
+          const pbar = document.getElementById("docxPbar");
+          if(pbar) pbar.style.width = pct + "%";
+          const statusTxt = document.getElementById("docxStatusTxt");
+          if(statusTxt){
+            if(d.status === "done") statusTxt.textContent = `✅ 完成！${d.done}/${total} 篇`;
+            else statusTxt.textContent = `正在导出… ${d.done}/${total} 篇`;
+          }
+          const speedTxt = document.getElementById("docxSpeedTxt");
+          if(speedTxt && d.speed > 0){
+            speedTxt.textContent = `${d.speed} 篇/s · ETA ${d.eta}s · 已 ${d.elapsed}s`;
+          }
+          // append logs
+          const logBox = document.getElementById("docxLog");
+          if(logBox && d.logs && d.logs.length){
+            d.logs.forEach(l => {
+              const row = document.createElement("div");
+              row.style.padding = "1px 0";
+              row.style.color = l.startsWith("✓") ? "#10b981" : l.startsWith("✗") ? "#ef4444" : "#64748b";
+              row.textContent = l;
+              logBox.appendChild(row);
+              logBox.scrollTop = logBox.scrollHeight;
+            });
+          }
+          if(d.status === "done" || d.status === "error"){
+            es.close();
+            const icon = document.getElementById("docxSpinnerIcon");
+            if(icon) icon.textContent = d.status === "done" ? "✅" : "❌";
+            if(d.status === "error"){ reject(new Error(d.error || "导出失败")); return; }
+            resolve(d.filename);
+          }
+        } catch(ex){ es.close(); reject(ex); }
+      };
+      es.onerror = function(){ es.close(); reject(new Error("SSE 连接中断，请重试")); };
+    });
+
+    // 3. Download file
+    const dlResp = await fetch(API + "/api/qy/export/docx/download/" + _docxJobId, { headers: JH() });
+    if(!dlResp.ok){
+      const e2 = await dlResp.json().catch(()=>({detail:"下载失败"}));
+      throw new Error(e2.detail || "下载失败 HTTP " + dlResp.status);
     }
-    
-    const blob = await resp.blob();
-    const disposition = resp.headers.get("content-disposition") || "";
-    let fname = "知乎内容导出Word.zip";
-    if(picked.length === 1){
-      fname = (picked[0].title.slice(0, 30).replace(/[\/\\:*?"<>|]/g, "_")) + ".docx";
-    }
-    if(/filename\*=UTF-8''([^;]+)/i.test(disposition)){
-      fname = decodeURIComponent(RegExp.$1);
-    } else if(/filename="?([^";]+)"?/i.test(disposition)){
-      fname = RegExp.$1;
-    }
-    
+    const blob = await dlResp.blob();
+    const disposition = dlResp.headers.get("content-disposition") || "";
+    let fname = "知乎Word导出.zip";
+    if(/filename\*=UTF-8''([^;]+)/i.test(disposition)) fname = decodeURIComponent(RegExp.$1);
+    else if(/filename="?([^";]+)"?/i.test(disposition)) fname = RegExp.$1;
     saveBlob(blob, fname);
-    toast("✅ Word 文档导出完成，已触发浏览器下载！");
+    toast("✅ Word 文档已下载！共 " + picked.length + " 篇");
+
   } catch(e) {
-    toast("导出 Word 失败：" + (e.message || e));
+    toast("导出失败：" + (e.message || e));
+    const icon = document.getElementById("docxSpinnerIcon");
+    if(icon) icon.textContent = "❌";
+    const st = document.getElementById("docxStatusTxt");
+    if(st) st.textContent = "导出失败：" + (e.message || "").slice(0, 60);
   } finally {
     b.disabled = false;
     b.innerHTML = bTxt;
@@ -1357,39 +1463,55 @@ async function doExportDocx(){
 
 async function downloadSingleDocx(id, type){
   const ck = document.getElementById("ck").value.trim();
-  if(!ck){
-    toast("请先载入凭证后再导出");
-    return;
-  }
+  if(!ck){ toast("请先载入凭证后再导出"); return; }
   const item = ITEMS.find(i => i.id === id);
   const title = item ? item.title : id;
   toast("正在生成「" + title.slice(0, 16) + "」Word 文档…");
+
   try {
-    const resp = await fetch(API + "/api/qy/export/docx", {
-      method: "POST",
-      headers: JH(),
-      body: JSON.stringify({
-        cookie: ck,
-        items: [{
-          id: id,
-          type: type || "article",
-          title: title,
-          voteup_count: item ? (item.voteup_count || 0) : 0,
-          comment_count: item ? (item.comment_count || 0) : 0,
-        }]
-      })
+    // 1. Start job
+    const startResp = await fetch(API + "/api/qy/export/docx", {
+      method: "POST", headers: JH(),
+      body: JSON.stringify({ cookie: ck, items: [{ id, type: type || "article", title,
+        voteup_count: item ? (item.voteup_count || 0) : 0,
+        comment_count: item ? (item.comment_count || 0) : 0 }] })
     });
-    if(!resp.ok) throw new Error("下载失败 HTTP " + resp.status);
-    const blob = await resp.blob();
-    const disposition = resp.headers.get("content-disposition") || "";
-    let fname = (title.slice(0, 30).replace(/[\/\\:*?"<>|]/g, "_")) + ".docx";
-    if(/filename\*=UTF-8''([^;]+)/i.test(disposition)){
-      fname = decodeURIComponent(RegExp.$1);
+    const startData = await startResp.json();
+    if(!startResp.ok) throw new Error(startData.detail || "启动失败");
+    const jobId = startData.job_id;
+
+    // 2. Wait for completion (poll 800ms)
+    let done = false;
+    for(let i = 0; i < 60; i++){
+      await new Promise(r => setTimeout(r, 800));
+      const pr = await fetch(API + "/api/qy/export/docx/progress/" + jobId, { headers: JH() }).catch(()=>null);
+      if(!pr) continue;
+      const reader = pr.body.getReader();
+      const { value } = await reader.read();
+      reader.cancel();
+      if(value){
+        const txt = new TextDecoder().decode(value);
+        const match = txt.match(/^data: (.+)$/m);
+        if(match){
+          const d = JSON.parse(match[1]);
+          if(d.status === "done"){ done = true; break; }
+          if(d.status === "error"){ throw new Error(d.error || "导出失败"); }
+        }
+      }
     }
+    if(!done) throw new Error("超时，请稍后在列表页刷新重试");
+
+    // 3. Download
+    const dlResp = await fetch(API + "/api/qy/export/docx/download/" + jobId, { headers: JH() });
+    if(!dlResp.ok) throw new Error("下载失败 HTTP " + dlResp.status);
+    const blob = await dlResp.blob();
+    const disposition = dlResp.headers.get("content-disposition") || "";
+    let fname = title.slice(0, 30).replace(/[/\\:*?"<>|]/g, "_") + ".docx";
+    if(/filename\*=UTF-8''([^;]+)/i.test(disposition)) fname = decodeURIComponent(RegExp.$1);
     saveBlob(blob, fname);
     toast("✅ 「" + title.slice(0, 16) + "」导出成功！");
-  } catch(e) {
-    toast("导出失败：" + e.message);
+  } catch(e){
+    toast("导出失败：" + (e.message || e));
   }
 }
 
@@ -1567,7 +1689,7 @@ async function doCreate(){
     JOB = j.job;
     document.getElementById("taskCard").classList.remove("hide");
     document.getElementById("jobId").textContent = "任务编号 " + JOB.job_id;
-    document.getElementById("repLink").href = API+"/api/qy/report/"+JOB.job_id;
+    setRepLink(JOB.job_id);
     if(document.getElementById("taskCard").scrollIntoView)
       document.getElementById("taskCard").scrollIntoView({behavior:"smooth"});
     loadLaunchers();
@@ -1584,6 +1706,14 @@ async function doCreate(){
     b.disabled = false; b.innerHTML = bTxt;
     toast("创建任务失败：" + e.message);
   }
+}
+
+/* 报告链接统一在这里点亮：任务没建好时 <a> 保持 href="#" 且半透明不可点。 */
+function setRepLink(jid){
+  const a = document.getElementById("repLink");
+  if(!a) return;
+  a.href = API+"/api/qy/report/"+jid;
+  a.style.opacity = "";
 }
 
 function saveBlob(bl, name){
@@ -1754,7 +1884,7 @@ async function resumeJob(){
     JOB = j.job;
     document.getElementById("taskCard").classList.remove("hide");
     document.getElementById("jobId").textContent = "任务编号 " + JOB.job_id;
-    document.getElementById("repLink").href = API+"/api/qy/report/"+JOB.job_id;
+    setRepLink(JOB.job_id);
     renderJob(JOB);
     loadBrief(); startBriefPoll();
   }catch(e){}
@@ -2287,7 +2417,7 @@ async function renderHowto(){
     if(!j) j = _howtoJob;
     let t;
     if(!j){
-      t = "① 现在云端还没有任务 —— 先在上面第 2 步勾好文章 → 点「创建修改任务」。";
+      t = "① 现在云端还没有任务 —— 先在上面第 2 步勾好文章 → 点「✅ 开始修改这些文章」。";
     }else{
       const st   = j.status || "";
       const sum  = j.summary || {};
@@ -2333,19 +2463,24 @@ function showHelp(){
     "   浏览器会独占锁住它的登录数据，这是 Windows 层面的锁，绕不过去。\n" +
     "   把 Edge / Chrome 的【所有窗口】全部关掉（不是最小化），程序会自己继续，\n" +
     "   不需要按任何键。\n\n" +
-    "2.5) 装浏览器扩展有什么用？\n" +
+    "3) 装浏览器扩展有什么用？\n" +
     "   装上之后就不需要关浏览器了：扩展会把登录同步到云端，\n" +
     "   一键程序改成从云端取用。扩展在第 1 步可以下载，交给你的 AI 助手装即可。\n\n" +
-    "3) 双击没反应 / 一闪而过？\n" +
-    "   多半是没装 Python。到 python.org 装 3.9 以上版本，\n" +
-    "   安装时务必勾选 Add Python to PATH，然后再双击一次。\n\n" +
-    "4) 关掉网页会不会中断？\n" +
+    "4) 双击没反应 / 一闪而过？\n" +
+    "   先看你走的是哪条路：\n" +
+    "   ・「一键程序」（.exe / Mac 版）自带运行环境，不需要装 Python ——\n" +
+    "     双击没反应多半是被系统拦下了。Windows 点「更多信息」→「仍要运行」；\n" +
+    "     Mac 要在 App 上右键 →「打开」。\n" +
+    "   ・只有「部署包（zip）」这条路需要本机 Python 3.9+。若走的是这条路，\n" +
+    "     到 python.org 装 3.9 以上版本，安装时勾选 Add Python to PATH，再双击一次。\n\n" +
+    "5) 关掉网页会不会中断？\n" +
     "   不会。修改是在你自己电脑上跑的，网页只是看进度。\n\n" +
-    "5) 每天能改多少？\n" +
+    "6) 每天能改多少？\n" +
     "   默认 120 篇/天，到量自动停止，第二天自动继续。\n" +
     "   在任务卡片里可以调，调完重新下载一次部署包即可生效。\n\n" +
-    "6) 改错了能还原吗？\n" +
-    "   每篇改动前的原文都自动备份在你电脑上，可一键还原。"
+    "7) 改错了能还原吗？\n" +
+    "   能。改动前的原文都会备份下来，可一键还原。\n" +
+    "   注意：替换正文模式下原文是被整篇替换的，还原请务必走备份，不要手工回改。"
   );
 }
 
@@ -2356,7 +2491,7 @@ const TOUR_STEPS = [
   {sel:"#btnLoadCred", t:"第 1 步：载入凭证",
    d:"部署包跑起来之后，回到这里点一下。凭证会自动填好，并立刻帮你把名下的文章检索出来。"},
   {sel:"#tabs", t:"第 2 步：挑分类",
-   d:"在这里切换 文章 / 想法 / 回答。能加品牌词的只有「文章」。"},
+   d:"在这里切换 文章 / 想法 / 回答。能改的只有「文章」——想法和回答只做归档与导出。"},
   {sel:"#tbody", t:"打钩选文章",
    d:"标题左边的方框就是开关。也可以用上面的「全选」「选前 20」快速选。"},
   {sel:"#btnCreate", t:"第 2 步：开始修改",
@@ -2369,8 +2504,8 @@ const TOUR_STEPS = [
    d:"修改由你电脑上的执行器完成（走你本人的网络身份），进度实时显示。完成后云端会自己回读线上文章，逐篇给出「通过 / 不通过」和原因。"},
   {sel:"#perDay", t:"每天改多少",
    d:"默认每天最多 120 篇，到量自动停止，保护账号。可以改，改完重新下载一次部署包。"},
-  {sel:"#ovCard", t:"第 4 步：查看结果",
-   d:"任务开始后，这里会逐篇展示改了什么，并给出正文没有被改动的证据。"}
+  {sel:"#ovCard", t:"结果：修改概览",
+   d:"任务开始后，这里会逐篇展示改了什么；品牌词模式下还会给出正文指纹比对，证明原有文字没被动过。"}
 ];
 let TOUR_I = -1;
 
